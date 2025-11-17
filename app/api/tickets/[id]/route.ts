@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
+import { hasPagePermission } from '@/lib/permissions';
 
 export async function GET(
   request: NextRequest,
@@ -37,6 +38,15 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Check if user has edit permission for tickets page
+    const hasEditPermission = await hasPagePermission('/admin/tickets', 'edit');
+    if (!hasEditPermission) {
+      return NextResponse.json(
+        { error: 'You do not have permission to edit tickets' },
+        { status: 403 }
+      );
+    }
+
     const { id } = await params;
     const body = await request.json();
     const {
@@ -105,6 +115,15 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Check if user has delete permission for tickets page
+    const hasDeletePermission = await hasPagePermission('/admin/tickets', 'delete');
+    if (!hasDeletePermission) {
+      return NextResponse.json(
+        { error: 'You do not have permission to delete tickets' },
+        { status: 403 }
+      );
+    }
+
     const { id } = await params;
 
     const client = await clientPromise;

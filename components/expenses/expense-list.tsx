@@ -76,6 +76,11 @@ export function ExpenseList() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [userPermissions, setUserPermissions] = useState<{ add: boolean; edit: boolean; delete: boolean }>({
+    add: false,
+    edit: false,
+    delete: false,
+  });
   const [exportFilters, setExportFilters] = useState({
     dateFrom: '',
     dateTo: '',
@@ -119,7 +124,29 @@ export function ExpenseList() {
 
   useEffect(() => {
     fetchExpenses();
+    fetchUserPermissions();
   }, []);
+
+  const fetchUserPermissions = async () => {
+    try {
+      const response = await fetch('/api/users');
+      const data = await response.json();
+      const usersResponse = await fetch('/api/users/me');
+      const userData = await usersResponse.json();
+      
+      const currentUser = data.users?.find((u: any) => u.email === userData.email);
+      if (currentUser) {
+        const expensesPermission = currentUser.pagePermissions?.find((p: any) => p.pageId === 'expenses');
+        setUserPermissions({
+          add: currentUser.role === 'superadmin' || expensesPermission?.permissions.includes('add') || false,
+          edit: currentUser.role === 'superadmin' || expensesPermission?.permissions.includes('edit') || false,
+          delete: currentUser.role === 'superadmin' || expensesPermission?.permissions.includes('delete') || false,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching user permissions:', error);
+    }
+  };
 
   // Fetch expense categories from API
   useEffect(() => {
@@ -351,16 +378,18 @@ export function ExpenseList() {
             <Download className="w-4 h-4" />
             Export
           </Button>
-          <Button 
-            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 w-full sm:w-auto"
-            onClick={() => {
-              setSelectedExpense(null);
-              setExpenseFormOpen(true);
-            }}
-          >
-            <Plus className="w-4 h-4" />
-            New Expense
-          </Button>
+          {userPermissions.add && (
+            <Button
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 w-full sm:w-auto"
+              onClick={() => {
+                setSelectedExpense(null);
+                setExpenseFormOpen(true);
+              }}
+            >
+              <Plus className="w-4 h-4" />
+              New Expense
+            </Button>
+          )}
         </div>
       </div>
 
@@ -600,11 +629,11 @@ export function ExpenseList() {
           isSummaryCollapsed ? "max-h-0 opacity-0" : "max-h-[200px] opacity-100"
         )}>
           <CardContent className="pt-2 pb-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 p-4 rounded-lg border-2 border-blue-200 dark:border-blue-800">
                 <p className="text-sm font-medium text-muted-foreground mb-1">Total Amount</p>
                 <p className="text-3xl font-bold text-blue-700 dark:text-blue-300">Ksh {totalAmount.toLocaleString()}</p>
-              </div>
+            </div>
               <div className="text-left sm:text-right bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 p-4 rounded-lg border-2 border-green-200 dark:border-green-800">
                 <p className="text-sm font-medium text-muted-foreground mb-1">Matching Entries</p>
                 <p className="text-2xl font-bold text-green-700 dark:text-green-300">{filtered.length}</p>
@@ -663,24 +692,28 @@ export function ExpenseList() {
                     </div>
                   </div>
                   <div className="flex gap-2 pt-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="flex-1 gap-2"
-                      onClick={() => handleEdit(expense)}
-                    >
-                      <Edit className="w-4 h-4" />
-                      Edit
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="flex-1 gap-2 text-red-600 hover:text-red-700"
-                      onClick={() => handleDelete(expense)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Delete
-                    </Button>
+                    {userPermissions.edit && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="flex-1 gap-2"
+                        onClick={() => handleEdit(expense)}
+                      >
+                        <Edit className="w-4 h-4" />
+                        Edit
+                      </Button>
+                    )}
+                    {userPermissions.delete && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="flex-1 gap-2 text-red-600 hover:text-red-700"
+                        onClick={() => handleDelete(expense)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -741,24 +774,28 @@ export function ExpenseList() {
                     <td className="px-6 py-4 text-sm text-muted-foreground">{expense.date}</td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="gap-1"
-                          onClick={() => handleEdit(expense)}
-                        >
-                          <Edit className="w-4 h-4" />
-                          Edit
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="gap-1 text-red-600 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => handleDelete(expense)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          Delete
-                        </Button>
+                        {userPermissions.edit && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="gap-1"
+                            onClick={() => handleEdit(expense)}
+                          >
+                            <Edit className="w-4 h-4" />
+                            Edit
+                          </Button>
+                        )}
+                        {userPermissions.delete && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="gap-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => handleDelete(expense)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Delete
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>

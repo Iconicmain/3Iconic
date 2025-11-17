@@ -6,7 +6,7 @@ import { Header } from '@/components/layout/header';
 import { EquipmentTabs } from '@/components/equipment/equipment-tabs';
 import { EquipmentCharts } from '@/components/equipment/equipment-charts';
 
-export default function EquipmentPage() {
+export default function EquipmentPageClient() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const handleEquipmentUpdate = () => {
@@ -30,3 +30,4 @@ export default function EquipmentPage() {
     </div>
   );
 }
+

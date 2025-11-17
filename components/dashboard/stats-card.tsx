@@ -21,13 +21,13 @@ export function StatsCard({
 }: StatsCardProps) {
   return (
     <Card className={cn('bg-white', className)}>
-      <CardContent className="pt-6">
+      <CardContent className="pt-4 sm:pt-6">
         <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <p className="text-sm font-medium text-muted-foreground mb-1">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-1">
               {title}
             </p>
-            <p className="text-3xl font-bold text-foreground">{value}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-foreground truncate">{value}</p>
             {change !== undefined && (
               <div className="flex items-center gap-1 mt-2">
                 <div
@@ -47,7 +47,7 @@ export function StatsCard({
               </div>
             )}
           </div>
-          {icon && <div className="text-muted-foreground">{icon}</div>}
+          {icon && <div className="text-muted-foreground shrink-0 ml-2">{icon}</div>}
         </div>
       </CardContent>
     </Card>

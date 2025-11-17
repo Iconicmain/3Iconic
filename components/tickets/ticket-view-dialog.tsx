@@ -37,6 +37,8 @@ interface TicketViewDialogProps {
   ticket: Ticket | null;
   onEdit?: (ticket: Ticket) => void;
   onDelete?: (ticketId: string, ticket_id?: string) => void;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }
 
 const statusColors = {
@@ -46,7 +48,7 @@ const statusColors = {
   pending: 'bg-blue-100 text-blue-800',
 };
 
-export function TicketViewDialog({ open, onOpenChange, ticket, onEdit, onDelete }: TicketViewDialogProps) {
+export function TicketViewDialog({ open, onOpenChange, ticket, onEdit, onDelete, canEdit = false, canDelete = false }: TicketViewDialogProps) {
   if (!ticket) return null;
 
   const formatDateTime = (dateString: string | Date) => {
@@ -198,7 +200,7 @@ export function TicketViewDialog({ open, onOpenChange, ticket, onEdit, onDelete 
 
         <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
           <div className="flex gap-2 w-full sm:w-auto order-2 sm:order-1">
-            {onEdit && (
+            {onEdit && canEdit && (
               <Button
                 variant="outline"
                 onClick={() => {
@@ -212,7 +214,7 @@ export function TicketViewDialog({ open, onOpenChange, ticket, onEdit, onDelete 
                 Edit
               </Button>
             )}
-            {onDelete && (
+            {onDelete && canDelete && (
               <Button
                 variant="destructive"
                 onClick={() => {

@@ -1,11 +1,13 @@
-'use client';
-
+import { checkPagePermission } from '@/lib/permissions';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { StationGrid } from '@/components/stations/station-grid';
 import { StationCharts } from '@/components/stations/station-charts';
 
-export default function StationsPage() {
+export default async function StationsPage() {
+  // Server-side permission check - redirects if not authorized
+  await checkPagePermission('/admin/stations');
+  
   return (
     <div className="flex">
       <Sidebar />
@@ -21,3 +23,4 @@ export default function StationsPage() {
     </div>
   );
 }
+

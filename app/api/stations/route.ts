@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
+import { hasPagePermission } from '@/lib/permissions';
 
 export async function GET(request: NextRequest) {
   try {
@@ -56,6 +57,15 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Check if user has add permission for stations page
+    const hasAddPermission = await hasPagePermission('/admin/stations', 'add');
+    if (!hasAddPermission) {
+      return NextResponse.json(
+        { error: 'You do not have permission to create stations' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const { name, location, region, status, technicians, equipment, ticketsThisMonth, performanceScore } = body;
 

@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 import { TicketForm } from './ticket-form';
 import { TicketEditDialog } from './ticket-edit-dialog';
 import { TicketViewDialog } from './ticket-view-dialog';
-import { CategoryManager } from './category-manager';
+import { TechnicianManager } from './technician-manager';
 import { toast } from 'sonner';
 
 interface Ticket {
@@ -56,12 +56,17 @@ export function TicketList({ onTicketUpdate, initialStationFilter }: TicketListP
   const [formOpen, setFormOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
+  const [technicianManagerOpen, setTechnicianManagerOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [stationFilter, setStationFilter] = useState<string>('all');
+  const [userPermissions, setUserPermissions] = useState<{ add: boolean; edit: boolean; delete: boolean }>({
+    add: false,
+    edit: false,
+    delete: false,
+  });
 
   const fetchCategories = async () => {
     try {
@@ -134,7 +139,29 @@ export function TicketList({ onTicketUpdate, initialStationFilter }: TicketListP
     fetchTickets();
     fetchCategories();
     fetchStations();
+    fetchUserPermissions();
   }, []);
+
+  const fetchUserPermissions = async () => {
+    try {
+      const response = await fetch('/api/users');
+      const data = await response.json();
+      const usersResponse = await fetch('/api/users/me');
+      const userData = await usersResponse.json();
+      
+      const currentUser = data.users?.find((u: any) => u.email === userData.email);
+      if (currentUser) {
+        const ticketsPermission = currentUser.pagePermissions?.find((p: any) => p.pageId === 'tickets');
+        setUserPermissions({
+          add: currentUser.role === 'superadmin' || ticketsPermission?.permissions.includes('add') || false,
+          edit: currentUser.role === 'superadmin' || ticketsPermission?.permissions.includes('edit') || false,
+          delete: currentUser.role === 'superadmin' || ticketsPermission?.permissions.includes('delete') || false,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching user permissions:', error);
+    }
+  };
 
   // Set initial station filter from URL parameter
   useEffect(() => {
@@ -239,20 +266,22 @@ export function TicketList({ onTicketUpdate, initialStationFilter }: TicketListP
           <Button 
             variant="outline"
             className="gap-2 w-full sm:w-auto shrink-0"
-            onClick={() => setCategoryManagerOpen(true)}
+            onClick={() => setTechnicianManagerOpen(true)}
             size="sm"
           >
             <Settings className="w-4 h-4" />
-            <span className="hidden sm:inline">Categories</span>
+            <span className="hidden sm:inline">Technicians</span>
           </Button>
-          <Button 
-            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 w-full sm:w-auto shrink-0"
-            onClick={() => setFormOpen(true)}
-            size="sm"
-          >
-          <Plus className="w-4 h-4" />
-            <span className="sm:inline">New Ticket</span>
-        </Button>
+          {userPermissions.add && (
+            <Button 
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 w-full sm:w-auto shrink-0"
+              onClick={() => setFormOpen(true)}
+              size="sm"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="sm:inline">New Ticket</span>
+            </Button>
+          )}
         </div>
         <TicketForm 
           open={formOpen} 
@@ -282,16 +311,14 @@ export function TicketList({ onTicketUpdate, initialStationFilter }: TicketListP
           ticket={selectedTicket}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          canEdit={userPermissions.edit}
+          canDelete={userPermissions.delete}
         />
-        <CategoryManager
-          open={categoryManagerOpen}
-          onOpenChange={setCategoryManagerOpen}
-          onCategoryAdded={() => {
-            fetchCategories();
-            // Also refresh ticket form categories if it's open
-            if (formOpen) {
-              // Trigger a re-fetch in the form by closing and reopening (or use a callback)
-            }
+        <TechnicianManager
+          open={technicianManagerOpen}
+          onOpenChange={setTechnicianManagerOpen}
+          onTechnicianAdded={() => {
+            // Refresh technicians in edit dialog if needed
           }}
         />
       </div>
@@ -549,26 +576,30 @@ export function TicketList({ onTicketUpdate, initialStationFilter }: TicketListP
                           <Eye className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
                           <span className="hidden lg:inline">View</span>
                         </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="gap-1 h-8 w-8 p-0 lg:h-auto lg:w-auto lg:px-2"
-                          onClick={() => handleEdit(ticket)}
-                          title="Edit Ticket"
-                        >
-                          <Edit className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
-                          <span className="hidden lg:inline">Edit</span>
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="gap-1 h-8 w-8 p-0 lg:h-auto lg:w-auto lg:px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => handleDelete(ticket.ticketId, ticket._id)}
-                          title="Delete Ticket"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
-                          <span className="hidden lg:inline">Delete</span>
-                        </Button>
+                        {userPermissions.edit && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="gap-1 h-8 w-8 p-0 lg:h-auto lg:w-auto lg:px-2"
+                            onClick={() => handleEdit(ticket)}
+                            title="Edit Ticket"
+                          >
+                            <Edit className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+                            <span className="hidden lg:inline">Edit</span>
+                          </Button>
+                        )}
+                        {userPermissions.delete && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="gap-1 h-8 w-8 p-0 lg:h-auto lg:w-auto lg:px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => handleDelete(ticket.ticketId, ticket._id)}
+                            title="Delete Ticket"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+                            <span className="hidden lg:inline">Delete</span>
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>

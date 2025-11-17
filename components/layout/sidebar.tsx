@@ -2,53 +2,128 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Ticket, DollarSign, Warehouse, Package, Settings, Menu, X, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
+import { LayoutDashboard, Ticket, DollarSign, Warehouse, Package, Settings, Menu, X, ChevronRight, Users, Calculator } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { AVAILABLE_PAGES } from '@/lib/constants';
 
 const navigation = [
   {
     name: 'Dashboard',
-    href: '/',
+    href: '/admin',
     icon: LayoutDashboard,
-    description: 'Overview & metrics'
+    description: 'Overview & metrics',
+    pageId: 'dashboard'
   },
   {
     name: 'Tickets',
-    href: '/tickets',
+    href: '/admin/tickets',
     icon: Ticket,
-    description: 'Manage support tickets'
+    description: 'Manage support tickets',
+    pageId: 'tickets'
   },
   {
     name: 'Expenses',
-    href: '/expenses',
+    href: '/admin/expenses',
     icon: DollarSign,
-    description: 'Track spending'
+    description: 'Track spending',
+    pageId: 'expenses'
   },
   {
     name: 'Stations',
-    href: '/stations',
+    href: '/admin/stations',
     icon: Warehouse,
-    description: 'Station management'
+    description: 'Station management',
+    pageId: 'stations'
   },
   {
     name: 'Equipment',
-    href: '/equipment',
+    href: '/admin/equipment',
     icon: Package,
-    description: 'Equipment inventory'
+    description: 'Equipment inventory',
+    pageId: 'equipment'
+  },
+  {
+    name: 'Users',
+    href: '/admin/users',
+    icon: Users,
+    description: 'User management',
+    pageId: 'users'
   },
   {
     name: 'Settings',
-    href: '/settings',
+    href: '/admin/settings',
     icon: Settings,
-    description: 'Configuration'
+    description: 'Configuration',
+    pageId: 'settings'
+  },
+  {
+    name: 'Ticket Costs',
+    href: '/admin/ticket-costs',
+    icon: Calculator,
+    description: 'Calculate ticket costs',
+    pageId: 'ticket-costs',
+    superAdminOnly: true
   },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  const [allowedPages, setAllowedPages] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchUserPermissions = async () => {
+      try {
+        const response = await fetch('/api/users');
+        const data = await response.json();
+        
+        // Find current user
+        const usersResponse = await fetch('/api/users/me');
+        const userData = await usersResponse.json();
+        
+        // Get current user from users list
+        const currentUser = data.users?.find((u: any) => u.email === userData.email);
+        
+        if (currentUser) {
+          // Superadmins have access to all pages
+          if (currentUser.role === 'superadmin') {
+            setAllowedPages(new Set(navigation.map(item => item.pageId)));
+          } else {
+            // Filter pages user has view permission for (excluding super admin only pages)
+            const allowed = new Set<string>();
+            if (currentUser.pagePermissions) {
+              currentUser.pagePermissions.forEach((perm: any) => {
+                if (perm.permissions && perm.permissions.includes('view')) {
+                  allowed.add(perm.pageId);
+                }
+              });
+            }
+            // Remove super admin only pages
+            navigation.forEach(item => {
+              if ((item as any).superAdminOnly) {
+                allowed.delete(item.pageId);
+              }
+            });
+            setAllowedPages(allowed);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user permissions:', error);
+        // On error, show no pages (fail secure)
+        setAllowedPages(new Set());
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserPermissions();
+  }, []);
+
+  // Filter navigation items based on user permissions
+  const filteredNavigation = navigation.filter(item => allowedPages.has(item.pageId));
 
   return (
     <>
@@ -85,8 +160,17 @@ export function Sidebar() {
         {/* Navigation Section */}
         <nav className="flex-1 space-y-2">
           <p className="text-xs font-semibold text-emerald-300 uppercase tracking-wider px-2 mb-4">Main Menu</p>
-          {navigation.map((item, index) => {
-            const Icon = item.icon;
+          {loading ? (
+            <div className="px-4 py-3 text-emerald-200 text-sm">Loading...</div>
+          ) : filteredNavigation.length === 0 ? (
+            <div className="px-4 py-3 text-emerald-200/70 text-sm">No pages available</div>
+          ) : (
+            filteredNavigation.map((item: any, index) => {
+              // Skip super admin only pages for non-superadmins
+              if (item.superAdminOnly && !allowedPages.has(item.pageId)) {
+                return null;
+              }
+              const Icon = item.icon;
             const isActive = pathname === item.href;
 
             return (
@@ -124,7 +208,8 @@ export function Sidebar() {
                 )}
               </Link>
             );
-          })}
+            })
+          )}
         </nav>
 
         {/* Footer Section */}

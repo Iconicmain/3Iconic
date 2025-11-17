@@ -12,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Trash2, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Loader2, Edit, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -28,6 +28,7 @@ import {
 interface Category {
   _id?: string;
   name: string;
+  price?: number;
   createdAt?: string;
 }
 
@@ -42,6 +43,10 @@ export function CategoryManager({ open, onOpenChange, onCategoryAdded }: Categor
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [newCategory, setNewCategory] = useState('');
+  const [newCategoryPrice, setNewCategoryPrice] = useState('');
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState('');
+  const [editCategoryPrice, setEditCategoryPrice] = useState('');
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; category: Category | null }>({
     open: false,
     category: null,
@@ -85,7 +90,10 @@ export function CategoryManager({ open, onOpenChange, onCategoryAdded }: Categor
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name: newCategory.trim() }),
+        body: JSON.stringify({ 
+          name: newCategory.trim(),
+          price: newCategoryPrice ? Number(newCategoryPrice) : 0
+        }),
       });
 
       const data = await response.json();
@@ -96,6 +104,7 @@ export function CategoryManager({ open, onOpenChange, onCategoryAdded }: Categor
 
       toast.success('Category added successfully!');
       setNewCategory('');
+      setNewCategoryPrice('');
       fetchCategories();
       if (onCategoryAdded) {
         onCategoryAdded();
@@ -103,6 +112,57 @@ export function CategoryManager({ open, onOpenChange, onCategoryAdded }: Categor
     } catch (error) {
       console.error('Error creating category:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to create category');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditCategory = (category: Category) => {
+    setEditingCategory(category);
+    setEditCategoryName(category.name);
+    setEditCategoryPrice(category.price?.toString() || '');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCategory(null);
+    setEditCategoryName('');
+    setEditCategoryPrice('');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingCategory?._id || !editCategoryName.trim()) {
+      toast.error('Category name is required');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/categories/${editingCategory._id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: editCategoryName.trim(),
+          price: editCategoryPrice ? Number(editCategoryPrice) : 0,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update category');
+      }
+
+      toast.success('Category updated successfully!');
+      handleCancelEdit();
+      fetchCategories();
+      if (onCategoryAdded) {
+        onCategoryAdded();
+      }
+    } catch (error) {
+      console.error('Error updating category:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to update category');
     } finally {
       setLoading(false);
     }
@@ -156,27 +216,40 @@ export function CategoryManager({ open, onOpenChange, onCategoryAdded }: Categor
               <Label htmlFor="newCategory" className="text-sm font-medium">
                 Add New Category
               </Label>
-              <div className="flex gap-2">
+              <div className="space-y-2">
                 <Input
                   id="newCategory"
                   value={newCategory}
                   onChange={(e) => setNewCategory(e.target.value)}
                   placeholder="Enter category name"
-                  className="flex-1 h-10 text-sm"
+                  className="h-10 text-sm"
                   disabled={loading}
                 />
-                <Button
-                  type="submit"
-                  disabled={loading || !newCategory.trim()}
-                  className="h-10 gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-                >
-                  {loading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Plus className="w-4 h-4" />
-                  )}
-                  <span className="hidden sm:inline">Add</span>
-                </Button>
+                <div className="flex gap-2">
+                  <Input
+                    id="newCategoryPrice"
+                    type="number"
+                    value={newCategoryPrice}
+                    onChange={(e) => setNewCategoryPrice(e.target.value)}
+                    placeholder="Price (Ksh)"
+                    className="flex-1 h-10 text-sm"
+                    disabled={loading}
+                    min="0"
+                    step="0.01"
+                  />
+                  <Button
+                    type="submit"
+                    disabled={loading || !newCategory.trim()}
+                    className="h-10 gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                  >
+                    {loading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Plus className="w-4 h-4" />
+                    )}
+                    <span className="hidden sm:inline">Add</span>
+                  </Button>
+                </div>
               </div>
             </form>
 
@@ -198,18 +271,91 @@ export function CategoryManager({ open, onOpenChange, onCategoryAdded }: Categor
                   {categories.map((category) => (
                     <div
                       key={category._id || category.name}
-                      className="flex items-center justify-between p-3 bg-white dark:bg-gray-900 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                      className="p-3 bg-white dark:bg-gray-900 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                     >
-                      <span className="text-sm font-medium text-foreground">{category.name}</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setDeleteDialog({ open: true, category })}
-                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                        disabled={loading}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {editingCategory?._id === category._id ? (
+                        // Edit Mode
+                        <div className="space-y-2">
+                          <div className="flex gap-2">
+                            <Input
+                              value={editCategoryName}
+                              onChange={(e) => setEditCategoryName(e.target.value)}
+                              placeholder="Category name"
+                              className="flex-1 h-9 text-sm"
+                              disabled={loading}
+                            />
+                            <Input
+                              type="number"
+                              value={editCategoryPrice}
+                              onChange={(e) => setEditCategoryPrice(e.target.value)}
+                              placeholder="Price (Ksh)"
+                              className="w-32 h-9 text-sm"
+                              disabled={loading}
+                              min="0"
+                              step="0.01"
+                            />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleSaveEdit}
+                              disabled={loading || !editCategoryName.trim()}
+                              className="h-9 px-3 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                            >
+                              {loading ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <span className="text-xs">Save</span>
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleCancelEdit}
+                              disabled={loading}
+                              className="h-9 px-3 text-muted-foreground hover:text-foreground"
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        // View Mode
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <span className="text-sm font-medium text-foreground">{category.name}</span>
+                            {category.price !== undefined && category.price > 0 && (
+                              <span className="text-xs text-muted-foreground ml-2">
+                                (Ksh {category.price.toLocaleString()})
+                              </span>
+                            )}
+                            {(!category.price || category.price === 0) && (
+                              <span className="text-xs text-amber-600 dark:text-amber-400 ml-2">
+                                (No price set)
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditCategory(category)}
+                              className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              disabled={loading}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setDeleteDialog({ open: true, category })}
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                              disabled={loading}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -1,0 +1,16 @@
+// Shared constants for the application
+
+// Define available pages and their permissions
+export const AVAILABLE_PAGES = [
+  { id: 'dashboard', name: 'Dashboard', path: '/admin' },
+  { id: 'tickets', name: 'Tickets', path: '/admin/tickets' },
+  { id: 'expenses', name: 'Expenses', path: '/admin/expenses' },
+  { id: 'stations', name: 'Stations', path: '/admin/stations' },
+  { id: 'equipment', name: 'Equipment', path: '/admin/equipment' },
+  { id: 'users', name: 'User Management', path: '/admin/users' },
+  { id: 'settings', name: 'Settings', path: '/admin/settings' },
+] as const;
+
+export const PERMISSION_TYPES = ['view', 'add', 'edit', 'delete'] as const;
+export type PermissionType = typeof PERMISSION_TYPES[number];
+

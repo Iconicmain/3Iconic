@@ -45,10 +45,29 @@ interface TicketEditDialogProps {
 }
 
 const STATUSES = ['open', 'in-progress', 'closed', 'pending'];
-const TECHNICIANS = ['John Smith', 'Sarah Jones', 'Mike Davis', 'Emily Wilson'];
 
 export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: TicketEditDialogProps) {
+  const [technicians, setTechnicians] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      fetchTechnicians();
+    }
+  }, [open]);
+
+  const fetchTechnicians = async () => {
+    try {
+      const response = await fetch('/api/technicians');
+      const data = await response.json();
+      if (response.ok) {
+        const technicianNames = data.technicians?.map((tech: { name: string }) => tech.name) || [];
+        setTechnicians(technicianNames);
+      }
+    } catch (error) {
+      console.error('Error fetching technicians:', error);
+    }
+  };
   const [formData, setFormData] = useState({
     status: 'open' as Ticket['status'],
     technician: '',
@@ -158,7 +177,7 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {TECHNICIANS.map((tech) => (
+                  {technicians.map((tech) => (
                     <SelectItem key={tech} value={tech}>
                       {tech}
                     </SelectItem>

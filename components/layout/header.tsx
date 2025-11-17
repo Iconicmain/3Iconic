@@ -3,6 +3,7 @@
 import { Bell, Search, ChevronDown, User, LogOut, LayoutDashboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useSession, signOut as nextAuthSignOut } from 'next-auth/react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,6 +13,15 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 export function Header() {
+  const { data: session } = useSession();
+  const userInitials = session?.user?.name
+    ?.split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || 'AU';
+  const userName = session?.user?.name || 'Admin User';
+  const userEmail = session?.user?.email || 'admin@example.com';
   return (
     <header className="md:ml-72 fixed md:sticky top-16 md:top-0 right-0 left-0 md:left-auto h-16 bg-white/95 backdrop-blur-md border-b border-gray-100 z-20 flex items-center justify-between px-4 sm:px-6 lg:px-8 shadow-sm">
       {/* Left Section - Logo & Search */}
@@ -59,11 +69,15 @@ export function Header() {
               className="gap-2.5 h-9 px-2.5 hover:bg-gray-100 rounded-lg transition-colors"
             >
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-sm ring-2 ring-white">
-                <span className="text-xs font-semibold text-white">AU</span>
+                {session?.user?.image ? (
+                  <img src={session.user.image} alt={userName} className="w-full h-full rounded-full" />
+                ) : (
+                  <span className="text-xs font-semibold text-white">{userInitials}</span>
+                )}
               </div>
               <div className="hidden sm:block text-left">
-                <p className="text-sm font-medium text-gray-900 leading-none">Admin User</p>
-                <p className="text-xs text-gray-500 leading-none mt-0.5">admin@example.com</p>
+                <p className="text-sm font-medium text-gray-900 leading-none">{userName}</p>
+                <p className="text-xs text-gray-500 leading-none mt-0.5">{userEmail}</p>
               </div>
               <ChevronDown className="w-4 h-4 text-gray-500 hidden sm:block" />
             </Button>
@@ -71,12 +85,16 @@ export function Header() {
           <DropdownMenuContent align="end" className="w-64 p-2">
             <div className="px-3 py-2.5 mb-1">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-sm">
-                  <span className="text-sm font-semibold text-white">AU</span>
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-sm overflow-hidden">
+                  {session?.user?.image ? (
+                    <img src={session.user.image} alt={userName} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-sm font-semibold text-white">{userInitials}</span>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">Admin User</p>
-                  <p className="text-xs text-gray-500 truncate">admin@example.com</p>
+                  <p className="text-sm font-semibold text-gray-900 truncate">{userName}</p>
+                  <p className="text-xs text-gray-500 truncate">{userEmail}</p>
                 </div>
               </div>
             </div>
@@ -85,7 +103,12 @@ export function Header() {
               <User className="w-4 h-4 text-gray-500" />
               <span className="text-sm">Profile Settings</span>
             </DropdownMenuItem>
-            <DropdownMenuItem className="gap-2.5 px-3 py-2.5 cursor-pointer rounded-md">
+            <DropdownMenuItem 
+              className="gap-2.5 px-3 py-2.5 cursor-pointer rounded-md"
+              onClick={async () => {
+                await nextAuthSignOut({ callbackUrl: '/admin/login' });
+              }}
+            >
               <LogOut className="w-4 h-4 text-gray-500" />
               <span className="text-sm">Sign Out</span>
             </DropdownMenuItem>

@@ -1,11 +1,13 @@
-'use client';
-
+import { checkPagePermission } from '@/lib/permissions';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { ExpenseList } from '@/components/expenses/expense-list';
 import { ExpenseCharts } from '@/components/expenses/expense-charts';
 
-export default function ExpensesPage() {
+export default async function ExpensesPage() {
+  // Server-side permission check - redirects if not authorized
+  await checkPagePermission('/admin/expenses');
+  
   return (
     <div className="flex">
       <Sidebar />
@@ -21,3 +23,4 @@ export default function ExpensesPage() {
     </div>
   );
 }
+

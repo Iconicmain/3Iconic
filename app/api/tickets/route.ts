@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
+import { hasPagePermission } from '@/lib/permissions';
 
 export async function POST(request: NextRequest) {
   try {
+    // Check if user has add permission for tickets page
+    const hasAddPermission = await hasPagePermission('/admin/tickets', 'add');
+    if (!hasAddPermission) {
+      return NextResponse.json(
+        { error: 'You do not have permission to create tickets' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const {
       clientName,

@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name } = body;
+    const { name, price } = body;
 
     if (!name || name.trim() === '') {
       return NextResponse.json(
@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
 
     const category = {
       name: name.trim(),
+      price: price ? Number(price) : 0,
       createdAt: new Date(),
     };
 
