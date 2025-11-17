@@ -1,0 +1,50 @@
+{
+  "name": "3Iconic Admin Dashboard",
+  "short_name": "3Iconic Admin",
+  "description": "Enterprise-grade Admin Dashboard for Ticket & Equipment Management",
+  "start_url": "/admin",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#059669",
+  "orientation": "portrait-primary",
+  "scope": "/admin",
+  "icons": [
+    {
+      "src": "/icon-192x192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512x512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["business", "productivity", "utilities"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Tickets",
+      "short_name": "Tickets",
+      "description": "Manage support tickets",
+      "url": "/admin/tickets",
+      "icons": [{ "src": "/icon-192x192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "View dashboard",
+      "url": "/admin",
+      "icons": [{ "src": "/icon-192x192.svg", "sizes": "192x192" }]
+    }
+  ]
+}
+

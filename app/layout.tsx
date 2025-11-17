@@ -9,14 +9,21 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'Admin Dashboard',
+  title: '3Iconic Admin Dashboard',
   description: 'Enterprise-grade Admin Dashboard for Ticket & Equipment Management',
   generator: 'v0.app',
+  manifest: '/manifest.json',
+  themeColor: '#059669',
   viewport: {
     width: 'device-width',
     initialScale: 1,
     maximumScale: 5,
     userScalable: true,
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: '3Iconic Admin',
   },
   icons: {
     icon: [
@@ -24,8 +31,24 @@ export const metadata: Metadata = {
         url: '/icon.svg',
         type: 'image/svg+xml',
       },
+      {
+        url: '/icon-192x192.svg',
+        sizes: '192x192',
+        type: 'image/svg+xml',
+      },
+      {
+        url: '/icon-512x512.svg',
+        sizes: '512x512',
+        type: 'image/svg+xml',
+      },
     ],
-    apple: '/icon.svg',
+    apple: [
+      {
+        url: '/icon-192x192.svg',
+        sizes: '192x192',
+        type: 'image/svg+xml',
+      },
+    ],
   },
 }
 
