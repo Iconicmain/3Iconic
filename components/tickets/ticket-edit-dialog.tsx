@@ -135,10 +135,10 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full mx-2 sm:mx-0">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Ticket - {ticket.ticketId}</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-base sm:text-lg">Edit Ticket - {ticket.ticketId}</DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm">
             Update ticket status, assign technician, and add resolution details.
           </DialogDescription>
         </DialogHeader>

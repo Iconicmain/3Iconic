@@ -38,27 +38,27 @@ export function Header() {
         </div>
 
         {/* Search Bar */}
-        <div className="flex-1 max-w-lg">
+        <div className="flex-1 max-w-lg min-w-0">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400" />
           <Input
-              placeholder="Search tickets, clients, stations..."
-              className="pl-10 h-9 bg-gray-50/80 border-gray-200 hover:bg-gray-50 hover:border-gray-300 focus:bg-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all duration-200 text-sm"
+              placeholder="Search..."
+              className="pl-8 sm:pl-10 h-8 sm:h-9 bg-gray-50/80 border-gray-200 hover:bg-gray-50 hover:border-gray-300 focus:bg-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all duration-200 text-xs sm:text-sm"
           />
           </div>
         </div>
       </div>
 
       {/* Right Section - Actions & User */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
         {/* Notifications */}
         <Button 
           variant="ghost" 
           size="icon" 
-          className="relative h-9 w-9 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          className="relative h-8 w-8 sm:h-9 sm:w-9 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
         >
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-emerald-500 rounded-full border-2 border-white"></span>
+          <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
+          <span className="absolute top-1 right-1 sm:top-1.5 sm:right-1.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-emerald-500 rounded-full border-2 border-white"></span>
         </Button>
 
         {/* User Menu */}
@@ -66,20 +66,20 @@ export function Header() {
           <DropdownMenuTrigger asChild>
             <Button 
               variant="ghost" 
-              className="gap-2.5 h-9 px-2.5 hover:bg-gray-100 rounded-lg transition-colors"
+              className="gap-1.5 sm:gap-2.5 h-8 sm:h-9 px-1.5 sm:px-2.5 hover:bg-gray-100 rounded-lg transition-colors"
             >
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-sm ring-2 ring-white">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-sm ring-2 ring-white">
                 {session?.user?.image ? (
                   <img src={session.user.image} alt={userName} className="w-full h-full rounded-full" />
                 ) : (
-                  <span className="text-xs font-semibold text-white">{userInitials}</span>
+                  <span className="text-[10px] sm:text-xs font-semibold text-white">{userInitials}</span>
                 )}
               </div>
               <div className="hidden sm:block text-left">
                 <p className="text-sm font-medium text-gray-900 leading-none">{userName}</p>
                 <p className="text-xs text-gray-500 leading-none mt-0.5">{userEmail}</p>
               </div>
-              <ChevronDown className="w-4 h-4 text-gray-500 hidden sm:block" />
+              <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 hidden sm:block" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-64 p-2">

@@ -85,17 +85,48 @@ export function TicketForm({ open, onOpenChange, onSuccess }: TicketFormProps) {
     }
   }, [open]);
 
+  const normalizePhoneNumber = (phoneNumber: string): string => {
+    if (!phoneNumber) return phoneNumber;
+    
+    // Remove any spaces or dashes
+    let cleaned = phoneNumber.replace(/\s+/g, '').replace(/-/g, '');
+    
+    // If it already starts with +254, return as is
+    if (cleaned.startsWith('+254')) {
+      return cleaned;
+    }
+    
+    // If it starts with 254 (without +), add +
+    if (cleaned.startsWith('254')) {
+      return '+' + cleaned;
+    }
+    
+    // If it starts with 0 (local format), replace 0 with +254
+    if (cleaned.startsWith('0')) {
+      return '+254' + cleaned.substring(1);
+    }
+    
+    // Otherwise, prepend +254
+    return '+254' + cleaned;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
+      // Normalize client number before submitting
+      const normalizedClientNumber = normalizePhoneNumber(formData.clientNumber);
+      
       const response = await fetch('/api/tickets', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          clientNumber: normalizedClientNumber,
+        }),
       });
 
       const data = await response.json();
@@ -172,12 +203,16 @@ export function TicketForm({ open, onOpenChange, onSuccess }: TicketFormProps) {
                 </Label>
                 <Input
                   id="clientNumber"
+                  type="tel"
                   value={formData.clientNumber}
                   onChange={(e) => handleChange('clientNumber', e.target.value)}
-                  placeholder="Enter client number"
+                  placeholder="e.g., 0712345678 or +254712345678"
                   required
                   className="h-10 sm:h-11 text-sm border-slate-300 focus:border-blue-500 focus:ring-blue-500"
                 />
+                <p className="text-[10px] sm:text-xs text-muted-foreground">
+                  Will automatically add +254 prefix if not provided
+                </p>
               </div>
             </div>
           </div>
