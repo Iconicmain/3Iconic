@@ -25,14 +25,17 @@ CRON_SECRET=your-secret-key-here
 
 2. **24-Hour Reminder System**
    - Automatically sends reminders for tickets that are still open after 24 hours
-   - Reminders are sent every 6 hours (configurable)
+   - Runs daily at midnight (compatible with Vercel Hobby plan)
    - Prevents duplicate reminders (only sends if last reminder was > 24 hours ago)
+   - The endpoint logic ensures reminders are sent exactly every 24 hours, so daily execution is sufficient
 
 ## Cron Job Setup
 
 ### Option 1: Vercel Cron Jobs (Recommended for Vercel deployments)
 
-The `vercel.json` file is already configured. Vercel will automatically run the cron job.
+The `vercel.json` file is configured to run daily at midnight (`0 0 * * *`), which is compatible with Vercel's Hobby plan. The endpoint logic prevents duplicate reminders, so running once per day is sufficient even though reminders are sent every 24 hours.
+
+**Note:** Vercel Hobby plan only allows daily cron jobs. If you need more frequent checks, use Option 2 (External Cron Service).
 
 ### Option 2: External Cron Service
 
@@ -46,10 +49,12 @@ Set up a cron job to call:
 POST https://your-domain.com/api/tickets/send-reminders
 ```
 
-Schedule: Every 6 hours (or as needed)
-- `0 */6 * * *` - Every 6 hours
-- `0 0 * * *` - Daily at midnight
-- `0 */24 * * *` - Every 24 hours
+Schedule options:
+- `0 0 * * *` - Daily at midnight (current Vercel config, recommended)
+- `0 */6 * * *` - Every 6 hours (requires external service or Vercel Pro)
+- `0 */1 * * *` - Every hour (requires external service or Vercel Pro)
+
+**Note:** The endpoint prevents duplicate reminders, so daily execution is sufficient. More frequent checks won't send additional reminders but can provide faster detection of tickets that need reminders.
 
 ### Option 3: Manual Testing
 
