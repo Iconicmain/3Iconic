@@ -44,7 +44,7 @@ interface TicketEditDialogProps {
   onSuccess?: () => void;
 }
 
-const STATUSES = ['open', 'in-progress', 'closed', 'pending'];
+const STATUSES = ['open', 'in-progress', 'resolved', 'closed', 'pending'];
 
 export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: TicketEditDialogProps) {
   const [technicians, setTechnicians] = useState<string[]>([]);
@@ -188,7 +188,7 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
           </div>
 
           {/* Resolved Date */}
-          {formData.status === 'closed' && (
+          {(formData.status === 'closed' || formData.status === 'resolved') && (
             <div className="space-y-2">
               <Label htmlFor="resolvedAt" className="text-sm">Resolved Date & Time</Label>
               <div className="flex flex-col sm:flex-row gap-2">
@@ -228,7 +228,7 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
           )}
 
           {/* Resolution Notes */}
-          {formData.status === 'closed' && (
+          {(formData.status === 'closed' || formData.status === 'resolved') && (
             <div className="space-y-2">
               <Label htmlFor="resolutionNotes" className="text-sm">How It Was Resolved</Label>
               <Textarea

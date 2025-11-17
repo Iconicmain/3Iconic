@@ -46,9 +46,10 @@ const statusColors = {
 interface TicketListProps {
   onTicketUpdate?: () => void;
   initialStationFilter?: string | null;
+  initialTicketId?: string | null;
 }
 
-export function TicketList({ onTicketUpdate, initialStationFilter }: TicketListProps = {}) {
+export function TicketList({ onTicketUpdate, initialStationFilter, initialTicketId }: TicketListProps = {}) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [stations, setStations] = useState<string[]>([]);
@@ -141,6 +142,23 @@ export function TicketList({ onTicketUpdate, initialStationFilter }: TicketListP
     fetchStations();
     fetchUserPermissions();
   }, []);
+
+  // Handle initial ticket ID from URL parameter - open edit dialog
+  useEffect(() => {
+    if (initialTicketId && tickets.length > 0) {
+      const ticket = tickets.find(t => t.ticketId === initialTicketId);
+      if (ticket) {
+        setSelectedTicket(ticket);
+        setEditDialogOpen(true);
+        // Clear URL parameter after opening
+        if (typeof window !== 'undefined') {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('ticket');
+          window.history.replaceState({}, '', url.toString());
+        }
+      }
+    }
+  }, [initialTicketId, tickets]);
 
   const fetchUserPermissions = async () => {
     try {
@@ -273,14 +291,14 @@ export function TicketList({ onTicketUpdate, initialStationFilter }: TicketListP
             <span className="hidden sm:inline">Technicians</span>
           </Button>
           {userPermissions.add && (
-            <Button 
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 w-full sm:w-auto shrink-0"
-              onClick={() => setFormOpen(true)}
-              size="sm"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="sm:inline">New Ticket</span>
-            </Button>
+          <Button 
+            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 w-full sm:w-auto shrink-0"
+            onClick={() => setFormOpen(true)}
+            size="sm"
+          >
+          <Plus className="w-4 h-4" />
+            <span className="sm:inline">New Ticket</span>
+        </Button>
           )}
         </div>
         <TicketForm 
@@ -577,28 +595,28 @@ export function TicketList({ onTicketUpdate, initialStationFilter }: TicketListP
                           <span className="hidden lg:inline">View</span>
                         </Button>
                         {userPermissions.edit && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="gap-1 h-8 w-8 p-0 lg:h-auto lg:w-auto lg:px-2"
-                            onClick={() => handleEdit(ticket)}
-                            title="Edit Ticket"
-                          >
-                            <Edit className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
-                            <span className="hidden lg:inline">Edit</span>
-                          </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="gap-1 h-8 w-8 p-0 lg:h-auto lg:w-auto lg:px-2"
+                          onClick={() => handleEdit(ticket)}
+                          title="Edit Ticket"
+                        >
+                          <Edit className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+                          <span className="hidden lg:inline">Edit</span>
+                        </Button>
                         )}
                         {userPermissions.delete && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="gap-1 h-8 w-8 p-0 lg:h-auto lg:w-auto lg:px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => handleDelete(ticket.ticketId, ticket._id)}
-                            title="Delete Ticket"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
-                            <span className="hidden lg:inline">Delete</span>
-                          </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="gap-1 h-8 w-8 p-0 lg:h-auto lg:w-auto lg:px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => handleDelete(ticket.ticketId, ticket._id)}
+                          title="Delete Ticket"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+                          <span className="hidden lg:inline">Delete</span>
+                        </Button>
                         )}
                       </div>
                     </td>

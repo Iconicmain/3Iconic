@@ -170,7 +170,7 @@ export function Sidebar() {
               if (item.superAdminOnly && !allowedPages.has(item.pageId)) {
                 return null;
               }
-              const Icon = item.icon;
+            const Icon = item.icon;
             const isActive = pathname === item.href;
 
             return (

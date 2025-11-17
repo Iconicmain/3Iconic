@@ -379,16 +379,16 @@ export function ExpenseList() {
             Export
           </Button>
           {userPermissions.add && (
-            <Button
-              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 w-full sm:w-auto"
-              onClick={() => {
-                setSelectedExpense(null);
-                setExpenseFormOpen(true);
-              }}
-            >
-              <Plus className="w-4 h-4" />
-              New Expense
-            </Button>
+          <Button 
+            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 w-full sm:w-auto"
+            onClick={() => {
+              setSelectedExpense(null);
+              setExpenseFormOpen(true);
+            }}
+          >
+            <Plus className="w-4 h-4" />
+            New Expense
+          </Button>
           )}
         </div>
       </div>
@@ -693,26 +693,26 @@ export function ExpenseList() {
                   </div>
                   <div className="flex gap-2 pt-2">
                     {userPermissions.edit && (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="flex-1 gap-2"
-                        onClick={() => handleEdit(expense)}
-                      >
-                        <Edit className="w-4 h-4" />
-                        Edit
-                      </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1 gap-2"
+                      onClick={() => handleEdit(expense)}
+                    >
+                      <Edit className="w-4 h-4" />
+                      Edit
+                    </Button>
                     )}
                     {userPermissions.delete && (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="flex-1 gap-2 text-red-600 hover:text-red-700"
-                        onClick={() => handleDelete(expense)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        Delete
-                      </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1 gap-2 text-red-600 hover:text-red-700"
+                      onClick={() => handleDelete(expense)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete
+                    </Button>
                     )}
                   </div>
                 </div>
@@ -775,26 +775,26 @@ export function ExpenseList() {
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
                         {userPermissions.edit && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="gap-1"
-                            onClick={() => handleEdit(expense)}
-                          >
-                            <Edit className="w-4 h-4" />
-                            Edit
-                          </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="gap-1"
+                          onClick={() => handleEdit(expense)}
+                        >
+                          <Edit className="w-4 h-4" />
+                          Edit
+                        </Button>
                         )}
                         {userPermissions.delete && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="gap-1 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => handleDelete(expense)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            Delete
-                          </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="gap-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => handleDelete(expense)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Delete
+                        </Button>
                         )}
                       </div>
                     </td>

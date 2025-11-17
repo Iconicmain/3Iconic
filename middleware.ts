@@ -12,7 +12,9 @@ export async function middleware(request: NextRequest) {
   // If trying to access admin routes without session, redirect to login
   if (isAdminRoute && !isLoginPage && !isWaitingPage && !session) {
     const loginUrl = new URL('/admin/login', request.url);
-    loginUrl.searchParams.set('callbackUrl', request.nextUrl.pathname);
+    // Preserve full URL including query parameters
+    const fullCallbackUrl = request.nextUrl.pathname + request.nextUrl.search;
+    loginUrl.searchParams.set('callbackUrl', fullCallbackUrl);
     return NextResponse.redirect(loginUrl);
   }
 

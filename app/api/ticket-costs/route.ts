@@ -16,9 +16,11 @@ export async function GET(request: NextRequest) {
     const tracking = await costTrackingCollection.findOne({ type: 'current' });
     const lastClearedDate = tracking?.lastClearedDate || new Date(0);
 
+    // Only fetch tickets that are resolved or closed
     const tickets = await ticketsCollection
       .find({
-        createdAt: { $gte: lastClearedDate }
+        createdAt: { $gte: lastClearedDate },
+        status: { $in: ['resolved', 'closed'] }
       })
       .toArray();
 
@@ -35,6 +37,7 @@ export async function GET(request: NextRequest) {
       const categoryPrice = categoryPrices[ticket.category] || 0;
       totalCost += categoryPrice;
       return {
+        _id: ticket._id?.toString() || ticket._id,
         ticketId: ticket.ticketId,
         category: ticket.category,
         price: categoryPrice,

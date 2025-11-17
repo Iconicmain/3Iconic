@@ -28,6 +28,7 @@ import {
 interface Technician {
   _id?: string;
   name: string;
+  phone?: string;
   createdAt?: string;
 }
 
@@ -42,6 +43,7 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [newTechnician, setNewTechnician] = useState('');
+  const [newTechnicianPhone, setNewTechnicianPhone] = useState('');
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; technician: Technician | null }>({
     open: false,
     technician: null,
@@ -85,7 +87,10 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name: newTechnician.trim() }),
+        body: JSON.stringify({ 
+          name: newTechnician.trim(),
+          phone: newTechnicianPhone.trim() || undefined,
+        }),
       });
 
       const data = await response.json();
@@ -96,6 +101,7 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
 
       toast.success('Technician added successfully!');
       setNewTechnician('');
+      setNewTechnicianPhone('');
       fetchTechnicians();
       if (onTechnicianAdded) {
         onTechnicianAdded();
@@ -152,33 +158,43 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
 
           <div className="space-y-4 mt-4">
             {/* Add Technician Form */}
-            <form onSubmit={handleAddTechnician} className="space-y-3 p-4 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
-              <Label htmlFor="newTechnician" className="text-sm font-medium">
-                Add New Technician
-              </Label>
-              <div className="flex gap-2">
-                <Input
-                  id="newTechnician"
-                  value={newTechnician}
-                  onChange={(e) => setNewTechnician(e.target.value)}
-                  placeholder="Enter technician name"
-                  className="flex-1 h-10 text-sm"
-                  disabled={loading}
-                />
-                <Button
-                  type="submit"
-                  disabled={loading || !newTechnician.trim()}
-                  className="h-10 gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-                >
-                  {loading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Plus className="w-4 h-4" />
-                  )}
-                  <span className="hidden sm:inline">Add</span>
-                </Button>
-              </div>
-            </form>
+                  <form onSubmit={handleAddTechnician} className="space-y-3 p-4 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                    <Label htmlFor="newTechnician" className="text-sm font-medium">
+                      Add New Technician
+                    </Label>
+                    <div className="space-y-2">
+                      <Input
+                        id="newTechnician"
+                        value={newTechnician}
+                        onChange={(e) => setNewTechnician(e.target.value)}
+                        placeholder="Enter technician name"
+                        className="h-10 text-sm"
+                        disabled={loading}
+                        required
+                      />
+                      <Input
+                        id="newTechnicianPhone"
+                        value={newTechnicianPhone}
+                        onChange={(e) => setNewTechnicianPhone(e.target.value)}
+                        placeholder="Phone number (optional, e.g., +254712345678)"
+                        className="h-10 text-sm"
+                        disabled={loading}
+                        type="tel"
+                      />
+                      <Button
+                        type="submit"
+                        disabled={loading || !newTechnician.trim()}
+                        className="w-full h-10 gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                      >
+                        {loading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Plus className="w-4 h-4" />
+                        )}
+                        Add Technician
+                      </Button>
+                    </div>
+                  </form>
 
             {/* Technicians List */}
             <div className="space-y-2">
@@ -195,23 +211,28 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
                 </div>
               ) : (
                 <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                  {technicians.map((technician) => (
-                    <div
-                      key={technician._id || technician.name}
-                      className="flex items-center justify-between p-3 bg-white dark:bg-gray-900 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-                    >
-                      <span className="text-sm font-medium text-foreground">{technician.name}</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setDeleteDialog({ open: true, technician })}
-                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                        disabled={loading}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))}
+                         {technicians.map((technician) => (
+                           <div
+                             key={technician._id || technician.name}
+                             className="flex items-center justify-between p-3 bg-white dark:bg-gray-900 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                           >
+                             <div className="flex flex-col">
+                               <span className="text-sm font-medium text-foreground">{technician.name}</span>
+                               {technician.phone && (
+                                 <span className="text-xs text-muted-foreground">{technician.phone}</span>
+                               )}
+                             </div>
+                             <Button
+                               variant="ghost"
+                               size="sm"
+                               onClick={() => setDeleteDialog({ open: true, technician })}
+                               className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                               disabled={loading}
+                             >
+                               <Trash2 className="w-4 h-4" />
+                             </Button>
+                           </div>
+                         ))}
                 </div>
               )}
             </div>

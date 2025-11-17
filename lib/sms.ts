@@ -101,15 +101,43 @@ export async function sendSMS(options: SendSMSOptions): Promise<SMSResponse[]> {
 }
 
 /**
- * Send ticket creation notification
+ * Send ticket creation notification to admins/technicians
  */
-export async function sendTicketCreationSMS(ticketId: string, clientName: string, station: string, category: string): Promise<void> {
-  const message = `New Ticket Created\nTicket ID: ${ticketId}\nClient: ${clientName}\nStation: ${station}\nCategory: ${category}\n\nPlease check the system for details.`;
+export async function sendTicketCreationSMS(
+  ticketId: string, 
+  clientName: string, 
+  clientNumber: string,
+  station: string,
+  houseNumber: string,
+  category: string,
+  dateTimeReported: Date,
+  problemDescription: string,
+  baseUrl?: string
+): Promise<void> {
+  // Get base URL from environment or use default
+  const appUrl = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const ticketLink = `${appUrl}/admin/tickets?ticket=${ticketId}`;
+  
+  // Format date and time
+  const reportedDate = new Date(dateTimeReported);
+  const formattedDate = reportedDate.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const formattedTime = reportedDate.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const formattedDateTime = `${formattedDate} ${formattedTime}`;
+  
+  const message = `New Ticket Created\n\nTicket ID: ${ticketId}\nClient: ${clientName}\nClient Phone: ${clientNumber}\nLocation: ${station}\nHouse/Barrack: ${houseNumber}\nCategory: ${category}\nReported: ${formattedDateTime}\nDescription: ${problemDescription}\n\nView & Update: ${ticketLink}`;
   
   const numbers = TICKET_NUMBERS.split(',').map(num => num.trim());
   
   console.log(`[SMS] Attempting to send ticket creation SMS for ticket ${ticketId}`);
   console.log(`[SMS] Phone numbers:`, numbers);
+  console.log(`[SMS] Ticket link:`, ticketLink);
   console.log(`[SMS] Zettatel Username:`, ZETTATEL_USERNAME);
   console.log(`[SMS] Zettatel Sender ID:`, ZETTATEL_SENDER_ID);
   
@@ -137,11 +165,12 @@ export async function sendClientTicketSMS(
 ): Promise<void> {
   const customerCareNumber = '+254746089137';
   
-  // Short, professional message for the client
-  const message = `Dear ${clientName},\n\nYour ticket ${ticketId} has been received.\nStation: ${station}\nCategory: ${category}\n\nWe will contact you shortly.\nFor inquiries: ${customerCareNumber}\n\nThank you!`;
+  // Professional message for the client
+  const message = `Hello ${clientName},\n\nThank you for contacting Iconic Fibre. Your support ticket ${ticketId} has been successfully created.\n\nIssue Type: ${category}\nLocation: ${station}\n\nOur technical team is reviewing your request and will take action shortly. You will receive an update once we begin working on your ticket.\n\nIf you have any additional details, please reply to this message or contact us at ${customerCareNumber}.\n\nBest regards,\nIconic Fibre Support Team`;
   
   console.log(`[Client SMS] Attempting to send SMS to client for ticket ${ticketId}`);
   console.log(`[Client SMS] Client number:`, clientNumber);
+  console.log(`[Client SMS] Message:`, message);
   
   try {
     const result = await sendSMS({
@@ -156,7 +185,127 @@ export async function sendClientTicketSMS(
 }
 
 /**
- * Send ticket reminder SMS (for tickets open > 24 hours)
+ * Send SMS to client when ticket is resolved
+ */
+export async function sendTicketResolvedSMS(
+  ticketId: string,
+  clientName: string,
+  clientNumber: string
+): Promise<void> {
+  const message = `Hello,\n\nWe are pleased to inform you that the issue you reported has now been fully resolved.\n\nPlease take a moment to confirm that the service is working smoothly on your side.\n\nThank you for your patience and for choosing our services.\n\nIconic Support Team`;
+  
+  console.log(`[Client Resolution SMS] Attempting to send resolution SMS to client for ticket ${ticketId}`);
+  console.log(`[Client Resolution SMS] Client number:`, clientNumber);
+  console.log(`[Client Resolution SMS] Message:`, message);
+  
+  try {
+    const result = await sendSMS({
+      mobile: [clientNumber],
+      msg: message,
+    });
+    console.log(`[Client Resolution SMS] ✅ SMS sent successfully to client for ticket ${ticketId}`, result);
+  } catch (error) {
+    console.error(`[Client Resolution SMS] ❌ Failed to send resolution SMS to client for ticket ${ticketId}:`, error);
+    // Don't throw - SMS failure shouldn't prevent ticket resolution
+  }
+}
+
+/**
+ * Send SMS to technician when ticket is assigned
+ */
+export async function sendTechnicianAssignmentSMS(
+  technicianPhone: string,
+  ticketId: string,
+  issueType: string,
+  clientName: string,
+  location: string,
+  clientPhone: string,
+  problemDescription: string,
+  baseUrl?: string
+): Promise<void> {
+  const appUrl = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const ticketLink = `${appUrl}/admin/tickets`;
+  
+  // Truncate description if too long
+  const shortDescription = problemDescription.length > 100 
+    ? problemDescription.substring(0, 100) + '...' 
+    : problemDescription;
+  
+  const message = `New Ticket Assigned\n\nA new support ticket has been assigned to you.\n\nIssue: ${issueType}\nClient Name: ${clientName}\nLocation: ${location}\nContact: ${clientPhone}\nTicket ID: ${ticketId}\nDetails: ${shortDescription}\n\nKindly attend to the issue as soon as possible and update the ticket once done.\n\nView Ticket: ${ticketLink}\n\n3 Iconic Concepts Limited – Support Team`;
+  
+  console.log(`[Technician Assignment SMS] Attempting to send to ${technicianPhone} for ticket ${ticketId}`);
+  
+  try {
+    const result = await sendSMS({
+      mobile: [technicianPhone],
+      msg: message,
+    });
+    console.log(`[Technician Assignment SMS] ✅ SMS sent successfully to technician for ticket ${ticketId}`, result);
+  } catch (error) {
+    console.error(`[Technician Assignment SMS] ❌ Failed to send SMS to technician for ticket ${ticketId}:`, error);
+  }
+}
+
+/**
+ * Send urgent escalation SMS to technician
+ */
+export async function sendTechnicianEscalationSMS(
+  technicianPhone: string,
+  ticketId: string,
+  issueType: string,
+  clientName: string,
+  location: string,
+  clientPhone: string,
+  baseUrl?: string
+): Promise<void> {
+  const appUrl = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const ticketLink = `${appUrl}/admin/tickets`;
+  
+  const message = `Urgent Ticket Escalation\n\nPlease prioritize the following issue:\n\nIssue: ${issueType}\nClient: ${clientName}\nLocation: ${location}\nContact: ${clientPhone}\nPriority: HIGH\nTicket ID: ${ticketId}\n\nImmediate action is required.\n\nView Ticket: ${ticketLink}\n\n3 Iconic Concepts Limited – Support Team`;
+  
+  console.log(`[Technician Escalation SMS] Attempting to send to ${technicianPhone} for ticket ${ticketId}`);
+  
+  try {
+    const result = await sendSMS({
+      mobile: [technicianPhone],
+      msg: message,
+    });
+    console.log(`[Technician Escalation SMS] ✅ SMS sent successfully to technician for ticket ${ticketId}`, result);
+  } catch (error) {
+    console.error(`[Technician Escalation SMS] ❌ Failed to send SMS to technician for ticket ${ticketId}:`, error);
+  }
+}
+
+/**
+ * Send reminder SMS to technician for pending tickets
+ */
+export async function sendTechnicianReminderSMS(
+  technicianPhone: string,
+  ticketId: string,
+  issueType: string,
+  clientName: string,
+  baseUrl?: string
+): Promise<void> {
+  const appUrl = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const ticketLink = `${appUrl}/admin/tickets`;
+  
+  const message = `Ticket Pending Attention\n\nYou have a pending support ticket:\n\nTicket ID: ${ticketId}\nIssue: ${issueType}\nClient: ${clientName}\n\nKindly update or resolve this ticket as soon as possible.\n\nView Ticket: ${ticketLink}\n\n3 Iconic Concepts Limited – Support Team`;
+  
+  console.log(`[Technician Reminder SMS] Attempting to send to ${technicianPhone} for ticket ${ticketId}`);
+  
+  try {
+    const result = await sendSMS({
+      mobile: [technicianPhone],
+      msg: message,
+    });
+    console.log(`[Technician Reminder SMS] ✅ SMS sent successfully to technician for ticket ${ticketId}`, result);
+  } catch (error) {
+    console.error(`[Technician Reminder SMS] ❌ Failed to send SMS to technician for ticket ${ticketId}:`, error);
+  }
+}
+
+/**
+ * Send ticket reminder SMS (for tickets open > 24 hours) - to admins/technicians
  */
 export async function sendTicketReminderSMS(ticketId: string, clientName: string, station: string, category: string, hoursOpen: number): Promise<void> {
   const message = `Ticket Reminder\nTicket ID: ${ticketId}\nClient: ${clientName}\nStation: ${station}\nCategory: ${category}\nStatus: Still Open\nOpen for: ${Math.round(hoursOpen)} hours\n\nPlease follow up on this ticket.`;

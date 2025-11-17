@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/table';
 
 interface TicketCost {
+  _id?: string;
   ticketId: string;
   category: string;
   price: number;
@@ -273,8 +274,8 @@ export default function TicketCostsClient() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {ticketCosts.map((ticket) => (
-                          <TableRow key={ticket.ticketId}>
+                        {ticketCosts.map((ticket, index) => (
+                          <TableRow key={ticket._id || `${ticket.ticketId}-${index}`}>
                             <TableCell className="font-medium">{ticket.ticketId}</TableCell>
                             <TableCell>{ticket.clientName}</TableCell>
                             <TableCell>{ticket.category}</TableCell>

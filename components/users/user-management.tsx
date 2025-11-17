@@ -304,14 +304,14 @@ export function UserManagement() {
           </p>
         </div>
         {canAddUser && (
-          <Button 
-            onClick={() => handleOpenDialog()} 
-            className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:shadow-lg transition-all duration-200"
-            size="lg"
-          >
-            <UserPlus className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-            <span className="font-semibold">Add User</span>
-          </Button>
+        <Button 
+          onClick={() => handleOpenDialog()} 
+          className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:shadow-lg transition-all duration-200"
+          size="lg"
+        >
+          <UserPlus className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+          <span className="font-semibold">Add User</span>
+        </Button>
         )}
       </div>
 
@@ -394,14 +394,14 @@ export function UserManagement() {
                 Get started by adding your first user to manage permissions and access
               </p>
               {isSuperAdmin && (
-                <Button 
-                  onClick={() => handleOpenDialog()} 
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:shadow-lg transition-all"
-                  size="lg"
-                >
-                  <UserPlus className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-                  <span className="font-semibold">Add First User</span>
-                </Button>
+              <Button 
+                onClick={() => handleOpenDialog()} 
+                className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:shadow-lg transition-all"
+                size="lg"
+              >
+                <UserPlus className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+                <span className="font-semibold">Add First User</span>
+              </Button>
               )}
             </CardContent>
           </Card>
@@ -467,29 +467,29 @@ export function UserManagement() {
                     </div>
                   </div>
                   {isSuperAdmin && (
-                    <div className="flex flex-wrap gap-2 sm:gap-3">
-                      {!user.approved && user.role !== 'superadmin' && (
-                        <Button
-                          variant="default"
-                          size="sm"
-                          onClick={async () => {
-                            try {
+                  <div className="flex flex-wrap gap-2 sm:gap-3">
+                    {!user.approved && user.role !== 'superadmin' && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={async () => {
+                          try {
                               // Use the user's ID or email as fallback
                               const userId = user.id || user.email;
                               console.log(`[Approve] Attempting to approve user with ID: ${userId}`, user);
                               
                               const response = await fetch(`/api/users/${userId}`, {
-                                method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ approved: true }),
-                              });
+                            });
                               
-                              if (response.ok) {
+                            if (response.ok) {
                                 const data = await response.json();
                                 console.log('[Approve] Success:', data);
-                                toast.success('User approved successfully');
-                                fetchUsers();
-                              } else {
+                              toast.success('User approved successfully');
+                              fetchUsers();
+                            } else {
                                 // Try to parse error, but handle non-JSON responses
                                 let errorMessage = `Failed to approve user (Status: ${response.status})`;
                                 try {
@@ -502,55 +502,55 @@ export function UserManagement() {
                                   errorMessage = text || errorMessage;
                                 }
                                 throw new Error(errorMessage);
-                              }
-                            } catch (error: any) {
-                              console.error('[Approve] Error:', error);
-                              toast.error(error.message || 'Failed to approve user');
                             }
-                          }}
-                          className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:shadow-md transition-all"
-                        >
-                          <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
-                          <span className="text-xs sm:text-sm font-medium">Approve</span>
-                        </Button>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleOpenDialog(user)}
-                        className="flex-1 sm:flex-initial border-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-300 transition-colors"
+                          } catch (error: any) {
+                              console.error('[Approve] Error:', error);
+                            toast.error(error.message || 'Failed to approve user');
+                          }
+                        }}
+                        className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:shadow-md transition-all"
                       >
-                        <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
-                        <span className="text-xs sm:text-sm font-medium">Edit</span>
+                        <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
+                        <span className="text-xs sm:text-sm font-medium">Approve</span>
                       </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => setDeleteUserId(user.id)}
-                            className="flex-1 sm:flex-initial bg-red-600 hover:bg-red-700 text-white shadow-sm hover:shadow-md transition-all"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
-                            <span className="text-xs sm:text-sm font-medium">Delete</span>
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will permanently delete {user.name} ({user.email}). This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel onClick={() => setDeleteUserId(null)}>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleOpenDialog(user)}
+                      className="flex-1 sm:flex-initial border-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-300 transition-colors"
+                    >
+                      <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
+                      <span className="text-xs sm:text-sm font-medium">Edit</span>
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => setDeleteUserId(user.id)}
+                          className="flex-1 sm:flex-initial bg-red-600 hover:bg-red-700 text-white shadow-sm hover:shadow-md transition-all"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
+                          <span className="text-xs sm:text-sm font-medium">Delete</span>
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently delete {user.name} ({user.email}). This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel onClick={() => setDeleteUserId(null)}>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                   )}
                   {!isSuperAdmin && (
                     <div className="text-xs sm:text-sm text-muted-foreground italic">
@@ -615,14 +615,14 @@ export function UserManagement() {
                             {page.path}
                           </span>
                         </div>
-                         <div className="flex flex-wrap gap-2 sm:gap-3">
-                           {PERMISSION_TYPES.map((permission) => {
-                             const hasPerm = hasPermission(user, page.id, permission);
-                             return (
-                               <div
-                                 key={permission}
+                        <div className="flex flex-wrap gap-2 sm:gap-3">
+                          {PERMISSION_TYPES.map((permission) => {
+                            const hasPerm = hasPermission(user, page.id, permission);
+                            return (
+                              <div
+                                key={permission}
                                  className={`flex items-center gap-2.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 border-2 ${
-                                   hasPerm
+                                  hasPerm
                                      ? 'bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500 shadow-md hover:bg-emerald-600 hover:shadow-lg'
                                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-700 hover:border-emerald-300 dark:hover:border-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/20'
                                  } ${isSuperAdmin ? 'cursor-pointer' : ''}`}
@@ -685,16 +685,16 @@ export function UserManagement() {
                                        hasPerm
                                          ? 'border-white bg-white data-[state=checked]:bg-white data-[state=checked]:border-white'
                                          : 'border-gray-400 dark:border-gray-500 bg-white dark:bg-gray-700'
-                                     }`}
+                                }`}
                                      onClick={(e) => e.stopPropagation()}
                                    />
                                  )}
                                  {!isSuperAdmin && (
-                                   <div
+                                <div
                                      className={`w-2.5 h-2.5 rounded-full ${
                                        hasPerm ? 'bg-white' : 'bg-gray-400 dark:bg-gray-500'
-                                     }`}
-                                   />
+                                  }`}
+                                />
                                  )}
                                 {permission.charAt(0).toUpperCase() + permission.slice(1)}
                               </div>
@@ -770,80 +770,80 @@ export function UserManagement() {
                   />
                 </div>
                 {isSuperAdmin && (
-                  <div className="space-y-2">
-                    <Label htmlFor="role" className="text-sm font-medium">Role</Label>
-                    <select
-                      id="role"
-                      value={formData.role}
-                      onChange={(e) => {
-                        const newRole = e.target.value as 'superadmin' | 'admin' | 'user';
-                        // Superadmins and admins are auto-approved and get all permissions
+                <div className="space-y-2">
+                  <Label htmlFor="role" className="text-sm font-medium">Role</Label>
+                  <select
+                    id="role"
+                    value={formData.role}
+                    onChange={(e) => {
+                      const newRole = e.target.value as 'superadmin' | 'admin' | 'user';
+                      // Superadmins and admins are auto-approved and get all permissions
                         const isSuperAdminRole = newRole === 'superadmin';
-                        const isAdmin = newRole === 'admin';
-                        
-                        setFormData({ 
-                          ...formData, 
-                          role: newRole,
+                      const isAdmin = newRole === 'admin';
+                      
+                      setFormData({ 
+                        ...formData, 
+                        role: newRole,
                           approved: isSuperAdminRole || isAdmin ? true : formData.approved,
                           pagePermissions: isSuperAdminRole 
-                            ? availablePages.map((page) => ({
-                                pageId: page.id,
+                          ? availablePages.map((page) => ({
+                              pageId: page.id,
                                 permissions: ['view', 'add', 'edit', 'delete'],
-                              }))
-                            : formData.pagePermissions
-                        });
-                      }}
-                      className="h-11 w-full rounded-md border-2 border-input bg-background px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 dark:focus-visible:ring-emerald-900 focus-visible:border-emerald-500 transition-colors"
-                    >
-                      <option value="user">User</option>
-                      <option value="admin">Admin</option>
-                      <option value="superadmin">Super Admin</option>
-                    </select>
+                            }))
+                          : formData.pagePermissions
+                      });
+                    }}
+                    className="h-11 w-full rounded-md border-2 border-input bg-background px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 dark:focus-visible:ring-emerald-900 focus-visible:border-emerald-500 transition-colors"
+                  >
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
+                    <option value="superadmin">Super Admin</option>
+                  </select>
                     {formData.role === 'admin' && formData.pagePermissions.length === 0 && (
                       <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
                         <span>⚠️</span>
                         <span>Admin users must have at least one page permission. Please grant permissions below.</span>
                       </p>
                     )}
-                  </div>
+                </div>
                 )}
                 {!isSuperAdmin && !editingUser && (
                   <div className="space-y-2">
                     <Label className="text-sm font-medium text-muted-foreground">Role</Label>
                     <div className="h-11 px-3 py-2 text-sm text-muted-foreground bg-muted rounded-md border-2 border-input">
                       User (Only super admins can set roles)
-                    </div>
+              </div>
                   </div>
                 )}
               </div>
               {isSuperAdmin && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800">
-                    <Checkbox
-                      id="approved"
-                      checked={formData.approved}
-                      onCheckedChange={(checked) => setFormData({ ...formData, approved: checked as boolean })}
-                      disabled={formData.role === 'superadmin' || formData.role === 'admin'}
-                      className="border-2"
-                    />
-                    <div className="flex-1">
-                      <Label htmlFor="approved" className="text-sm font-medium cursor-pointer">
-                        Approved
-                      </Label>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {formData.role === 'superadmin' || formData.role === 'admin'
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800">
+                  <Checkbox
+                    id="approved"
+                    checked={formData.approved}
+                    onCheckedChange={(checked) => setFormData({ ...formData, approved: checked as boolean })}
+                    disabled={formData.role === 'superadmin' || formData.role === 'admin'}
+                    className="border-2"
+                  />
+                  <div className="flex-1">
+                    <Label htmlFor="approved" className="text-sm font-medium cursor-pointer">
+                      Approved
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {formData.role === 'superadmin' || formData.role === 'admin'
                           ? `${formData.role === 'superadmin' ? 'Super admins' : 'Admins'} are automatically approved`
-                          : 'Check to approve this user'}
-                      </p>
+                        : 'Check to approve this user'}
+                    </p>
                       {formData.approved && formData.role !== 'superadmin' && formData.role !== 'admin' && formData.pagePermissions.length === 0 && (
                         <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
                           <span>⚠️</span>
                           <span>Approved users must have at least one page permission to access the system.</span>
                         </p>
                       )}
-                    </div>
                   </div>
                 </div>
+              </div>
               )}
               {!isSuperAdmin && !editingUser && (
                 <div className="space-y-2">
@@ -863,58 +863,58 @@ export function UserManagement() {
 
             {/* Page Permissions - Only visible to superadmins */}
             {isSuperAdmin && (
-              <div className="border-t border-gray-200 dark:border-gray-800 pt-5 sm:pt-6">
+            <div className="border-t border-gray-200 dark:border-gray-800 pt-5 sm:pt-6">
                 <p className="text-xs text-muted-foreground mb-4">
                   Only super admins can set page permissions. Users with edit permission can add users but cannot set permissions.
                 </p>
-                <div className="flex items-center justify-between mb-4">
-                  <Label className="text-sm font-semibold uppercase tracking-wider">Page Permissions</Label>
-                  <span className="text-xs text-muted-foreground">
-                    {formData.pagePermissions.reduce((acc, p) => acc + p.permissions.length, 0)} permissions selected
-                  </span>
-                </div>
-                <div className="space-y-3 sm:space-y-4 max-h-[400px] sm:max-h-[500px] overflow-y-auto pr-2">
-                  {availablePages.map((page) => {
-                    const pagePerm = formData.pagePermissions.find((p) => p.pageId === page.id);
-                    const currentPermissions = pagePerm?.permissions || [];
-                    const hasAnyPermission = currentPermissions.length > 0;
+              <div className="flex items-center justify-between mb-4">
+                <Label className="text-sm font-semibold uppercase tracking-wider">Page Permissions</Label>
+                <span className="text-xs text-muted-foreground">
+                  {formData.pagePermissions.reduce((acc, p) => acc + p.permissions.length, 0)} permissions selected
+                </span>
+              </div>
+              <div className="space-y-3 sm:space-y-4 max-h-[400px] sm:max-h-[500px] overflow-y-auto pr-2">
+                {availablePages.map((page) => {
+                  const pagePerm = formData.pagePermissions.find((p) => p.pageId === page.id);
+                  const currentPermissions = pagePerm?.permissions || [];
+                  const hasAnyPermission = currentPermissions.length > 0;
 
-                    return (
-                      <div
-                        key={page.id}
-                        className={`p-4 rounded-lg border-2 transition-all duration-200 ${
-                          hasAnyPermission
-                            ? 'bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-950/20 dark:to-emerald-900/20 border-emerald-200 dark:border-emerald-800'
-                            : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-800'
-                        }`}
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-                          <div>
-                            <h4 className="font-bold text-sm sm:text-base text-foreground">{page.name}</h4>
-                            <p className="text-xs text-muted-foreground font-mono mt-0.5">{page.path}</p>
-                          </div>
-                          {hasAnyPermission && (
-                            <span className="px-2 py-1 rounded-full text-xs font-semibold bg-emerald-200 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200 w-fit">
-                              {currentPermissions.length} {currentPermissions.length === 1 ? 'permission' : 'permissions'}
-                            </span>
-                          )}
+                  return (
+                    <div
+                      key={page.id}
+                      className={`p-4 rounded-lg border-2 transition-all duration-200 ${
+                        hasAnyPermission
+                          ? 'bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-950/20 dark:to-emerald-900/20 border-emerald-200 dark:border-emerald-800'
+                          : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-800'
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+                        <div>
+                          <h4 className="font-bold text-sm sm:text-base text-foreground">{page.name}</h4>
+                          <p className="text-xs text-muted-foreground font-mono mt-0.5">{page.path}</p>
                         </div>
-                        <div className="flex flex-wrap gap-3 sm:gap-4">
-                          {PERMISSION_TYPES.map((permission) => {
-                            const isChecked = currentPermissions.includes(permission);
-                            return (
+                        {hasAnyPermission && (
+                          <span className="px-2 py-1 rounded-full text-xs font-semibold bg-emerald-200 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200 w-fit">
+                            {currentPermissions.length} {currentPermissions.length === 1 ? 'permission' : 'permissions'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-3 sm:gap-4">
+                        {PERMISSION_TYPES.map((permission) => {
+                          const isChecked = currentPermissions.includes(permission);
+                          return (
                               <Label
-                                key={permission}
+                              key={permission} 
                                 htmlFor={`${page.id}-${permission}`}
                                 className={`flex items-center gap-2.5 px-4 py-2.5 rounded-lg transition-all duration-200 cursor-pointer border-2 ${
-                                  isChecked 
+                                isChecked 
                                     ? 'bg-emerald-500 hover:bg-emerald-600 border-emerald-600 dark:border-emerald-500 shadow-md' 
                                     : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 hover:border-emerald-300 dark:hover:border-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/20'
-                                }`}
-                              >
-                                <Checkbox
-                                  id={`${page.id}-${permission}`}
-                                  checked={isChecked}
+                              }`}
+                            >
+                              <Checkbox
+                                id={`${page.id}-${permission}`}
+                                checked={isChecked}
                                   onCheckedChange={(checked) => {
                                     console.log(`[Dialog] Toggling ${page.id} ${permission} to ${checked}`);
                                     handlePermissionChange(page.id, permission, checked as boolean);
@@ -931,19 +931,19 @@ export function UserManagement() {
                                     isChecked 
                                       ? 'text-white' 
                                       : 'text-gray-700 dark:text-gray-300'
-                                  }`}
-                                >
-                                  {permission.charAt(0).toUpperCase() + permission.slice(1)}
+                                }`}
+                              >
+                                {permission.charAt(0).toUpperCase() + permission.slice(1)}
                                 </span>
                               </Label>
-                            );
-                          })}
-                        </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  );
+                })}
               </div>
+            </div>
             )}
             {!isSuperAdmin && (
               <div className="border-t border-gray-200 dark:border-gray-800 pt-5 sm:pt-6">
@@ -966,13 +966,13 @@ export function UserManagement() {
               Cancel
             </Button>
             {isSuperAdmin && (
-              <Button 
-                onClick={handleSave}
-                className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:shadow-lg transition-all"
-              >
-                <Save className="w-4 h-4 mr-2" />
-                <span className="font-semibold">{editingUser ? 'Update' : 'Create'} User</span>
-              </Button>
+            <Button 
+              onClick={handleSave}
+              className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:shadow-lg transition-all"
+            >
+              <Save className="w-4 h-4 mr-2" />
+              <span className="font-semibold">{editingUser ? 'Update' : 'Create'} User</span>
+            </Button>
             )}
           </DialogFooter>
         </DialogContent>

@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name } = body;
+    const { name, phone } = body;
 
     if (!name || name.trim() === '') {
       return NextResponse.json(
@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
 
     const technician = {
       name: name.trim(),
+      phone: phone?.trim() || null,
       createdAt: new Date(),
     };
 

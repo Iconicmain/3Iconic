@@ -11,11 +11,16 @@ export default function TicketsPageClient() {
   const searchParams = useSearchParams();
   const [chartRefreshTrigger, setChartRefreshTrigger] = useState(0);
   const [initialStationFilter, setInitialStationFilter] = useState<string | null>(null);
+  const [initialTicketId, setInitialTicketId] = useState<string | null>(null);
 
   useEffect(() => {
     const station = searchParams.get('station');
+    const ticket = searchParams.get('ticket');
     if (station) {
       setInitialStationFilter(station);
+    }
+    if (ticket) {
+      setInitialTicketId(ticket);
     }
   }, [searchParams]);
 
@@ -34,6 +39,7 @@ export default function TicketsPageClient() {
             <TicketList 
               onTicketUpdate={handleChartRefresh} 
               initialStationFilter={initialStationFilter}
+              initialTicketId={initialTicketId}
             />
           </div>
         </main>

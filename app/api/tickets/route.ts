@@ -59,12 +59,21 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Ticket Created] Ticket ${ticketId} created successfully. Triggering SMS...`);
 
+    // Get base URL for ticket link
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
+                    (request.headers.get('origin') || 'http://localhost:3000');
+
     // Send SMS notification to admin/technicians (don't wait for it to complete)
     sendTicketCreationSMS(
       ticketId,
       clientName,
+      clientNumber,
       station,
-      category
+      houseNumber,
+      category,
+      new Date(dateTimeReported),
+      problemDescription,
+      baseUrl
     ).catch((error) => {
       console.error('[Ticket API] Failed to send ticket creation SMS to admins:', error);
       // Don't throw - SMS failure shouldn't prevent ticket creation
