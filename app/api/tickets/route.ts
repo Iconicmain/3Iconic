@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import { hasPagePermission } from '@/lib/permissions';
+import { sendTicketCreationSMS, sendClientTicketSMS } from '@/lib/sms';
 
 export async function POST(request: NextRequest) {
   try {
@@ -55,6 +56,31 @@ export async function POST(request: NextRequest) {
     };
 
     const result = await ticketsCollection.insertOne(ticket);
+
+    console.log(`[Ticket Created] Ticket ${ticketId} created successfully. Triggering SMS...`);
+
+    // Send SMS notification to admin/technicians (don't wait for it to complete)
+    sendTicketCreationSMS(
+      ticketId,
+      clientName,
+      station,
+      category
+    ).catch((error) => {
+      console.error('[Ticket API] Failed to send ticket creation SMS to admins:', error);
+      // Don't throw - SMS failure shouldn't prevent ticket creation
+    });
+
+    // Send SMS notification to client (don't wait for it to complete)
+    sendClientTicketSMS(
+      ticketId,
+      clientName,
+      clientNumber,
+      station,
+      category
+    ).catch((error) => {
+      console.error('[Ticket API] Failed to send SMS to client:', error);
+      // Don't throw - SMS failure shouldn't prevent ticket creation
+    });
 
     return NextResponse.json(
       { success: true, ticket: { ...ticket, _id: result.insertedId } },
