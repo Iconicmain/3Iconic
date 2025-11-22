@@ -280,10 +280,10 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
           <h2 className="text-xl sm:text-2xl font-bold text-foreground truncate">Tickets</h2>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">Manage all support tickets</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 w-full sm:w-auto">
           <Button 
             variant="outline"
-            className="gap-2 w-full sm:w-auto shrink-0"
+            className="gap-2 flex-1 sm:flex-initial shrink-0"
             onClick={() => setTechnicianManagerOpen(true)}
             size="sm"
           >
@@ -292,12 +292,12 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
           </Button>
           {userPermissions.add && (
           <Button 
-            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 w-full sm:w-auto shrink-0"
+            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 flex-1 sm:flex-initial shrink-0"
             onClick={() => setFormOpen(true)}
             size="sm"
           >
           <Plus className="w-4 h-4" />
-            <span className="inline">New Ticket</span>
+            <span>New Ticket</span>
         </Button>
           )}
         </div>
