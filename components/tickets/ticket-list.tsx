@@ -297,7 +297,7 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
             size="sm"
           >
           <Plus className="w-4 h-4" />
-            <span className="sm:inline">New Ticket</span>
+            <span className="inline">New Ticket</span>
         </Button>
           )}
         </div>

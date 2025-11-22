@@ -2,7 +2,7 @@
   "name": "3Iconic Admin Dashboard",
   "short_name": "3Iconic Admin",
   "description": "Enterprise-grade Admin Dashboard for Ticket & Equipment Management",
-  "start_url": "/admin",
+  "start_url": "/admin?utm_source=pwa",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#059669",
