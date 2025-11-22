@@ -22,7 +22,8 @@ const ZETTATEL_USERNAME = process.env.ZETTATEL_USERNAME || 'IconFibre';
 const ZETTATEL_PASSWORD = process.env.ZETTATEL_PASSWORD || 'r5s8YbWq';
 const ZETTATEL_SENDER_ID = process.env.ZETTATEL_SENDER_ID || 'ICONFIBRE';
 const TICKET_NUMBERS = process.env.TICKET_NUMBERS || '+254796030992,+254746089137';
-const CAT_NUMBERS = process.env.CAT_NUMBERS || '';
+// Note: CAT_NUMBERS is read at runtime in the function to ensure it's always up to date
+const CAT_NUMBERS_DEFAULT = process.env.CAT_NUMBERS || '';
 
 /**
  * Send SMS using Zettatel API
@@ -335,8 +336,31 @@ export async function sendCategoryChangeSMS(
   newCategory: string,
   baseUrl?: string
 ): Promise<void> {
-  if (!CAT_NUMBERS || CAT_NUMBERS.trim() === '') {
-    console.log(`[Category Change SMS] ⚠️ CAT_NUMBERS not configured, skipping SMS for ticket ${ticketId}`);
+  // Read CAT_NUMBERS at runtime - always read from process.env first
+  // This ensures we get the latest value even if .env.local was updated
+  let catNumbers = process.env.CAT_NUMBERS;
+  
+  // If not found in process.env, try the default constant
+  if (!catNumbers || catNumbers.trim() === '') {
+    catNumbers = CAT_NUMBERS_DEFAULT;
+  }
+  
+  // Debug: Log environment variable status
+  console.log(`[Category Change SMS] Environment Check:`, {
+    'process.env.CAT_NUMBERS exists': !!process.env.CAT_NUMBERS,
+    'process.env.CAT_NUMBERS value': process.env.CAT_NUMBERS || '(empty)',
+    'process.env.CAT_NUMBERS length': process.env.CAT_NUMBERS?.length || 0,
+    'CAT_NUMBERS_DEFAULT value': CAT_NUMBERS_DEFAULT || '(empty)',
+    'Final catNumbers value': catNumbers || '(empty)',
+  });
+  
+  // If still empty, try reading from a default location or show helpful error
+  if (!catNumbers || catNumbers.trim() === '') {
+    console.error(`[Category Change SMS] ❌ CAT_NUMBERS not configured!`);
+    console.error(`[Category Change SMS] Current value: "${catNumbers}"`);
+    console.error(`[Category Change SMS] Please ensure CAT_NUMBERS is set in .env.local file`);
+    console.error(`[Category Change SMS] Format: CAT_NUMBERS=+254796030992,+254746089137`);
+    console.error(`[Category Change SMS] After adding, restart your Next.js dev server`);
     return;
   }
 
@@ -345,7 +369,7 @@ export async function sendCategoryChangeSMS(
   
   const message = `Ticket Category Changed\n\nTicket ID: ${ticketId}\nClient: ${clientName}\nStation: ${station}\nPrevious Category: ${oldCategory}\nNew Category: ${newCategory}\n\nView Ticket: ${ticketLink}`;
   
-  const numbers = CAT_NUMBERS.split(',').map(num => num.trim()).filter(num => num.length > 0);
+  const numbers = catNumbers.split(',').map(num => num.trim()).filter(num => num.length > 0);
   
   if (numbers.length === 0) {
     console.log(`[Category Change SMS] ⚠️ No valid phone numbers in CAT_NUMBERS, skipping SMS for ticket ${ticketId}`);
@@ -355,6 +379,7 @@ export async function sendCategoryChangeSMS(
   console.log(`[Category Change SMS] Attempting to send category change SMS for ticket ${ticketId}`);
   console.log(`[Category Change SMS] Phone numbers:`, numbers);
   console.log(`[Category Change SMS] Old Category: ${oldCategory}, New Category: ${newCategory}`);
+  console.log(`[Category Change SMS] Message:`, message);
   
   try {
     const result = await sendSMS({

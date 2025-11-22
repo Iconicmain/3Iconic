@@ -13,6 +13,9 @@ ZETTATEL_SENDER_ID=ICONFIBRE
 # Phone numbers to receive ticket notifications (comma-separated)
 TICKET_NUMBERS=+254796030992,+254746089137
 
+# Phone numbers to receive category change notifications (comma-separated)
+CAT_NUMBERS=+254796030992,+254746089137
+
 # Optional: Secret for cron job authentication
 CRON_SECRET=your-secret-key-here
 ```

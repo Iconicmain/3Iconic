@@ -84,7 +84,8 @@ export async function PATCH(
     // Get current ticket to check if technician is being assigned and category is being changed
     const currentTicket = await ticketsCollection.findOne({ _id: new ObjectId(id) });
     const previousTechnician = currentTicket?.technician;
-    const previousCategory = currentTicket?.category;
+    const previousCategory = currentTicket?.category || '';
+    let newCategory: string | undefined = undefined;
 
     // Build update object
     const updateData: any = {
@@ -97,7 +98,8 @@ export async function PATCH(
     if (category !== undefined) {
       // Only update if category is a valid non-empty string
       if (category !== null && category !== '' && typeof category === 'string') {
-        updateData.category = category.trim();
+        newCategory = category.trim();
+        updateData.category = newCategory;
       } else if (category === null || category === '') {
         // Don't update if category is empty/null - keep existing category
         console.log(`[Ticket Update] Category update skipped - empty or null value provided`);
@@ -145,22 +147,30 @@ export async function PATCH(
     });
 
     // Send SMS if category was changed
-    if (category !== undefined && category !== previousCategory && updatedTicket) {
+    // Compare trimmed values to ensure accurate detection
+    const previousCategoryTrimmed = (previousCategory || '').trim();
+    const newCategoryTrimmed = newCategory ? newCategory.trim() : '';
+    
+    if (newCategory !== undefined && newCategoryTrimmed !== previousCategoryTrimmed && updatedTicket) {
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
                       (request.headers.get('origin') || 'http://localhost:3000');
       
-      console.log(`[Category Change] ✅ Category changed from "${previousCategory}" to "${category}" for ticket ${updatedTicket.ticketId}`);
+      console.log(`[Category Change] ✅ Category changed from "${previousCategoryTrimmed}" to "${newCategoryTrimmed}" for ticket ${updatedTicket.ticketId}`);
+      console.log(`[Category Change] CAT_NUMBERS value:`, process.env.CAT_NUMBERS);
+      
       sendCategoryChangeSMS(
         updatedTicket.ticketId,
         updatedTicket.clientName,
         updatedTicket.station,
-        previousCategory || 'Unknown',
-        category,
+        previousCategoryTrimmed || 'Unknown',
+        newCategoryTrimmed,
         baseUrl
       ).catch((error) => {
         console.error('[Ticket API] Failed to send category change SMS:', error);
         // Don't throw - SMS failure shouldn't prevent category update
       });
+    } else {
+      console.log(`[Category Change] No category change detected. Previous: "${previousCategoryTrimmed}", New: "${newCategoryTrimmed}", category defined: ${category !== undefined}`);
     }
 
     // Send SMS to technician if ticket was assigned to a new technician
