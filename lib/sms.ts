@@ -22,6 +22,7 @@ const ZETTATEL_USERNAME = process.env.ZETTATEL_USERNAME || 'IconFibre';
 const ZETTATEL_PASSWORD = process.env.ZETTATEL_PASSWORD || 'r5s8YbWq';
 const ZETTATEL_SENDER_ID = process.env.ZETTATEL_SENDER_ID || 'ICONFIBRE';
 const TICKET_NUMBERS = process.env.TICKET_NUMBERS || '+254796030992,+254746089137';
+const CAT_NUMBERS = process.env.CAT_NUMBERS || '';
 
 /**
  * Send SMS using Zettatel API
@@ -320,6 +321,50 @@ export async function sendTicketReminderSMS(ticketId: string, clientName: string
     console.log(`Reminder SMS sent for ticket ${ticketId}`);
   } catch (error) {
     console.error(`Failed to send reminder SMS for ticket ${ticketId}:`, error);
+  }
+}
+
+/**
+ * Send SMS notification when ticket category is changed
+ */
+export async function sendCategoryChangeSMS(
+  ticketId: string,
+  clientName: string,
+  station: string,
+  oldCategory: string,
+  newCategory: string,
+  baseUrl?: string
+): Promise<void> {
+  if (!CAT_NUMBERS || CAT_NUMBERS.trim() === '') {
+    console.log(`[Category Change SMS] ⚠️ CAT_NUMBERS not configured, skipping SMS for ticket ${ticketId}`);
+    return;
+  }
+
+  const appUrl = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const ticketLink = `${appUrl}/admin/tickets?ticket=${ticketId}`;
+  
+  const message = `Ticket Category Changed\n\nTicket ID: ${ticketId}\nClient: ${clientName}\nStation: ${station}\nPrevious Category: ${oldCategory}\nNew Category: ${newCategory}\n\nView Ticket: ${ticketLink}`;
+  
+  const numbers = CAT_NUMBERS.split(',').map(num => num.trim()).filter(num => num.length > 0);
+  
+  if (numbers.length === 0) {
+    console.log(`[Category Change SMS] ⚠️ No valid phone numbers in CAT_NUMBERS, skipping SMS for ticket ${ticketId}`);
+    return;
+  }
+  
+  console.log(`[Category Change SMS] Attempting to send category change SMS for ticket ${ticketId}`);
+  console.log(`[Category Change SMS] Phone numbers:`, numbers);
+  console.log(`[Category Change SMS] Old Category: ${oldCategory}, New Category: ${newCategory}`);
+  
+  try {
+    const result = await sendSMS({
+      mobile: numbers,
+      msg: message,
+    });
+    console.log(`[Category Change SMS] ✅ SMS notification sent successfully for ticket ${ticketId}`, result);
+  } catch (error) {
+    console.error(`[Category Change SMS] ❌ Failed to send SMS for ticket ${ticketId}:`, error);
+    // Don't throw - SMS failure shouldn't prevent category update
   }
 }
 

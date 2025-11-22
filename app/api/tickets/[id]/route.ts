@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
 import { hasPagePermission } from '@/lib/permissions';
-import { sendTicketResolvedSMS, sendTechnicianAssignmentSMS } from '@/lib/sms';
+import { sendTicketResolvedSMS, sendTechnicianAssignmentSMS, sendCategoryChangeSMS } from '@/lib/sms';
 
 export async function GET(
   request: NextRequest,
@@ -43,29 +43,35 @@ export async function PATCH(
     const body = await request.json();
     const {
       status,
+      category,
       technician,
       resolvedAt,
       resolutionNotes,
     } = body;
 
+    // Check permissions based on what's being updated
     // If only resolving (status = 'resolved'), allow authenticated users without edit permission
-    // Otherwise, require edit permission
-    if (status !== 'resolved') {
-      const hasEditPermission = await hasPagePermission('/admin/tickets', 'edit');
-      if (!hasEditPermission) {
-        return NextResponse.json(
-          { error: 'You do not have permission to edit tickets' },
-          { status: 403 }
-        );
-      }
-    } else {
-      // For resolving, just check if user is authenticated
+    // If updating category only, require edit permission
+    // Otherwise, require edit permission for other updates
+    const isOnlyResolving = status === 'resolved' && Object.keys(body).filter(k => k !== 'status').length === 0;
+    
+    if (isOnlyResolving) {
+      // For resolving only, just check if user is authenticated
       const { auth } = await import('@/auth');
       const session = await auth();
       if (!session?.user?.email) {
         return NextResponse.json(
           { error: 'You must be signed in to mark tickets as resolved' },
           { status: 401 }
+        );
+      }
+    } else {
+      // For any other updates (including category), require edit permission
+      const hasEditPermission = await hasPagePermission('/admin/tickets', 'edit');
+      if (!hasEditPermission) {
+        return NextResponse.json(
+          { error: 'You do not have permission to edit tickets' },
+          { status: 403 }
         );
       }
     }
@@ -75,9 +81,10 @@ export async function PATCH(
     const ticketsCollection = db.collection('tickets');
     const techniciansCollection = db.collection('technicians');
 
-    // Get current ticket to check if technician is being assigned
+    // Get current ticket to check if technician is being assigned and category is being changed
     const currentTicket = await ticketsCollection.findOne({ _id: new ObjectId(id) });
     const previousTechnician = currentTicket?.technician;
+    const previousCategory = currentTicket?.category;
 
     // Build update object
     const updateData: any = {
@@ -86,6 +93,15 @@ export async function PATCH(
 
     if (status !== undefined) {
       updateData.status = status;
+    }
+    if (category !== undefined) {
+      // Only update if category is a valid non-empty string
+      if (category !== null && category !== '' && typeof category === 'string') {
+        updateData.category = category.trim();
+      } else if (category === null || category === '') {
+        // Don't update if category is empty/null - keep existing category
+        console.log(`[Ticket Update] Category update skipped - empty or null value provided`);
+      }
     }
     if (technician !== undefined) {
       updateData.technician = technician;
@@ -120,11 +136,32 @@ export async function PATCH(
     console.log(`[Ticket Update] Updated ticket:`, {
       ticketId: updatedTicket?.ticketId,
       status: updatedTicket?.status,
+      category: updatedTicket?.category,
+      previousCategory,
       technician: updatedTicket?.technician,
       previousTechnician,
       clientName: updatedTicket?.clientName,
       clientNumber: updatedTicket?.clientNumber,
     });
+
+    // Send SMS if category was changed
+    if (category !== undefined && category !== previousCategory && updatedTicket) {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
+                      (request.headers.get('origin') || 'http://localhost:3000');
+      
+      console.log(`[Category Change] ✅ Category changed from "${previousCategory}" to "${category}" for ticket ${updatedTicket.ticketId}`);
+      sendCategoryChangeSMS(
+        updatedTicket.ticketId,
+        updatedTicket.clientName,
+        updatedTicket.station,
+        previousCategory || 'Unknown',
+        category,
+        baseUrl
+      ).catch((error) => {
+        console.error('[Ticket API] Failed to send category change SMS:', error);
+        // Don't throw - SMS failure shouldn't prevent category update
+      });
+    }
 
     // Send SMS to technician if ticket was assigned to a new technician
     if (technician && technician !== previousTechnician && updatedTicket) {

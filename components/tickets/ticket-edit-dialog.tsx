@@ -48,11 +48,13 @@ const STATUSES = ['open', 'in-progress', 'resolved', 'closed', 'pending'];
 
 export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: TicketEditDialogProps) {
   const [technicians, setTechnicians] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (open) {
       fetchTechnicians();
+      fetchCategories();
     }
   }, [open]);
 
@@ -68,8 +70,23 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
       console.error('Error fetching technicians:', error);
     }
   };
+
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch('/api/categories');
+      const data = await response.json();
+      if (response.ok) {
+        const categoryNames = data.categories?.map((cat: { name: string }) => cat.name) || [];
+        setCategories(categoryNames);
+      }
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
+
   const [formData, setFormData] = useState({
     status: 'open' as Ticket['status'],
+    category: '',
     technician: '',
     resolvedAt: '',
     resolutionNotes: '',
@@ -79,6 +96,7 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
     if (ticket) {
       setFormData({
         status: ticket.status || 'open',
+        category: ticket.category || '',
         technician: ticket.technician || '',
         resolvedAt: ticket.resolvedAt 
           ? new Date(ticket.resolvedAt).toISOString().slice(0, 16)
@@ -95,23 +113,55 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
     setLoading(true);
 
     try {
+      // Build update payload with only changed fields
+      const updatePayload: any = {};
+      
+      // Only include fields that are different from the original ticket
+      if (formData.status !== (ticket.status || 'open')) {
+        updatePayload.status = formData.status;
+      }
+      if (formData.category && formData.category !== (ticket.category || '')) {
+        updatePayload.category = formData.category;
+      }
+      if (formData.technician !== (ticket.technician || '')) {
+        updatePayload.technician = formData.technician || undefined;
+      }
+      // Compare resolvedAt dates more carefully
+      const currentResolvedAt = ticket.resolvedAt 
+        ? new Date(ticket.resolvedAt).toISOString().slice(0, 16)
+        : '';
+      if (formData.resolvedAt !== currentResolvedAt) {
+        updatePayload.resolvedAt = formData.resolvedAt || undefined;
+      }
+      if (formData.resolutionNotes !== (ticket.resolutionNotes || '')) {
+        updatePayload.resolutionNotes = formData.resolutionNotes || undefined;
+      }
+
+      // If no changes, show message and return
+      if (Object.keys(updatePayload).length === 0) {
+        toast.info('No changes to save');
+        setLoading(false);
+        return;
+      }
+
       const response = await fetch(`/api/tickets/${ticket._id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          status: formData.status,
-          technician: formData.technician || undefined,
-          resolvedAt: formData.resolvedAt || undefined,
-          resolutionNotes: formData.resolutionNotes || undefined,
-        }),
+        body: JSON.stringify(updatePayload),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to update ticket');
+        console.error('API Error Response:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: data.error,
+          data: data
+        });
+        throw new Error(data.error || `Failed to update ticket: ${response.status} ${response.statusText}`);
       }
 
       toast.success('Ticket updated successfully!');
@@ -121,7 +171,8 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
       }
     } catch (error) {
       console.error('Error updating ticket:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to update ticket');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update ticket';
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -165,6 +216,28 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
               </Select>
             </div>
 
+            {/* Category */}
+            <div className="space-y-2">
+              <Label htmlFor="category" className="text-sm">Category</Label>
+              <Select
+                value={formData.category}
+                onValueChange={(value) => handleChange('category', value)}
+              >
+                <SelectTrigger id="category" className="text-sm">
+                  <SelectValue placeholder="Select Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             {/* Technician */}
             <div className="space-y-2">
               <Label htmlFor="technician" className="text-sm">Technician</Label>

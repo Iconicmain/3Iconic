@@ -12,15 +12,16 @@ export async function GET(request: NextRequest) {
     const categoriesCollection = db.collection('categories');
     const costTrackingCollection = db.collection('ticketCostTracking');
 
-    // Get all tickets that haven't been cleared
+    // Get all tickets that haven't been cleared and are not paid
     const tracking = await costTrackingCollection.findOne({ type: 'current' });
     const lastClearedDate = tracking?.lastClearedDate || new Date(0);
 
-    // Only fetch tickets that are resolved or closed
+    // Only fetch tickets that are resolved or closed, not paid, and created after last cleared date
     const tickets = await ticketsCollection
       .find({
         createdAt: { $gte: lastClearedDate },
-        status: { $in: ['resolved', 'closed'] }
+        status: { $in: ['resolved', 'closed'] },
+        paid: { $ne: true } // Exclude tickets that are already marked as paid
       })
       .toArray();
 
@@ -43,6 +44,8 @@ export async function GET(request: NextRequest) {
         price: categoryPrice,
         createdAt: ticket.createdAt,
         clientName: ticket.clientName,
+        paid: ticket.paid || false,
+        paidAt: ticket.paidAt || null,
       };
     });
 
@@ -91,7 +94,10 @@ export async function POST(request: NextRequest) {
     const client = await clientPromise;
     const db = client.db('tixmgmt');
     const usersCollection = db.collection('users');
+    const ticketsCollection = db.collection('tickets');
+    const categoriesCollection = db.collection('categories');
     const costTrackingCollection = db.collection('ticketCostTracking');
+    const paymentHistoryCollection = db.collection('paymentHistory');
 
     const user = await usersCollection.findOne({
       email: session.user.email.toLowerCase(),
@@ -104,22 +110,110 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get current tracking to find tickets to mark as paid
+    const tracking = await costTrackingCollection.findOne({ type: 'current' });
+    const lastClearedDate = tracking?.lastClearedDate || new Date(0);
+
+    // Get all tickets that need to be marked as paid
+    const ticketsToPay = await ticketsCollection
+      .find({
+        createdAt: { $gte: lastClearedDate },
+        status: { $in: ['resolved', 'closed'] },
+        paid: { $ne: true }
+      })
+      .toArray();
+
+    // Get category prices
+    const categories = await categoriesCollection.find({}).toArray();
+    const categoryPrices: { [key: string]: number } = {};
+    categories.forEach((cat: any) => {
+      categoryPrices[cat.name] = cat.price || 0;
+    });
+
+    // Calculate payment details
+    let totalAmount = 0;
+    const ticketDetails = ticketsToPay.map((ticket: any) => {
+      const price = categoryPrices[ticket.category] || 0;
+      totalAmount += price;
+      return {
+        ticketId: ticket.ticketId,
+        _id: ticket._id?.toString(),
+        category: ticket.category,
+        price: price,
+        clientName: ticket.clientName,
+        station: ticket.station,
+      };
+    });
+
+    // Group by category for breakdown
+    const categoryBreakdown: { [key: string]: { count: number; total: number } } = {};
+    ticketDetails.forEach((td: any) => {
+      if (!categoryBreakdown[td.category]) {
+        categoryBreakdown[td.category] = { count: 0, total: 0 };
+      }
+      categoryBreakdown[td.category].count += 1;
+      categoryBreakdown[td.category].total += td.price;
+    });
+
+    const paymentDate = new Date();
+
+    // Save payment history record
+    const paymentRecord = {
+      paymentDate: paymentDate,
+      totalAmount: totalAmount,
+      ticketCount: ticketsToPay.length,
+      tickets: ticketDetails,
+      categoryBreakdown: Object.entries(categoryBreakdown).map(([category, data]) => ({
+        category,
+        count: data.count,
+        total: data.total,
+      })),
+      clearedBy: user.email,
+      clearedByName: user.name || user.email,
+      createdAt: paymentDate,
+    };
+
+    await paymentHistoryCollection.insertOne(paymentRecord);
+
+    // Mark all tickets as paid
+    if (ticketsToPay.length > 0) {
+      const ticketIds = ticketsToPay.map((t: any) => t._id);
+      await ticketsCollection.updateMany(
+        { _id: { $in: ticketIds } },
+        { 
+          $set: { 
+            paid: true,
+            paidAt: paymentDate,
+            paidBy: user.email
+          } 
+        }
+      );
+    }
+
     // Update or create tracking document
     await costTrackingCollection.updateOne(
       { type: 'current' },
       {
         $set: {
           type: 'current',
-          lastClearedDate: new Date(),
+          lastClearedDate: paymentDate,
           clearedBy: user.email,
-          clearedAt: new Date(),
+          clearedAt: paymentDate,
         }
       },
       { upsert: true }
     );
 
     return NextResponse.json(
-      { success: true, message: 'Ticket costs cleared successfully' },
+      { 
+        success: true, 
+        message: 'Ticket costs cleared successfully',
+        paymentRecord: {
+          paymentDate: paymentRecord.paymentDate,
+          totalAmount: paymentRecord.totalAmount,
+          ticketCount: paymentRecord.ticketCount,
+        }
+      },
       { status: 200 }
     );
   } catch (error) {

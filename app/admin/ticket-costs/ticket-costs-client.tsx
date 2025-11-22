@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Calculator, Trash2, RefreshCw, DollarSign, AlertCircle, CheckCircle2, Settings } from 'lucide-react';
+import { Calculator, Trash2, RefreshCw, DollarSign, AlertCircle, CheckCircle2, Settings, History, ChevronDown, ChevronUp } from 'lucide-react';
 import { CategoryManager } from '@/components/tickets/category-manager';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
@@ -36,12 +36,32 @@ interface TicketCost {
   price: number;
   createdAt: string;
   clientName: string;
+  paid?: boolean;
+  paidAt?: string;
 }
 
 interface CategoryBreakdown {
   category: string;
   count: number;
   total: number;
+}
+
+interface PaymentHistory {
+  _id?: string;
+  paymentDate: string;
+  totalAmount: number;
+  ticketCount: number;
+  tickets: Array<{
+    ticketId: string;
+    category: string;
+    price: number;
+    clientName: string;
+    station?: string;
+  }>;
+  categoryBreakdown: CategoryBreakdown[];
+  clearedBy: string;
+  clearedByName?: string;
+  createdAt: string;
 }
 
 export default function TicketCostsClient() {
@@ -54,6 +74,9 @@ export default function TicketCostsClient() {
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
+  const [paymentHistory, setPaymentHistory] = useState<PaymentHistory[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const fetchCosts = async () => {
     try {
@@ -78,8 +101,28 @@ export default function TicketCostsClient() {
     }
   };
 
+  const fetchPaymentHistory = async () => {
+    try {
+      setLoadingHistory(true);
+      const response = await fetch('/api/ticket-costs/history');
+      const data = await response.json();
+      
+      if (response.ok) {
+        setPaymentHistory(data.paymentHistory || []);
+      } else {
+        throw new Error(data.error || 'Failed to fetch payment history');
+      }
+    } catch (error) {
+      console.error('Error fetching payment history:', error);
+      toast.error('Failed to load payment history');
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
   useEffect(() => {
     fetchCosts();
+    fetchPaymentHistory();
   }, []);
 
   const handleClear = async () => {
@@ -106,6 +149,7 @@ export default function TicketCostsClient() {
       toast.success('Ticket costs cleared successfully!');
       setClearDialogOpen(false);
       fetchCosts();
+      fetchPaymentHistory(); // Refresh payment history
     } catch (error) {
       console.error('Error clearing costs:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to clear costs';
@@ -255,6 +299,125 @@ export default function TicketCostsClient() {
               </Card>
             )}
 
+            {/* Payment History Section */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Payment History</CardTitle>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setShowHistory(!showHistory);
+                      if (!showHistory && paymentHistory.length === 0) {
+                        fetchPaymentHistory();
+                      }
+                    }}
+                    className="gap-2"
+                  >
+                    {showHistory ? (
+                      <>
+                        <ChevronUp className="w-4 h-4" />
+                        Hide History
+                      </>
+                    ) : (
+                      <>
+                        <History className="w-4 h-4" />
+                        Show History
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardHeader>
+              {showHistory && (
+                <CardContent>
+                  {loadingHistory ? (
+                    <div className="flex items-center justify-center py-8">
+                      <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : paymentHistory.length > 0 ? (
+                    <div className="space-y-4">
+                      {paymentHistory.map((payment) => (
+                        <div
+                          key={payment._id}
+                          className="border border-slate-200 dark:border-slate-800 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50"
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+                            <div>
+                              <p className="font-semibold text-sm">
+                                Payment Date: {formatDate(payment.paymentDate)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Cleared by: {payment.clearedByName || payment.clearedBy}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                                Ksh {payment.totalAmount.toLocaleString()}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {payment.ticketCount} ticket(s)
+                              </p>
+                            </div>
+                          </div>
+                          
+                          {/* Category Breakdown */}
+                          {payment.categoryBreakdown && payment.categoryBreakdown.length > 0 && (
+                            <div className="mb-3">
+                              <p className="text-xs font-medium text-muted-foreground mb-2">Breakdown:</p>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {payment.categoryBreakdown.map((item) => (
+                                  <div
+                                    key={item.category}
+                                    className="flex items-center justify-between text-xs p-2 bg-white dark:bg-slate-800 rounded"
+                                  >
+                                    <span>{item.category}</span>
+                                    <span className="font-medium">
+                                      {item.count} × Ksh {item.total.toLocaleString()}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Ticket List */}
+                          {payment.tickets && payment.tickets.length > 0 && (
+                            <details className="mt-2">
+                              <summary className="text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground">
+                                View Tickets ({payment.tickets.length})
+                              </summary>
+                              <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+                                {payment.tickets.map((ticket, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="text-xs p-2 bg-white dark:bg-slate-800 rounded flex items-center justify-between"
+                                  >
+                                    <span>
+                                      {ticket.ticketId} - {ticket.clientName}
+                                      {ticket.station && ` (${ticket.station})`}
+                                    </span>
+                                    <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                                      Ksh {ticket.price.toLocaleString()}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <History className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                      <p className="text-muted-foreground">No payment history found</p>
+                    </div>
+                  )}
+                </CardContent>
+              )}
+            </Card>
+
             {/* Ticket Details Table */}
             {ticketCosts.length > 0 ? (
               <Card>
@@ -271,6 +434,7 @@ export default function TicketCostsClient() {
                           <TableHead>Category</TableHead>
                           <TableHead>Price</TableHead>
                           <TableHead>Date</TableHead>
+                          <TableHead>Status</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -284,6 +448,24 @@ export default function TicketCostsClient() {
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {formatDate(ticket.createdAt)}
+                            </TableCell>
+                            <TableCell>
+                              {ticket.paid ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  Paid
+                                  {ticket.paidAt && (
+                                    <span className="text-xs opacity-75">
+                                      ({new Date(ticket.paidAt).toLocaleDateString()})
+                                    </span>
+                                  )}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                                  <AlertCircle className="w-3 h-3" />
+                                  Unpaid
+                                </span>
+                              )}
                             </TableCell>
                           </TableRow>
                         ))}
