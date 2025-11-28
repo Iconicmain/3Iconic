@@ -5,21 +5,15 @@ import { sendTicketReminderSMS } from '@/lib/sms';
 /**
  * API endpoint to send reminders for tickets open > 24 hours
  * This should be called by a cron job or scheduled task
+ *
+ * Note:
+ * - We intentionally do NOT require a secret header here so that:
+ *   - Vercel Cron Jobs can call this endpoint without extra header config
+ *   - You can manually trigger reminders from the browser for debugging
+ * - If you need to protect this in the future, you can re‑enable a CRON_SECRET check.
  */
 export async function POST(request: NextRequest) {
   try {
-    // Optional: Add authentication/authorization check here
-    // Check for cron secret header if needed
-    const cronSecret = request.headers.get('x-cron-secret');
-    const expectedSecret = process.env.CRON_SECRET;
-    
-    if (expectedSecret && cronSecret !== expectedSecret) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-    
     const client = await clientPromise;
     const db = client.db('tixmgmt');
     const ticketsCollection = db.collection('tickets');
