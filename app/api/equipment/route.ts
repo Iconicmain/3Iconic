@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
+import { ObjectId } from 'mongodb';
 import { hasPagePermission } from '@/lib/permissions';
 
 export async function GET(request: NextRequest) {
@@ -7,6 +8,7 @@ export async function GET(request: NextRequest) {
     const mongoClient = await clientPromise;
     const db = mongoClient.db('tixmgmt');
     const equipmentCollection = db.collection('equipment');
+    const batchesCollection = db.collection('equipmentBatches');
 
     const equipment = await equipmentCollection
       .find({})
@@ -14,10 +16,33 @@ export async function GET(request: NextRequest) {
       .toArray();
 
     // Ensure _id is converted to string for JSON serialization
-    const equipmentWithStringIds = equipment.map((eq) => ({
-      ...eq,
-      _id: eq._id.toString(),
-    }));
+    // Also populate batch information if batchId exists
+    const equipmentWithStringIds = await Promise.all(
+      equipment.map(async (eq: any) => {
+        const equipmentData: any = {
+          ...eq,
+          _id: eq._id.toString(),
+        };
+
+        // If batchId exists, fetch batch info
+        if (eq.batchId) {
+          try {
+            const batch = await batchesCollection.findOne({ _id: new ObjectId(eq.batchId) });
+            if (batch) {
+              equipmentData.batch = {
+                _id: batch._id.toString(),
+                batchNumber: batch.batchNumber,
+                name: batch.name,
+              };
+            }
+          } catch (error) {
+            console.error('Error fetching batch info:', error);
+          }
+        }
+
+        return equipmentData;
+      })
+    );
 
     return NextResponse.json({ equipment: equipmentWithStringIds }, { status: 200 });
   } catch (error) {
@@ -54,7 +79,8 @@ export async function POST(request: NextRequest) {
       lastService,
       installationType,
       replacedEquipmentId,
-      boughtDate
+      boughtDate,
+      batchId
     } = body;
 
     if (!name || !model || !serialNumber) {
@@ -103,6 +129,7 @@ export async function POST(request: NextRequest) {
       installationType: installationType || 'new-installation',
       replacedEquipmentId: replacedEquipmentId || null,
       boughtDate: finalBoughtDate,
+      batchId: batchId || null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };

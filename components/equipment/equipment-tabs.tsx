@@ -12,6 +12,8 @@ import { EquipmentForm } from './equipment-form';
 import { AttachClientDialog } from './attach-client-dialog';
 import { EquipmentViewDialog } from './equipment-view-dialog';
 import { EquipmentTemplateManager } from './equipment-template-manager';
+import { BatchForm } from './batch-form';
+import { BatchTracking } from './batch-tracking';
 import { toast } from 'sonner';
 
 interface Equipment {
@@ -30,6 +32,12 @@ interface Equipment {
   installDate?: string;
   lastService?: string;
   installationType?: 'new-installation' | 'exchange-replacement';
+  batchId?: string;
+  batch?: {
+    _id: string;
+    batchNumber: string;
+    name: string;
+  };
 }
 
 function EquipmentTable({ 
@@ -353,8 +361,15 @@ export function EquipmentTabs({ onEquipmentUpdate }: EquipmentTabsProps) {
   const [attachDialogOpen, setAttachDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
+  const [batchFormOpen, setBatchFormOpen] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
   const [activeTab, setActiveTab] = useState('installed');
+  const [mainView, setMainView] = useState<'equipment' | 'batches'>('equipment');
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const fetchEquipment = async () => {
     try {
@@ -451,6 +466,15 @@ export function EquipmentTabs({ onEquipmentUpdate }: EquipmentTabsProps) {
             <span>Templates</span>
           </Button>
           <Button 
+            variant="outline"
+            className="gap-2 flex-1 sm:flex-initial shrink-0"
+            onClick={() => setBatchFormOpen(true)}
+            size="sm"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create Batch</span>
+          </Button>
+          <Button 
             className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 flex-1 sm:flex-initial shrink-0"
             onClick={() => {
               setSelectedEquipment(null);
@@ -464,12 +488,21 @@ export function EquipmentTabs({ onEquipmentUpdate }: EquipmentTabsProps) {
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-        </div>
-      ) : (
-        <Tabs defaultValue="installed" className="w-full max-w-full" onValueChange={setActiveTab}>
+      {/* Tabs for Equipment and Batch Tracking */}
+      {mounted && (
+      <Tabs value={mainView} onValueChange={(value) => setMainView(value as 'equipment' | 'batches')} className="w-full">
+        <TabsList>
+          <TabsTrigger value="equipment">Equipment List</TabsTrigger>
+          <TabsTrigger value="batches">Batch Tracking</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="equipment" className="space-y-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <Tabs defaultValue="installed" className="w-full max-w-full" onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-3 h-auto max-w-full">
             <TabsTrigger value="bought" className="text-xs sm:text-sm py-2 px-2 sm:px-4">
               <span className="hidden sm:inline">Equipment Bought</span>
@@ -555,6 +588,19 @@ export function EquipmentTabs({ onEquipmentUpdate }: EquipmentTabsProps) {
             </Card>
           </TabsContent>
         </Tabs>
+          )}
+        </TabsContent>
+
+        <TabsContent value="batches" className="space-y-4">
+          <BatchTracking />
+        </TabsContent>
+      </Tabs>
+      )}
+      
+      {!mounted && (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        </div>
       )}
 
       <EquipmentForm
@@ -594,6 +640,14 @@ export function EquipmentTabs({ onEquipmentUpdate }: EquipmentTabsProps) {
       <EquipmentTemplateManager
         open={templateManagerOpen}
         onOpenChange={setTemplateManagerOpen}
+      />
+
+      <BatchForm
+        open={batchFormOpen}
+        onOpenChange={setBatchFormOpen}
+        onSuccess={() => {
+          fetchEquipment();
+        }}
       />
     </div>
   );

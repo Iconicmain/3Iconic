@@ -90,6 +90,7 @@ export async function PATCH(
       installationType,
       replacedEquipmentId,
       boughtDate,
+      batchId,
     } = body;
 
     const mongoClient = await clientPromise;
@@ -133,6 +134,7 @@ export async function PATCH(
     if (installationType !== undefined) updateData.installationType = installationType || 'new-installation';
     if (replacedEquipmentId !== undefined) updateData.replacedEquipmentId = replacedEquipmentId || null;
     if (boughtDate !== undefined) updateData.boughtDate = boughtDate || null;
+    if (batchId !== undefined) updateData.batchId = batchId || null;
 
     console.log('Updating equipment with ObjectId:', objectId.toString());
     

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Calculator, Trash2, RefreshCw, DollarSign, AlertCircle, CheckCircle2, Settings, History, ChevronDown, ChevronUp } from 'lucide-react';
+import { Calculator, Trash2, RefreshCw, DollarSign, AlertCircle, CheckCircle2, Settings, History, ChevronDown, ChevronUp, FileSpreadsheet } from 'lucide-react';
 import { CategoryManager } from '@/components/tickets/category-manager';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
@@ -170,6 +170,69 @@ export default function TicketCostsClient() {
     });
   };
 
+  const handleExportExcel = () => {
+    try {
+      // Create CSV content (Excel can open CSV files)
+      const headers = ['Ticket ID', 'Client Name', 'Category', 'Price (Ksh)', 'Status', 'Paid Date', 'Created Date'];
+      
+      const csvRows = [
+        headers.join(','),
+        ...ticketCosts.map(ticket => [
+          ticket.ticketId,
+          `"${(ticket.clientName || '').replace(/"/g, '""')}"`,
+          ticket.category,
+          ticket.price,
+          ticket.paid ? 'Paid' : 'Unpaid',
+          ticket.paidAt ? new Date(ticket.paidAt).toLocaleDateString('en-US') : 'N/A',
+          new Date(ticket.createdAt).toLocaleDateString('en-US'),
+        ].join(','))
+      ];
+
+      // Add summary rows
+      csvRows.push('');
+      csvRows.push('Summary');
+      csvRows.push(`Total Tickets,${ticketCount}`);
+      csvRows.push(`Total Cost (Ksh),${totalCost.toLocaleString()}`);
+      csvRows.push(`Last Cleared,${lastClearedDate ? formatDate(lastClearedDate) : 'Never'}`);
+      
+      // Add category breakdown
+      if (categoryBreakdown.length > 0) {
+        csvRows.push('');
+        csvRows.push('Category Breakdown');
+        csvRows.push('Category,Count,Total (Ksh)');
+        categoryBreakdown.forEach(cat => {
+          csvRows.push(`${cat.category},${cat.count},${cat.total.toLocaleString()}`);
+        });
+      }
+
+      const csvContent = csvRows.join('\n');
+      
+      // Create BOM for UTF-8 Excel compatibility
+      const BOM = '\uFEFF';
+      const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      
+      // Generate filename with current date
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0];
+      const filename = `ticket-costs_${dateStr}.csv`;
+      
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast.success(`Exported ${ticketCosts.length} tickets to ${filename}`);
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      toast.error('Failed to export to Excel');
+    }
+  };
+
   return (
     <div className="flex">
       <Sidebar />
@@ -187,7 +250,7 @@ export default function TicketCostsClient() {
                   Calculate and track ticket costs by category
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <Button
                   variant="outline"
                   onClick={() => setCategoryManagerOpen(true)}
@@ -195,6 +258,15 @@ export default function TicketCostsClient() {
                 >
                   <Settings className="w-4 h-4" />
                   Manage Categories
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleExportExcel}
+                  disabled={loading || ticketCosts.length === 0}
+                  className="gap-2"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  Export Excel
                 </Button>
                 <Button
                   variant="outline"
