@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Calculator, Trash2, RefreshCw, DollarSign, AlertCircle, CheckCircle2, Settings, History, ChevronDown, ChevronUp, FileSpreadsheet } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CategoryManager } from '@/components/tickets/category-manager';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
@@ -77,6 +78,8 @@ export default function TicketCostsClient() {
   const [paymentHistory, setPaymentHistory] = useState<PaymentHistory[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [exportStatusFilter, setExportStatusFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
+  const [selectedPaymentId, setSelectedPaymentId] = useState<string>('all');
 
   const fetchCosts = async () => {
     try {
@@ -170,14 +173,105 @@ export default function TicketCostsClient() {
     });
   };
 
-  const handleExportExcel = () => {
+  const handleExportPayment = (payment: PaymentHistory) => {
     try {
+      if (!payment?.tickets || payment.tickets.length === 0) {
+        toast.info('No tickets in this paid batch to export.');
+        return;
+      }
+
+      const headers = ['Ticket ID', 'Client Name', 'Category', 'Price (Ksh)', 'Station'];
+      const csvRows = [
+        headers.join(','),
+        ...payment.tickets.map(ticket => [
+          ticket.ticketId,
+          `"${(ticket.clientName || '').replace(/"/g, '""')}"`,
+          ticket.category,
+          ticket.price,
+          ticket.station || 'N/A',
+        ].join(','))
+      ];
+
+      // Add summary
+      csvRows.push('');
+      csvRows.push('Summary');
+      csvRows.push(`Payment Date,${formatDate(payment.paymentDate)}`);
+      csvRows.push(`Total Tickets,${payment.ticketCount}`);
+      csvRows.push(`Total Amount (Ksh),${payment.totalAmount.toLocaleString()}`);
+      csvRows.push(`Cleared By,${payment.clearedByName || payment.clearedBy}`);
+
+      // Category breakdown
+      if (payment.categoryBreakdown?.length) {
+        csvRows.push('');
+        csvRows.push('Category Breakdown');
+        csvRows.push('Category,Count,Total (Ksh)');
+        payment.categoryBreakdown.forEach(cat => {
+          csvRows.push(`${cat.category},${cat.count},${cat.total.toLocaleString()}`);
+        });
+      }
+
+      const csvContent = csvRows.join('\n');
+      const BOM = '\uFEFF';
+      const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      const filename = buildFilename(`payment-${payment.paymentDate.split('T')[0] || 'batch'}`);
+
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success(`Exported payment batch: ${filename}`);
+    } catch (error) {
+      console.error('Error exporting payment:', error);
+      toast.error('Failed to export payment batch');
+    }
+  };
+
+  const buildFilename = (base: string) => {
+    const now = new Date();
+    return `${base}_${now.toISOString().split('T')[0]}.csv`;
+  };
+
+  const handleExportExcel = (status: 'all' | 'paid' | 'unpaid' = 'all', paymentId?: string) => {
+    try {
+      // If a specific paid batch is requested, export that payment batch
+      if (status === 'paid' && paymentId) {
+        const payment = paymentHistory.find((p) => p._id === paymentId);
+        if (payment) {
+          handleExportPayment(payment);
+          return;
+        }
+      }
+
       // Create CSV content (Excel can open CSV files)
       const headers = ['Ticket ID', 'Client Name', 'Category', 'Price (Ksh)', 'Status', 'Paid Date', 'Created Date'];
       
+      // Filter by status
+      const ticketsToExport = ticketCosts.filter((t) => {
+        if (status === 'paid') return t.paid;
+        if (status === 'unpaid') return !t.paid;
+        return true;
+      });
+
+      if (ticketsToExport.length === 0) {
+        toast.info(
+          status === 'paid'
+            ? 'No paid tickets to export.'
+            : status === 'unpaid'
+              ? 'No unpaid tickets to export.'
+              : 'No tickets to export.'
+        );
+        return;
+      }
+
       const csvRows = [
         headers.join(','),
-        ...ticketCosts.map(ticket => [
+        ...ticketsToExport.map(ticket => [
           ticket.ticketId,
           `"${(ticket.clientName || '').replace(/"/g, '""')}"`,
           ticket.category,
@@ -214,9 +308,7 @@ export default function TicketCostsClient() {
       const url = URL.createObjectURL(blob);
       
       // Generate filename with current date
-      const now = new Date();
-      const dateStr = now.toISOString().split('T')[0];
-      const filename = `ticket-costs_${dateStr}.csv`;
+      const filename = buildFilename(status === 'all' ? 'ticket-costs' : `ticket-costs-${status}`);
       
       link.setAttribute('href', url);
       link.setAttribute('download', filename);
@@ -259,15 +351,61 @@ export default function TicketCostsClient() {
                   <Settings className="w-4 h-4" />
                   Manage Categories
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleExportExcel}
-                  disabled={loading || ticketCosts.length === 0}
-                  className="gap-2"
-                >
-                  <FileSpreadsheet className="w-4 h-4" />
-                  Export Excel
-                </Button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Select
+                    value={exportStatusFilter}
+                    onValueChange={(value) => {
+                      setExportStatusFilter(value as 'all' | 'paid' | 'unpaid');
+                      // Reset batch selection when changing filter
+                      setSelectedPaymentId('');
+                    }}
+                  >
+                    <SelectTrigger className="w-[150px]">
+                      <SelectValue placeholder="Export filter" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="paid">Paid</SelectItem>
+                      <SelectItem value="unpaid">Unpaid</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {exportStatusFilter === 'paid' && (
+                    <Select
+                      value={selectedPaymentId}
+                      onValueChange={(value) => setSelectedPaymentId(value)}
+                    >
+                      <SelectTrigger className="w-[220px]">
+                        <SelectValue placeholder="Select paid batch (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All paid</SelectItem>
+                        {paymentHistory
+                          .filter((p) => p._id)
+                          .map((payment) => (
+                            <SelectItem key={payment._id} value={payment._id!}>
+                              {formatDate(payment.paymentDate)} — {payment.ticketCount} tickets
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      handleExportExcel(
+                        exportStatusFilter,
+                        selectedPaymentId === 'all' ? undefined : selectedPaymentId
+                      )
+                    }
+                    disabled={loading || ticketCosts.length === 0}
+                    className="gap-2"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    Export Excel
+                  </Button>
+                </div>
                 <Button
                   variant="outline"
                   onClick={fetchCosts}
@@ -430,6 +568,17 @@ export default function TicketCostsClient() {
                               <p className="text-xs text-muted-foreground">
                                 {payment.ticketCount} ticket(s)
                               </p>
+                            </div>
+                            <div className="flex justify-end">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-2"
+                                onClick={() => handleExportPayment(payment)}
+                              >
+                                <FileSpreadsheet className="w-4 h-4" />
+                                Export
+                              </Button>
                             </div>
                           </div>
                           
