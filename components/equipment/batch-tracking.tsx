@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Package, CheckCircle2, AlertCircle, Eye, Loader2 } from 'lucide-react';
+import { Package, CheckCircle2, AlertCircle, Eye, Loader2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -22,6 +22,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface Batch {
   _id: string;
@@ -55,18 +65,38 @@ interface BatchDetails {
   clients: any[];
 }
 
-export function BatchTracking() {
+interface BatchTrackingProps {
+  onBatchesUpdate?: (refreshFn: () => void) => void;
+}
+
+export function BatchTracking({ onBatchesUpdate }: BatchTrackingProps) {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBatch, setSelectedBatch] = useState<BatchDetails | null>(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [batchToDelete, setBatchToDelete] = useState<{ id: string; name: string; equipmentCount: number } | null>(null);
 
   useEffect(() => {
     setMounted(true);
+    fetchCurrentUserRole();
   }, []);
 
-  const fetchBatches = async () => {
+  const fetchCurrentUserRole = async () => {
+    try {
+      const response = await fetch('/api/users/me');
+      if (response.ok) {
+        const data = await response.json();
+        setIsSuperAdmin(data.role === 'superadmin');
+      }
+    } catch (error) {
+      console.error('Error fetching current user role:', error);
+    }
+  };
+
+  const fetchBatches = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/equipment-batches');
@@ -82,13 +112,26 @@ export function BatchTracking() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (mounted) {
       fetchBatches();
     }
   }, [mounted]);
+
+  // Expose fetchBatches function to parent component (defer to avoid render warnings)
+  useEffect(() => {
+    if (onBatchesUpdate && mounted && typeof fetchBatches === 'function') {
+      // Use setTimeout to defer state update to next tick, avoiding render warnings
+      const timeoutId = setTimeout(() => {
+        if (typeof fetchBatches === 'function') {
+          onBatchesUpdate(fetchBatches);
+        }
+      }, 0);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [mounted, onBatchesUpdate, fetchBatches]);
 
   const viewBatchDetails = async (batchId: string) => {
     try {
@@ -121,6 +164,48 @@ export function BatchTracking() {
 
   const formatCurrency = (amount: number) => {
     return `Ksh ${amount.toLocaleString()}`;
+  };
+
+  const handleDeleteBatch = (batchId: string) => {
+    // Find the batch to show details in confirmation
+    const batch = batches.find(b => b._id === batchId);
+    const batchName = batch?.name || 'this batch';
+    const equipmentCount = batch?.stats.total || 0;
+    
+    setBatchToDelete({
+      id: batchId,
+      name: batchName,
+      equipmentCount: equipmentCount,
+    });
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteBatch = async () => {
+    if (!batchToDelete) return;
+
+    try {
+      const response = await fetch(`/api/equipment-batches/${batchToDelete.id}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete batch');
+      }
+
+      const deletedCount = data.deletedEquipmentCount || 0;
+      toast.success(
+        `Batch deleted successfully! ${deletedCount} equipment item(s) were also deleted.`,
+        { duration: 5000 }
+      );
+      setDeleteDialogOpen(false);
+      setBatchToDelete(null);
+      fetchBatches();
+    } catch (error) {
+      console.error('Error deleting batch:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to delete batch');
+    }
   };
 
   if (!mounted || loading) {
@@ -163,8 +248,10 @@ export function BatchTracking() {
                   <BatchTable
                     batches={batches}
                     onView={viewBatchDetails}
+                    onDelete={handleDeleteBatch}
                     formatDate={formatDate}
                     formatCurrency={formatCurrency}
+                    isSuperAdmin={isSuperAdmin}
                   />
                 </TabsContent>
 
@@ -172,8 +259,10 @@ export function BatchTracking() {
                   <BatchTable
                     batches={batches.filter((b) => !b.stats.finished && b.stats.remaining > 0)}
                     onView={viewBatchDetails}
+                    onDelete={handleDeleteBatch}
                     formatDate={formatDate}
                     formatCurrency={formatCurrency}
+                    isSuperAdmin={isSuperAdmin}
                   />
                 </TabsContent>
 
@@ -181,8 +270,10 @@ export function BatchTracking() {
                   <BatchTable
                     batches={batches.filter((b) => b.stats.finished)}
                     onView={viewBatchDetails}
+                    onDelete={handleDeleteBatch}
                     formatDate={formatDate}
                     formatCurrency={formatCurrency}
+                    isSuperAdmin={isSuperAdmin}
                   />
                 </TabsContent>
               </Tabs>
@@ -294,6 +385,43 @@ export function BatchTracking() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Batch</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <div>
+                  Are you sure you want to delete <strong>&quot;{batchToDelete?.name}&quot;</strong>?
+                </div>
+                <div className="mt-4 p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-md">
+                  <div className="font-semibold text-red-900 dark:text-red-100 mb-2">
+                    This will PERMANENTLY DELETE:
+                  </div>
+                  <ul className="list-disc list-inside space-y-1 text-red-800 dark:text-red-200 text-sm">
+                    <li>The batch itself</li>
+                    <li>ALL {batchToDelete?.equipmentCount || 0} equipment item(s) in this batch</li>
+                  </ul>
+                </div>
+                <div className="text-red-600 dark:text-red-400 font-semibold mt-3">
+                  This action cannot be undone!
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setBatchToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteBatch}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete Batch
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -301,13 +429,17 @@ export function BatchTracking() {
 function BatchTable({
   batches,
   onView,
+  onDelete,
   formatDate,
   formatCurrency,
+  isSuperAdmin,
 }: {
   batches: Batch[];
   onView: (batchId: string) => void;
+  onDelete: (batchId: string) => void;
   formatDate: (date: string) => string;
   formatCurrency: (amount: number) => string;
+  isSuperAdmin: boolean;
 }) {
   if (batches.length === 0) {
     return (
@@ -359,15 +491,28 @@ function BatchTable({
               </TableCell>
               <TableCell>{formatDate(batch.purchaseDate)}</TableCell>
               <TableCell>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onView(batch._id)}
-                  className="gap-2"
-                >
-                  <Eye className="w-4 h-4" />
-                  View
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onView(batch._id)}
+                    className="gap-2"
+                  >
+                    <Eye className="w-4 h-4" />
+                    View
+                  </Button>
+                  {isSuperAdmin && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onDelete(batch._id)}
+                      className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete
+                    </Button>
+                  )}
+                </div>
               </TableCell>
             </TableRow>
           ))}

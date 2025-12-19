@@ -35,14 +35,17 @@ interface TicketCost {
   ticketId: string;
   category: string;
   price: number;
+  technicians?: string[];
+  technicianCount?: number;
+  pricePerTechnician?: number;
   createdAt: string;
   clientName: string;
   paid?: boolean;
   paidAt?: string;
 }
 
-interface CategoryBreakdown {
-  category: string;
+interface TechnicianBreakdown {
+  technician: string;
   count: number;
   total: number;
 }
@@ -56,10 +59,14 @@ interface PaymentHistory {
     ticketId: string;
     category: string;
     price: number;
+    technicians?: string[];
+    technicianCount?: number;
+    pricePerTechnician?: number;
     clientName: string;
     station?: string;
   }>;
-  categoryBreakdown: CategoryBreakdown[];
+  technicianBreakdown?: TechnicianBreakdown[];
+  categoryBreakdown?: TechnicianBreakdown[]; // For backward compatibility
   clearedBy: string;
   clearedByName?: string;
   createdAt: string;
@@ -70,7 +77,7 @@ export default function TicketCostsClient() {
   const [totalCost, setTotalCost] = useState(0);
   const [ticketCount, setTicketCount] = useState(0);
   const [ticketCosts, setTicketCosts] = useState<TicketCost[]>([]);
-  const [categoryBreakdown, setCategoryBreakdown] = useState<CategoryBreakdown[]>([]);
+  const [technicianBreakdown, setTechnicianBreakdown] = useState<TechnicianBreakdown[]>([]);
   const [lastClearedDate, setLastClearedDate] = useState<string | null>(null);
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -91,7 +98,7 @@ export default function TicketCostsClient() {
         setTotalCost(data.totalCost || 0);
         setTicketCount(data.ticketCount || 0);
         setTicketCosts(data.ticketCosts || []);
-        setCategoryBreakdown(data.categoryBreakdown || []);
+        setTechnicianBreakdown(data.technicianBreakdown || []);
         setLastClearedDate(data.lastClearedDate || null);
       } else {
         throw new Error(data.error || 'Failed to fetch costs');
@@ -180,14 +187,16 @@ export default function TicketCostsClient() {
         return;
       }
 
-      const headers = ['Ticket ID', 'Client Name', 'Category', 'Price (Ksh)', 'Station'];
+      const headers = ['Ticket ID', 'Client Name', 'Category', 'Technicians', 'Price (Ksh)', 'Price per Technician (Ksh)', 'Station'];
       const csvRows = [
         headers.join(','),
         ...payment.tickets.map(ticket => [
           ticket.ticketId,
           `"${(ticket.clientName || '').replace(/"/g, '""')}"`,
           ticket.category,
+          ticket.technicians && ticket.technicians.length > 0 ? `"${ticket.technicians.join(', ')}"` : 'Unassigned',
           ticket.price,
+          ticket.pricePerTechnician ? ticket.pricePerTechnician.toFixed(2) : ticket.price,
           ticket.station || 'N/A',
         ].join(','))
       ];
@@ -200,14 +209,30 @@ export default function TicketCostsClient() {
       csvRows.push(`Total Amount (Ksh),${payment.totalAmount.toLocaleString()}`);
       csvRows.push(`Cleared By,${payment.clearedByName || payment.clearedBy}`);
 
-      // Category breakdown
-      if (payment.categoryBreakdown?.length) {
+      // Technician breakdown
+      const breakdown = payment.technicianBreakdown || payment.categoryBreakdown || [];
+      if (breakdown.length > 0) {
         csvRows.push('');
-        csvRows.push('Category Breakdown');
-        csvRows.push('Category,Count,Total (Ksh)');
-        payment.categoryBreakdown.forEach(cat => {
-          csvRows.push(`${cat.category},${cat.count},${cat.total.toLocaleString()}`);
-        });
+        csvRows.push('Technician Breakdown');
+        csvRows.push('Note: Individual technicians show their split earnings. "Both" shows the full amount for tickets worked on by multiple technicians.');
+        csvRows.push('Technician,Count,Total (Ksh),Notes');
+        breakdown
+          .sort((a: TechnicianBreakdown, b: TechnicianBreakdown) => {
+            // Sort "Both" to the end, then alphabetically
+            if (a.technician === 'Both') return 1;
+            if (b.technician === 'Both') return -1;
+            if (a.technician === 'Unassigned') return 1;
+            if (b.technician === 'Unassigned') return -1;
+            return a.technician.localeCompare(b.technician);
+          })
+          .forEach((item: TechnicianBreakdown) => {
+            const notes = item.technician === 'Both' 
+              ? 'Tickets worked on by multiple technicians (full amount)' 
+              : item.technician === 'Unassigned'
+              ? 'Tickets with no assigned technicians'
+              : 'Individual earnings (split amount)';
+            csvRows.push(`${item.technician},${item.count},${item.total.toLocaleString()},"${notes}"`);
+          });
       }
 
       const csvContent = csvRows.join('\n');
@@ -249,7 +274,7 @@ export default function TicketCostsClient() {
       }
 
       // Create CSV content (Excel can open CSV files)
-      const headers = ['Ticket ID', 'Client Name', 'Category', 'Price (Ksh)', 'Status', 'Paid Date', 'Created Date'];
+      const headers = ['Ticket ID', 'Client Name', 'Category', 'Technicians', 'Price (Ksh)', 'Price per Technician (Ksh)', 'Status', 'Paid Date', 'Created Date'];
       
       // Filter by status
       const ticketsToExport = ticketCosts.filter((t) => {
@@ -275,7 +300,9 @@ export default function TicketCostsClient() {
           ticket.ticketId,
           `"${(ticket.clientName || '').replace(/"/g, '""')}"`,
           ticket.category,
+          ticket.technicians && ticket.technicians.length > 0 ? `"${ticket.technicians.join(', ')}"` : 'Unassigned',
           ticket.price,
+          ticket.pricePerTechnician ? ticket.pricePerTechnician.toFixed(2) : ticket.price,
           ticket.paid ? 'Paid' : 'Unpaid',
           ticket.paidAt ? new Date(ticket.paidAt).toLocaleDateString('en-US') : 'N/A',
           new Date(ticket.createdAt).toLocaleDateString('en-US'),
@@ -289,14 +316,29 @@ export default function TicketCostsClient() {
       csvRows.push(`Total Cost (Ksh),${totalCost.toLocaleString()}`);
       csvRows.push(`Last Cleared,${lastClearedDate ? formatDate(lastClearedDate) : 'Never'}`);
       
-      // Add category breakdown
-      if (categoryBreakdown.length > 0) {
+      // Add technician breakdown
+      if (technicianBreakdown.length > 0) {
         csvRows.push('');
-        csvRows.push('Category Breakdown');
-        csvRows.push('Category,Count,Total (Ksh)');
-        categoryBreakdown.forEach(cat => {
-          csvRows.push(`${cat.category},${cat.count},${cat.total.toLocaleString()}`);
-        });
+        csvRows.push('Technician Breakdown');
+        csvRows.push('Note: Individual technicians show their split earnings. "Both" shows the full amount for tickets worked on by multiple technicians.');
+        csvRows.push('Technician,Count,Total (Ksh),Notes');
+        technicianBreakdown
+          .sort((a, b) => {
+            // Sort "Both" to the end, then alphabetically
+            if (a.technician === 'Both') return 1;
+            if (b.technician === 'Both') return -1;
+            if (a.technician === 'Unassigned') return 1;
+            if (b.technician === 'Unassigned') return -1;
+            return a.technician.localeCompare(b.technician);
+          })
+          .forEach(tech => {
+            const notes = tech.technician === 'Both' 
+              ? 'Tickets worked on by multiple technicians (full amount)' 
+              : tech.technician === 'Unassigned'
+              ? 'Tickets with no assigned technicians'
+              : 'Individual earnings (split amount)';
+            csvRows.push(`${tech.technician},${tech.count},${tech.total.toLocaleString()},"${notes}"`);
+          });
       }
 
       const csvContent = csvRows.join('\n');
@@ -482,28 +524,48 @@ export default function TicketCostsClient() {
               </Card>
             </div>
 
-            {/* Category Breakdown */}
-            {categoryBreakdown.length > 0 && (
+            {/* Technician Breakdown */}
+            {technicianBreakdown.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Cost Breakdown by Category</CardTitle>
+                  <CardTitle>Cost Breakdown by Technician</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {categoryBreakdown.map((item) => (
-                      <div
-                        key={item.category}
-                        className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800"
-                      >
-                        <div>
-                          <p className="font-medium text-sm">{item.category}</p>
-                          <p className="text-xs text-muted-foreground">{item.count} ticket(s)</p>
+                    {technicianBreakdown
+                      .sort((a, b) => {
+                        // Sort "Both" to the end, then alphabetically
+                        if (a.technician === 'Both') return 1;
+                        if (b.technician === 'Both') return -1;
+                        if (a.technician === 'Unassigned') return 1;
+                        if (b.technician === 'Unassigned') return -1;
+                        return a.technician.localeCompare(b.technician);
+                      })
+                      .map((item) => (
+                        <div
+                          key={item.technician}
+                          className={`flex items-center justify-between p-3 rounded-lg border ${
+                            item.technician === 'Both'
+                              ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                              : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                          }`}
+                        >
+                          <div>
+                            <p className="font-medium text-sm">{item.technician}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {item.count} ticket{item.count !== 1 ? 's' : ''}
+                              {item.technician === 'Both' && ' (multiple technicians)'}
+                            </p>
+                          </div>
+                          <p className={`text-lg font-bold ${
+                            item.technician === 'Both'
+                              ? 'text-blue-600 dark:text-blue-400'
+                              : 'text-emerald-600 dark:text-emerald-400'
+                          }`}>
+                            Ksh {item.total.toLocaleString()}
+                          </p>
                         </div>
-                        <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
-                          Ksh {item.total.toLocaleString()}
-                        </p>
-                      </div>
-                    ))}
+                      ))}
                   </div>
                 </CardContent>
               </Card>
@@ -582,25 +644,46 @@ export default function TicketCostsClient() {
                             </div>
                           </div>
                           
-                          {/* Category Breakdown */}
-                          {payment.categoryBreakdown && payment.categoryBreakdown.length > 0 && (
+                          {/* Technician Breakdown */}
+                          {(payment.technicianBreakdown && payment.technicianBreakdown.length > 0) || 
+                           (payment.categoryBreakdown && payment.categoryBreakdown.length > 0) ? (
                             <div className="mb-3">
-                              <p className="text-xs font-medium text-muted-foreground mb-2">Breakdown:</p>
+                              <p className="text-xs font-medium text-muted-foreground mb-2">Technician Breakdown:</p>
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                {payment.categoryBreakdown.map((item) => (
-                                  <div
-                                    key={item.category}
-                                    className="flex items-center justify-between text-xs p-2 bg-white dark:bg-slate-800 rounded"
-                                  >
-                                    <span>{item.category}</span>
-                                    <span className="font-medium">
-                                      {item.count} × Ksh {item.total.toLocaleString()}
-                                    </span>
-                                  </div>
-                                ))}
+                                {(payment.technicianBreakdown || payment.categoryBreakdown || [])
+                                  .sort((a: TechnicianBreakdown, b: TechnicianBreakdown) => {
+                                    // Sort "Both" to the end, then alphabetically
+                                    if (a.technician === 'Both') return 1;
+                                    if (b.technician === 'Both') return -1;
+                                    if (a.technician === 'Unassigned') return 1;
+                                    if (b.technician === 'Unassigned') return -1;
+                                    return a.technician.localeCompare(b.technician);
+                                  })
+                                  .map((item: TechnicianBreakdown) => (
+                                    <div
+                                      key={item.technician}
+                                      className={`flex items-center justify-between text-xs p-2 rounded ${
+                                        item.technician === 'Both'
+                                          ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
+                                          : 'bg-white dark:bg-slate-800'
+                                      }`}
+                                    >
+                                      <span className={item.technician === 'Both' ? 'font-semibold text-blue-700 dark:text-blue-300' : ''}>
+                                        {item.technician}
+                                        {item.technician === 'Both' && ' (multiple technicians)'}
+                                      </span>
+                                      <span className={`font-medium ${
+                                        item.technician === 'Both'
+                                          ? 'text-blue-600 dark:text-blue-400'
+                                          : ''
+                                      }`}>
+                                        {item.count} ticket{item.count !== 1 ? 's' : ''} - Ksh {item.total.toLocaleString()}
+                                      </span>
+                                    </div>
+                                  ))}
                               </div>
                             </div>
-                          )}
+                          ) : null}
 
                           {/* Ticket List */}
                           {payment.tickets && payment.tickets.length > 0 && (
@@ -612,15 +695,27 @@ export default function TicketCostsClient() {
                                 {payment.tickets.map((ticket, idx) => (
                                   <div
                                     key={idx}
-                                    className="text-xs p-2 bg-white dark:bg-slate-800 rounded flex items-center justify-between"
+                                    className="text-xs p-2 bg-white dark:bg-slate-800 rounded"
                                   >
-                                    <span>
-                                      {ticket.ticketId} - {ticket.clientName}
-                                      {ticket.station && ` (${ticket.station})`}
-                                    </span>
-                                    <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                                      Ksh {ticket.price.toLocaleString()}
-                                    </span>
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span>
+                                        {ticket.ticketId} - {ticket.clientName}
+                                        {ticket.station && ` (${ticket.station})`}
+                                      </span>
+                                      <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                                        Ksh {ticket.price.toLocaleString()}
+                                      </span>
+                                    </div>
+                                    {ticket.technicians && ticket.technicians.length > 0 && (
+                                      <div className="text-xs text-muted-foreground">
+                                        Technicians: {ticket.technicians.join(', ')}
+                                        {ticket.pricePerTechnician && (
+                                          <span className="ml-1">
+                                            (Ksh {ticket.pricePerTechnician.toFixed(2)} each)
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                 ))}
                               </div>
@@ -653,6 +748,7 @@ export default function TicketCostsClient() {
                           <TableHead>Ticket ID</TableHead>
                           <TableHead>Client</TableHead>
                           <TableHead>Category</TableHead>
+                          <TableHead>Technicians</TableHead>
                           <TableHead>Price</TableHead>
                           <TableHead>Date</TableHead>
                           <TableHead>Status</TableHead>
@@ -664,6 +760,24 @@ export default function TicketCostsClient() {
                             <TableCell className="font-medium">{ticket.ticketId}</TableCell>
                             <TableCell>{ticket.clientName}</TableCell>
                             <TableCell>{ticket.category}</TableCell>
+                            <TableCell className="text-sm">
+                              {ticket.technicians && ticket.technicians.length > 0 ? (
+                                <div className="flex flex-col gap-1">
+                                  {ticket.technicians.map((tech, idx) => (
+                                    <span key={idx} className="inline-block">
+                                      {tech}
+                                      {ticket.pricePerTechnician && (
+                                        <span className="text-xs text-muted-foreground ml-1">
+                                          (Ksh {ticket.pricePerTechnician.toFixed(2)})
+                                        </span>
+                                      )}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">Unassigned</span>
+                              )}
+                            </TableCell>
                             <TableCell className="font-semibold text-emerald-600 dark:text-emerald-400">
                               Ksh {ticket.price.toLocaleString()}
                             </TableCell>

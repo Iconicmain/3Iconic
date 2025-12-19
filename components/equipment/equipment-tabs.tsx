@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -366,6 +366,7 @@ export function EquipmentTabs({ onEquipmentUpdate }: EquipmentTabsProps) {
   const [activeTab, setActiveTab] = useState('installed');
   const [mainView, setMainView] = useState<'equipment' | 'batches'>('equipment');
   const [mounted, setMounted] = useState(false);
+  const refreshBatchesRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -422,7 +423,13 @@ export function EquipmentTabs({ onEquipmentUpdate }: EquipmentTabsProps) {
       return;
     }
 
-    if (!confirm(`Are you sure you want to delete ${equipment.name}?`)) {
+    // Determine message based on whether equipment has a batch
+    const hasBatch = equipment.batchId && equipment.batchId.trim() !== '';
+    const confirmMessage = hasBatch
+      ? `Are you sure you want to return ${equipment.name} to batch? This will remove it from the client and make it available again.`
+      : `Are you sure you want to permanently delete ${equipment.name}? This action cannot be undone.`;
+    
+    if (!confirm(confirmMessage)) {
       return;
     }
 
@@ -437,8 +444,15 @@ export function EquipmentTabs({ onEquipmentUpdate }: EquipmentTabsProps) {
         throw new Error(data.error || 'Failed to delete equipment');
       }
 
-      toast.success('Equipment deleted successfully!');
+      const successMessage = hasBatch
+        ? 'Equipment returned to batch successfully!'
+        : 'Equipment deleted successfully!';
+      toast.success(successMessage);
       fetchEquipment();
+      // Refresh batches list to update remaining counts
+      if (refreshBatchesRef.current && typeof refreshBatchesRef.current === 'function') {
+        refreshBatchesRef.current();
+      }
       if (onEquipmentUpdate) {
         onEquipmentUpdate();
       }
@@ -592,7 +606,7 @@ export function EquipmentTabs({ onEquipmentUpdate }: EquipmentTabsProps) {
         </TabsContent>
 
         <TabsContent value="batches" className="space-y-4">
-          <BatchTracking />
+          <BatchTracking onBatchesUpdate={(fn) => { refreshBatchesRef.current = fn; }} />
         </TabsContent>
       </Tabs>
       )}
@@ -622,6 +636,10 @@ export function EquipmentTabs({ onEquipmentUpdate }: EquipmentTabsProps) {
         equipment={selectedEquipment}
         onSuccess={() => {
           fetchEquipment();
+          // Refresh batches list to update remaining counts after attachment
+          if (refreshBatchesRef.current && typeof refreshBatchesRef.current === 'function') {
+            refreshBatchesRef.current();
+          }
           setSelectedEquipment(null);
           if (onEquipmentUpdate) {
             onEquipmentUpdate();
@@ -647,6 +665,10 @@ export function EquipmentTabs({ onEquipmentUpdate }: EquipmentTabsProps) {
         onOpenChange={setBatchFormOpen}
         onSuccess={() => {
           fetchEquipment();
+          // Refresh batches list in real-time
+          if (refreshBatchesRef.current && typeof refreshBatchesRef.current === 'function') {
+            refreshBatchesRef.current();
+          }
         }}
       />
     </div>

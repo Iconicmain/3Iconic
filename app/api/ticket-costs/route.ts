@@ -32,16 +32,30 @@ export async function GET(request: NextRequest) {
       categoryPrices[cat.name] = cat.price || 0;
     });
 
-    // Calculate costs
+    // Calculate costs by technicians
     let totalCost = 0;
     const ticketCosts = tickets.map((ticket: any) => {
       const categoryPrice = categoryPrices[ticket.category] || 0;
+      
+      // Get technicians (handle both array and single string for backward compatibility)
+      const technicians = ticket.technicians && Array.isArray(ticket.technicians) && ticket.technicians.length > 0
+        ? ticket.technicians
+        : (ticket.technician ? [ticket.technician] : []);
+      
+      // Calculate price per technician (split equally if multiple)
+      const technicianCount = technicians.length;
+      const pricePerTechnician = technicianCount > 0 ? categoryPrice / technicianCount : categoryPrice;
+      
       totalCost += categoryPrice;
+      
       return {
         _id: ticket._id?.toString() || ticket._id,
         ticketId: ticket.ticketId,
         category: ticket.category,
         price: categoryPrice,
+        technicians: technicians,
+        technicianCount: technicianCount,
+        pricePerTechnician: pricePerTechnician,
         createdAt: ticket.createdAt,
         clientName: ticket.clientName,
         paid: ticket.paid || false,
@@ -49,24 +63,51 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Group by category
-    const categoryBreakdown: { [key: string]: { count: number; total: number } } = {};
+    // Group by technician (calculate total earnings per technician)
+    const technicianBreakdown: { [key: string]: { count: number; total: number } } = {};
+    let bothCount = 0;
+    let bothTotal = 0;
+    
     ticketCosts.forEach((tc: any) => {
-      if (!categoryBreakdown[tc.category]) {
-        categoryBreakdown[tc.category] = { count: 0, total: 0 };
+      if (tc.technicians && tc.technicians.length > 0) {
+        // Track individual technicians
+        tc.technicians.forEach((tech: string) => {
+          if (!technicianBreakdown[tech]) {
+            technicianBreakdown[tech] = { count: 0, total: 0 };
+          }
+          technicianBreakdown[tech].count += 1;
+          technicianBreakdown[tech].total += tc.pricePerTechnician;
+        });
+        
+        // Track "Both" for tickets with multiple technicians
+        if (tc.technicians.length > 1) {
+          bothCount += 1;
+          bothTotal += tc.price; // Full ticket price for combined work
+        }
+      } else {
+        // If no technicians assigned, track as "Unassigned"
+        const unassignedKey = 'Unassigned';
+        if (!technicianBreakdown[unassignedKey]) {
+          technicianBreakdown[unassignedKey] = { count: 0, total: 0 };
+        }
+        technicianBreakdown[unassignedKey].count += 1;
+        technicianBreakdown[unassignedKey].total += tc.price;
       }
-      categoryBreakdown[tc.category].count += 1;
-      categoryBreakdown[tc.category].total += tc.price;
     });
+    
+    // Add "Both" entry if there are tickets with multiple technicians
+    if (bothCount > 0) {
+      technicianBreakdown['Both'] = { count: bothCount, total: bothTotal };
+    }
 
     return NextResponse.json({
       totalCost,
       ticketCount: tickets.length,
       ticketCosts,
-      categoryBreakdown: Object.entries(categoryBreakdown).map(([category, data]) => ({
-        category,
+      technicianBreakdown: Object.entries(technicianBreakdown).map(([technician, data]) => ({
+        technician,
         count: data.count,
-        total: data.total,
+        total: Math.round(data.total * 100) / 100, // Round to 2 decimal places
       })),
       lastClearedDate: tracking?.lastClearedDate || null,
     }, { status: 200 });
@@ -130,30 +171,70 @@ export async function POST(request: NextRequest) {
       categoryPrices[cat.name] = cat.price || 0;
     });
 
-    // Calculate payment details
+    // Calculate payment details by technicians
     let totalAmount = 0;
     const ticketDetails = ticketsToPay.map((ticket: any) => {
       const price = categoryPrices[ticket.category] || 0;
+      
+      // Get technicians (handle both array and single string for backward compatibility)
+      const technicians = ticket.technicians && Array.isArray(ticket.technicians) && ticket.technicians.length > 0
+        ? ticket.technicians
+        : (ticket.technician ? [ticket.technician] : []);
+      
+      // Calculate price per technician (split equally if multiple)
+      const technicianCount = technicians.length;
+      const pricePerTechnician = technicianCount > 0 ? price / technicianCount : price;
+      
       totalAmount += price;
       return {
         ticketId: ticket.ticketId,
         _id: ticket._id?.toString(),
         category: ticket.category,
         price: price,
+        technicians: technicians,
+        technicianCount: technicianCount,
+        pricePerTechnician: pricePerTechnician,
         clientName: ticket.clientName,
         station: ticket.station,
       };
     });
 
-    // Group by category for breakdown
-    const categoryBreakdown: { [key: string]: { count: number; total: number } } = {};
+    // Group by technician for breakdown (calculate total earnings per technician)
+    const technicianBreakdown: { [key: string]: { count: number; total: number } } = {};
+    let bothCount = 0;
+    let bothTotal = 0;
+    
     ticketDetails.forEach((td: any) => {
-      if (!categoryBreakdown[td.category]) {
-        categoryBreakdown[td.category] = { count: 0, total: 0 };
+      if (td.technicians && td.technicians.length > 0) {
+        // Track individual technicians
+        td.technicians.forEach((tech: string) => {
+          if (!technicianBreakdown[tech]) {
+            technicianBreakdown[tech] = { count: 0, total: 0 };
+          }
+          technicianBreakdown[tech].count += 1;
+          technicianBreakdown[tech].total += td.pricePerTechnician;
+        });
+        
+        // Track "Both" for tickets with multiple technicians
+        if (td.technicians.length > 1) {
+          bothCount += 1;
+          bothTotal += td.price; // Full ticket price for combined work
+        }
+      } else {
+        // If no technicians assigned, track as "Unassigned"
+        const unassignedKey = 'Unassigned';
+        if (!technicianBreakdown[unassignedKey]) {
+          technicianBreakdown[unassignedKey] = { count: 0, total: 0 };
+        }
+        technicianBreakdown[unassignedKey].count += 1;
+        technicianBreakdown[unassignedKey].total += td.price;
       }
-      categoryBreakdown[td.category].count += 1;
-      categoryBreakdown[td.category].total += td.price;
     });
+    
+    // Add "Both" entry if there are tickets with multiple technicians
+    if (bothCount > 0) {
+      technicianBreakdown['Both'] = { count: bothCount, total: bothTotal };
+    }
 
     const paymentDate = new Date();
 
@@ -163,10 +244,10 @@ export async function POST(request: NextRequest) {
       totalAmount: totalAmount,
       ticketCount: ticketsToPay.length,
       tickets: ticketDetails,
-      categoryBreakdown: Object.entries(categoryBreakdown).map(([category, data]) => ({
-        category,
+      technicianBreakdown: Object.entries(technicianBreakdown).map(([technician, data]) => ({
+        technician,
         count: data.count,
-        total: data.total,
+        total: Math.round(data.total * 100) / 100, // Round to 2 decimal places
       })),
       clearedBy: user.email,
       clearedByName: user.name || user.email,

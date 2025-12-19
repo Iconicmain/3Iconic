@@ -44,7 +44,8 @@ export async function PATCH(
     const {
       status,
       category,
-      technician,
+      technician, // For backward compatibility
+      technicians, // New field for multiple technicians
       resolvedAt,
       resolutionNotes,
     } = body;
@@ -84,6 +85,7 @@ export async function PATCH(
     // Get current ticket to check if technician is being assigned and category is being changed
     const currentTicket = await ticketsCollection.findOne({ _id: new ObjectId(id) });
     const previousTechnician = currentTicket?.technician;
+    const previousTechnicians = currentTicket?.technicians || (currentTicket?.technician ? [currentTicket.technician] : []);
     const previousCategory = currentTicket?.category || '';
     let newCategory: string | undefined = undefined;
 
@@ -105,8 +107,26 @@ export async function PATCH(
         console.log(`[Ticket Update] Category update skipped - empty or null value provided`);
       }
     }
-    if (technician !== undefined) {
+    // Handle technicians array (preferred) or technician string (backward compatibility)
+    if (technicians !== undefined) {
+      // If technicians array is provided, use it
+      if (Array.isArray(technicians)) {
+        updateData.technicians = technicians.length > 0 ? technicians : [];
+        // Also set technician to first one for backward compatibility (if array has items)
+        if (technicians.length > 0) {
+          updateData.technician = technicians[0];
+        } else {
+          updateData.technician = undefined;
+        }
+      } else {
+        // If technicians is not an array, clear it
+        updateData.technicians = [];
+        updateData.technician = undefined;
+      }
+    } else if (technician !== undefined) {
+      // Backward compatibility: if only technician (string) is provided
       updateData.technician = technician;
+      updateData.technicians = technician ? [technician] : [];
     }
     if (resolvedAt !== undefined) {
       updateData.resolvedAt = resolvedAt ? new Date(resolvedAt) : null;
@@ -141,7 +161,9 @@ export async function PATCH(
       category: updatedTicket?.category,
       previousCategory,
       technician: updatedTicket?.technician,
+      technicians: updatedTicket?.technicians,
       previousTechnician,
+      previousTechnicians,
       clientName: updatedTicket?.clientName,
       clientNumber: updatedTicket?.clientNumber,
     });
@@ -173,32 +195,36 @@ export async function PATCH(
       console.log(`[Category Change] No category change detected. Previous: "${previousCategoryTrimmed}", New: "${newCategoryTrimmed}", category defined: ${category !== undefined}`);
     }
 
-    // Send SMS to technician if ticket was assigned to a new technician
-    if (technician && technician !== previousTechnician && updatedTicket) {
-      // Try to get technician phone number from technicians collection
-      const technicianDoc = await techniciansCollection.findOne({ name: technician });
-      const technicianPhone = technicianDoc?.phone || technicianDoc?.phoneNumber;
-      
-      // Get base URL for ticket link
+    // Send SMS to technicians if ticket was assigned to new technicians
+    const newTechnicians = updatedTicket?.technicians || (updatedTicket?.technician ? [updatedTicket.technician] : []);
+    const addedTechnicians = newTechnicians.filter((tech: string) => !previousTechnicians.includes(tech));
+    
+    if (addedTechnicians.length > 0 && updatedTicket) {
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
                       (request.headers.get('origin') || 'http://localhost:3000');
 
-      if (technicianPhone) {
-        console.log(`[Technician Assignment] ✅ Sending SMS to technician ${technician} at ${technicianPhone}`);
-        sendTechnicianAssignmentSMS(
-          technicianPhone,
-          updatedTicket.ticketId,
-          updatedTicket.category,
-          updatedTicket.clientName,
-          updatedTicket.station,
-          updatedTicket.clientNumber,
-          updatedTicket.problemDescription || '',
-          baseUrl
-        ).catch((error) => {
-          console.error('[Ticket API] Failed to send assignment SMS to technician:', error);
-        });
-      } else {
-        console.log(`[Technician Assignment] ⚠️ No phone number found for technician ${technician}, SMS not sent`);
+      // Send SMS to each newly assigned technician
+      for (const technicianName of addedTechnicians) {
+        const technicianDoc = await techniciansCollection.findOne({ name: technicianName });
+        const technicianPhone = technicianDoc?.phone || technicianDoc?.phoneNumber;
+
+        if (technicianPhone) {
+          console.log(`[Technician Assignment] ✅ Sending SMS to technician ${technicianName} at ${technicianPhone}`);
+          sendTechnicianAssignmentSMS(
+            technicianPhone,
+            updatedTicket.ticketId,
+            updatedTicket.category,
+            updatedTicket.clientName,
+            updatedTicket.station,
+            updatedTicket.clientNumber,
+            updatedTicket.problemDescription || '',
+            baseUrl
+          ).catch((error) => {
+            console.error(`[Ticket API] Failed to send assignment SMS to technician ${technicianName}:`, error);
+          });
+        } else {
+          console.log(`[Technician Assignment] ⚠️ No phone number found for technician ${technicianName}, SMS not sent`);
+        }
       }
     }
 

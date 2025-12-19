@@ -103,8 +103,18 @@ export function Dashboard() {
       // Calculate equipment available vs installed (full year, monthly breakdown)
       const equipmentAvailableVsInstalledData = calculateEquipmentAvailableVsInstalled(equipment);
       
-      // Recent tickets (last 5)
-      const recentTicketsData = tickets
+      // Recent tickets (last 5) - remove duplicates first
+      const seenIds = new Set<string>();
+      const uniqueTickets = tickets.filter((ticket: any) => {
+        const ticketId = ticket.ticketId || ticket.id;
+        if (seenIds.has(ticketId)) {
+          return false;
+        }
+        seenIds.add(ticketId);
+        return true;
+      });
+      
+      const recentTicketsData = uniqueTickets
         .sort((a: any, b: any) => {
           const dateA = new Date(a.dateTimeReported || a.createdAt).getTime();
           const dateB = new Date(b.dateTimeReported || b.createdAt).getTime();
@@ -389,9 +399,9 @@ export function Dashboard() {
                   {data.recentTickets.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-4">No recent tickets</p>
                   ) : (
-                    data.recentTickets.map((ticket) => (
+                    data.recentTickets.map((ticket, index) => (
                     <div
-                      key={ticket.id}
+                      key={`${ticket.id}-${index}`}
                       className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 p-2 sm:p-3 rounded-lg bg-muted/50"
                     >
                       <div className="flex-1 min-w-0">

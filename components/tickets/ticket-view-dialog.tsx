@@ -25,7 +25,8 @@ interface Ticket {
   status: 'open' | 'in-progress' | 'closed' | 'pending';
   dateTimeReported: string;
   problemDescription?: string;
-  technician?: string;
+  technician?: string; // For backward compatibility
+  technicians?: string[]; // New field for multiple technicians
   createdAt?: string;
   resolvedAt?: string;
   resolutionNotes?: string;
@@ -132,8 +133,14 @@ export function TicketViewDialog({ open, onOpenChange, ticket, onEdit, onDelete,
                 <p className="text-sm sm:text-base">{ticket.category}</p>
               </div>
               <div>
-                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Assigned Technician</p>
-                <p className="text-sm sm:text-base break-words">{ticket.technician || 'Unassigned'}</p>
+                <p className="text-xs sm:text-sm font-medium text-muted-foreground">
+                  Assigned Technician{ticket.technicians && ticket.technicians.length > 1 ? 's' : ''}
+                </p>
+                <p className="text-sm sm:text-base break-words">
+                  {ticket.technicians && Array.isArray(ticket.technicians) && ticket.technicians.length > 0
+                    ? ticket.technicians.join(', ')
+                    : ticket.technician || 'Unassigned'}
+                </p>
               </div>
             </div>
           </div>

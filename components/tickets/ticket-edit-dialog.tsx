@@ -20,7 +20,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Loader2, Clock } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Loader2, Clock, ChevronDown, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Ticket {
@@ -31,7 +33,8 @@ interface Ticket {
   category: string;
   status: 'open' | 'in-progress' | 'closed' | 'pending';
   dateTimeReported: string;
-  technician?: string;
+  technician?: string; // For backward compatibility
+  technicians?: string[]; // New field for multiple technicians
   createdAt?: string;
   resolvedAt?: string;
   resolutionNotes?: string;
@@ -87,17 +90,27 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
   const [formData, setFormData] = useState({
     status: 'open' as Ticket['status'],
     category: '',
-    technician: '',
+    technicians: [] as string[],
     resolvedAt: '',
     resolutionNotes: '',
   });
+  const [technicianPopoverOpen, setTechnicianPopoverOpen] = useState(false);
 
   useEffect(() => {
     if (ticket) {
+      // Handle backward compatibility: if ticket has technician (string), convert to technicians (array)
+      let techniciansArray: string[] = [];
+      if (ticket.technicians && Array.isArray(ticket.technicians)) {
+        techniciansArray = ticket.technicians;
+      } else if (ticket.technician) {
+        // Convert old single technician to array for backward compatibility
+        techniciansArray = [ticket.technician];
+      }
+      
       setFormData({
         status: ticket.status || 'open',
         category: ticket.category || '',
-        technician: ticket.technician || '',
+        technicians: techniciansArray,
         resolvedAt: ticket.resolvedAt 
           ? new Date(ticket.resolvedAt).toISOString().slice(0, 16)
           : '',
@@ -123,8 +136,13 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
       if (formData.category && formData.category !== (ticket.category || '')) {
         updatePayload.category = formData.category;
       }
-      if (formData.technician !== (ticket.technician || '')) {
-        updatePayload.technician = formData.technician || undefined;
+      // Compare technicians array with existing ticket technicians
+      const existingTechnicians = ticket.technicians && Array.isArray(ticket.technicians) 
+        ? ticket.technicians 
+        : (ticket.technician ? [ticket.technician] : []);
+      const techniciansChanged = JSON.stringify(formData.technicians.sort()) !== JSON.stringify(existingTechnicians.sort());
+      if (techniciansChanged) {
+        updatePayload.technicians = formData.technicians.length > 0 ? formData.technicians : undefined;
       }
       // Compare resolvedAt dates more carefully
       const currentResolvedAt = ticket.resolvedAt 
@@ -182,6 +200,24 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleTechnicianToggle = (technicianName: string) => {
+    setFormData((prev) => {
+      const currentTechnicians = prev.technicians || [];
+      const isSelected = currentTechnicians.includes(technicianName);
+      const newTechnicians = isSelected
+        ? currentTechnicians.filter((t) => t !== technicianName)
+        : [...currentTechnicians, technicianName];
+      return { ...prev, technicians: newTechnicians };
+    });
+  };
+
+  const handleRemoveTechnician = (technicianName: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      technicians: (prev.technicians || []).filter((t) => t !== technicianName),
+    }));
+  };
+
   if (!ticket) return null;
 
   return (
@@ -237,27 +273,84 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-            {/* Technician */}
-            <div className="space-y-2">
-              <Label htmlFor="technician" className="text-sm">Technician</Label>
-              <Select
-                value={formData.technician || 'unassigned'}
-                onValueChange={(value) => handleChange('technician', value === 'unassigned' ? '' : value)}
-              >
-                <SelectTrigger id="technician" className="text-sm">
-                  <SelectValue placeholder="Select Technician" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {technicians.map((tech) => (
-                    <SelectItem key={tech} value={tech}>
-                      {tech}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Technicians - Multi-select */}
+          <div className="space-y-2">
+            <Label className="text-sm">Technicians</Label>
+            <Popover open={technicianPopoverOpen} onOpenChange={setTechnicianPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-between text-sm"
+                  role="combobox"
+                >
+                  <span className="truncate">
+                    {formData.technicians.length === 0
+                      ? 'Select technicians...'
+                      : formData.technicians.length === 1
+                      ? formData.technicians[0]
+                      : `${formData.technicians.length} technicians selected`}
+                  </span>
+                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-full p-0" align="start">
+                <div className="max-h-[300px] overflow-y-auto p-2">
+                  {technicians.length === 0 ? (
+                    <div className="py-6 text-center text-sm text-muted-foreground">
+                      No technicians available
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {technicians.map((tech) => {
+                        const isSelected = formData.technicians.includes(tech);
+                        return (
+                          <div
+                            key={tech}
+                            className="flex items-center space-x-2 p-2 rounded-md hover:bg-accent cursor-pointer"
+                            onClick={() => handleTechnicianToggle(tech)}
+                          >
+                            <Checkbox
+                              id={`tech-${tech}`}
+                              checked={isSelected}
+                              onCheckedChange={() => handleTechnicianToggle(tech)}
+                            />
+                            <label
+                              htmlFor={`tech-${tech}`}
+                              className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                            >
+                              {tech}
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+            {formData.technicians.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {formData.technicians.map((tech) => (
+                  <div
+                    key={tech}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300 text-xs"
+                  >
+                    <span>{tech}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveTechnician(tech)}
+                      className="ml-1 hover:bg-emerald-200 dark:hover:bg-emerald-800 rounded-full p-0.5"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Select one or more technicians who worked on this ticket
+            </p>
           </div>
 
           {/* Resolved Date */}

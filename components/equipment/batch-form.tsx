@@ -34,6 +34,7 @@ interface EquipmentItem {
   name: string;
   model: string;
   serialNumbers: string[];
+  serialNumberTypes?: Array<'serial' | 'mac'>;
   cost: number;
 }
 
@@ -42,7 +43,7 @@ export function BatchForm({ open, onOpenChange, onSuccess }: BatchFormProps) {
   const [fetchingTemplates, setFetchingTemplates] = useState(false);
   const [templates, setTemplates] = useState<Array<{ _id: string; name: string; model: string }>>([]);
   const [equipmentItems, setEquipmentItems] = useState<EquipmentItem[]>([
-    { name: '', model: '', serialNumbers: [''], cost: 0 }
+    { name: '', model: '', serialNumbers: [''], serialNumberTypes: ['serial'], cost: 0 }
   ]);
   const [batchFormData, setBatchFormData] = useState({
     batchName: '',
@@ -52,12 +53,35 @@ export function BatchForm({ open, onOpenChange, onSuccess }: BatchFormProps) {
     supplier: '',
   });
 
-  // Validate serial number format (SN- followed by numbers, or just numbers)
+  // Format MAC address (add colons automatically)
+  const formatMacAddress = (value: string): string => {
+    // Remove all non-hexadecimal characters
+    const cleaned = value.replace(/[^0-9A-Fa-f]/g, '');
+    
+    // Limit to 12 characters (6 pairs)
+    const limited = cleaned.slice(0, 12);
+    
+    // Add colons every 2 characters
+    return limited.split('').reduce((acc, char, index) => {
+      if (index > 0 && index % 2 === 0) {
+        return acc + ':' + char;
+      }
+      return acc + char;
+    }, '');
+  };
+
+  // Validate serial number or MAC address format
   const validateSerialNumber = (serialNumber: string): boolean => {
     if (!serialNumber.trim()) return false;
-    // Allow formats: SN-12345, SN-123, or just numbers like 12345, 123
-    const pattern = /^(SN-\d+|\d+)$/;
-    return pattern.test(serialNumber.trim());
+    const trimmed = serialNumber.trim();
+    
+    // Check if it's a MAC address format (XX:XX:XX:XX:XX:XX)
+    const macPattern = /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/;
+    if (macPattern.test(trimmed)) return true;
+    
+    // Check if it's a serial number format (SN- followed by numbers, or just numbers)
+    const serialPattern = /^(SN-\d+|\d+)$/;
+    return serialPattern.test(trimmed);
   };
 
   useEffect(() => {
@@ -71,7 +95,7 @@ export function BatchForm({ open, onOpenChange, onSuccess }: BatchFormProps) {
         purchaseCost: '',
         supplier: '',
       });
-      setEquipmentItems([{ name: '', model: '', serialNumbers: [''], cost: 0 }]);
+      setEquipmentItems([{ name: '', model: '', serialNumbers: [''], serialNumberTypes: ['serial'], cost: 0 }]);
       fetchTemplates();
     }
   }, [open]);
@@ -92,7 +116,7 @@ export function BatchForm({ open, onOpenChange, onSuccess }: BatchFormProps) {
   };
 
   const addEquipmentItem = () => {
-    setEquipmentItems([...equipmentItems, { name: '', model: '', serialNumbers: [''], cost: 0 }]);
+    setEquipmentItems([...equipmentItems, { name: '', model: '', serialNumbers: [''], serialNumberTypes: ['serial'], cost: 0 }]);
   };
 
   const removeEquipmentItem = (index: number) => {
@@ -110,6 +134,10 @@ export function BatchForm({ open, onOpenChange, onSuccess }: BatchFormProps) {
   const addSerialNumber = (itemIndex: number) => {
     const updated = [...equipmentItems];
     updated[itemIndex].serialNumbers.push('');
+    if (!updated[itemIndex].serialNumberTypes) {
+      updated[itemIndex].serialNumberTypes = ['serial'];
+    }
+    updated[itemIndex].serialNumberTypes!.push('serial');
     setEquipmentItems(updated);
   };
 
@@ -117,22 +145,50 @@ export function BatchForm({ open, onOpenChange, onSuccess }: BatchFormProps) {
     const updated = [...equipmentItems];
     if (updated[itemIndex].serialNumbers.length > 1) {
       updated[itemIndex].serialNumbers = updated[itemIndex].serialNumbers.filter((_, i) => i !== serialIndex);
+      if (updated[itemIndex].serialNumberTypes) {
+        updated[itemIndex].serialNumberTypes = updated[itemIndex].serialNumberTypes.filter((_, i) => i !== serialIndex);
+      }
       setEquipmentItems(updated);
     }
   };
 
   const updateSerialNumber = (itemIndex: number, serialIndex: number, value: string) => {
     const updated = [...equipmentItems];
-    updated[itemIndex].serialNumbers[serialIndex] = value;
+    const inputType = updated[itemIndex].serialNumberTypes?.[serialIndex] || 'serial';
+    
+    // Apply formatting based on selected input type
+    let formattedValue = value;
+    if (inputType === 'mac') {
+      formattedValue = formatMacAddress(value);
+    }
+    
+    updated[itemIndex].serialNumbers[serialIndex] = formattedValue;
+    setEquipmentItems(updated);
+  };
+
+  const updateSerialNumberType = (itemIndex: number, serialIndex: number, type: 'serial' | 'mac') => {
+    const updated = [...equipmentItems];
+    if (!updated[itemIndex].serialNumberTypes) {
+      updated[itemIndex].serialNumberTypes = new Array(updated[itemIndex].serialNumbers.length).fill('serial');
+    }
+    updated[itemIndex].serialNumberTypes![serialIndex] = type;
+    // Clear the field when switching types
+    updated[itemIndex].serialNumbers[serialIndex] = '';
     setEquipmentItems(updated);
   };
 
   const handleTemplateSelect = (itemIndex: number, templateId: string) => {
     const template = templates.find(t => t._id === templateId);
     if (template) {
-      updateEquipmentItem(itemIndex, 'name', template.name);
-      updateEquipmentItem(itemIndex, 'model', template.model);
-      updateEquipmentItem(itemIndex, 'templateId', templateId);
+      // Auto-fill equipment name and model from template in a single update
+      const updated = [...equipmentItems];
+      updated[itemIndex] = {
+        ...updated[itemIndex],
+        name: template.name,
+        model: template.model,
+        templateId: templateId,
+      };
+      setEquipmentItems(updated);
     }
   };
 
@@ -175,8 +231,8 @@ export function BatchForm({ open, onOpenChange, onSuccess }: BatchFormProps) {
 
         if (invalidSerialNumbers.length > 0) {
           throw new Error(
-            `Equipment item ${i + 1}: Invalid serial number format: ${invalidSerialNumbers.join(', ')}. ` +
-            `Format should be "SN-12345" or just numbers like "12345". Example: SN-88441`
+            `Equipment item ${i + 1}: Invalid serial number/MAC address format: ${invalidSerialNumbers.join(', ')}. ` +
+            `Format should be "SN-12345", "12345", or MAC address "AA:BB:CC:DD:EE:FF" (colons added automatically)`
           );
         }
 
@@ -412,7 +468,7 @@ export function BatchForm({ open, onOpenChange, onSuccess }: BatchFormProps) {
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>Serial Numbers *</Label>
+                      <Label>Serial Numbers / MAC Addresses *</Label>
                       <Button
                         type="button"
                         variant="outline"
@@ -425,29 +481,48 @@ export function BatchForm({ open, onOpenChange, onSuccess }: BatchFormProps) {
                       </Button>
                     </div>
                     <div className="space-y-2">
-                      {item.serialNumbers.map((serialNumber, serialIndex) => (
-                        <div key={serialIndex} className="flex gap-2">
-                          <Input
-                            value={serialNumber}
-                            onChange={(e) => updateSerialNumber(itemIndex, serialIndex, e.target.value)}
-                            placeholder="Format: SN-88441 or 88441"
-                            className="flex-1"
-                          />
-                          {item.serialNumbers.length > 1 && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              onClick={() => removeSerialNumber(itemIndex, serialIndex)}
+                      {item.serialNumbers.map((serialNumber, serialIndex) => {
+                        const inputType = item.serialNumberTypes?.[serialIndex] || 'serial';
+                        return (
+                          <div key={serialIndex} className="flex gap-2">
+                            <Select
+                              value={inputType}
+                              onValueChange={(value: 'serial' | 'mac') => updateSerialNumberType(itemIndex, serialIndex, value)}
                             >
-                              <X className="w-4 h-4" />
-                            </Button>
-                          )}
-                        </div>
-                      ))}
+                              <SelectTrigger className="w-32 sm:w-36">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="serial">Serial #</SelectItem>
+                                <SelectItem value="mac">MAC Address</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              value={serialNumber}
+                              onChange={(e) => updateSerialNumber(itemIndex, serialIndex, e.target.value)}
+                              placeholder={
+                                inputType === 'mac' 
+                                  ? "AA:BB:CC:DD:EE:FF (colons added automatically)"
+                                  : "SN-88441 or 88441"
+                              }
+                              className="flex-1"
+                            />
+                            {item.serialNumbers.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                onClick={() => removeSerialNumber(itemIndex, serialIndex)}
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Format: SN-88441 or 88441
+                      Select input type for each field. Serial: SN-88441 or 88441. MAC: AA:BB:CC:DD:EE:FF (colons added automatically)
                     </p>
                   </div>
                 </div>

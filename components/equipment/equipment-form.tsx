@@ -59,13 +59,37 @@ export function EquipmentForm({ open, onOpenChange, equipment, onSuccess }: Equi
   const [fetchingTemplates, setFetchingTemplates] = useState(false);
   const [serialNumberFields, setSerialNumberFields] = useState<string[]>(['']);
   const [serialNumberErrors, setSerialNumberErrors] = useState<boolean[]>([false]);
+  const [inputTypes, setInputTypes] = useState<Array<'serial' | 'mac'>>(['serial']);
 
-  // Validate serial number format (SN- followed by numbers, or just numbers)
+  // Format MAC address (add colons automatically)
+  const formatMacAddress = (value: string): string => {
+    // Remove all non-hexadecimal characters
+    const cleaned = value.replace(/[^0-9A-Fa-f]/g, '');
+    
+    // Limit to 12 characters (6 pairs)
+    const limited = cleaned.slice(0, 12);
+    
+    // Add colons every 2 characters
+    return limited.split('').reduce((acc, char, index) => {
+      if (index > 0 && index % 2 === 0) {
+        return acc + ':' + char;
+      }
+      return acc + char;
+    }, '');
+  };
+
+  // Validate serial number or MAC address format
   const validateSerialNumber = (serialNumber: string): boolean => {
     if (!serialNumber.trim()) return false;
-    // Allow formats: SN-12345, SN-123, or just numbers like 12345, 123
-    const pattern = /^(SN-\d+|\d+)$/;
-    return pattern.test(serialNumber.trim());
+    const trimmed = serialNumber.trim();
+    
+    // Check if it's a MAC address format (XX:XX:XX:XX:XX:XX)
+    const macPattern = /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/;
+    if (macPattern.test(trimmed)) return true;
+    
+    // Check if it's a serial number format (SN- followed by numbers, or just numbers)
+    const serialPattern = /^(SN-\d+|\d+)$/;
+    return serialPattern.test(trimmed);
   };
   const [formData, setFormData] = useState({
     name: '',
@@ -103,6 +127,7 @@ export function EquipmentForm({ open, onOpenChange, equipment, onSuccess }: Equi
       });
       setSerialNumberFields(['']);
       setSerialNumberErrors([false]);
+      setInputTypes(['serial']);
     } else {
       // Set bought date to today when creating new equipment
       const today = new Date().toISOString().split('T')[0];
@@ -124,6 +149,7 @@ export function EquipmentForm({ open, onOpenChange, equipment, onSuccess }: Equi
       });
       setSerialNumberFields(['']);
       setSerialNumberErrors([false]);
+      setInputTypes(['serial']);
     }
   }, [equipment, open]);
 
@@ -243,7 +269,8 @@ export function EquipmentForm({ open, onOpenChange, equipment, onSuccess }: Equi
 
       if (invalidSerialNumbers.length > 0) {
         throw new Error(
-          `Invalid serial number format: ${invalidSerialNumbers.join(', ')}. ` +
+          `Invalid serial number/MAC address format: ${invalidSerialNumbers.join(', ')}. ` +
+          `Format should be "SN-12345", "12345", or MAC address "AA:BB:CC:DD:EE:FF" (colons added automatically). ` +
           `Format should be "SN-12345" or just numbers like "12345". Example: SN-88441`
         );
       }
@@ -333,6 +360,7 @@ export function EquipmentForm({ open, onOpenChange, equipment, onSuccess }: Equi
       });
       setSerialNumberFields(['']);
       setSerialNumberErrors([false]);
+      setInputTypes(['serial']);
       onOpenChange(false);
       if (onSuccess) {
         onSuccess();
@@ -377,8 +405,12 @@ export function EquipmentForm({ open, onOpenChange, equipment, onSuccess }: Equi
                   onValueChange={(value) => {
                     const selectedTemplate = templates.find(t => t._id === value);
                     if (selectedTemplate) {
-                      handleChange('name', selectedTemplate.name);
-                      handleChange('model', selectedTemplate.model);
+                      // Auto-fill equipment name and model from template
+                      setFormData((prev) => ({
+                        ...prev,
+                        name: selectedTemplate.name,
+                        model: selectedTemplate.model,
+                      }));
                     }
                   }}
                   disabled={fetchingTemplates}
@@ -431,10 +463,10 @@ export function EquipmentForm({ open, onOpenChange, equipment, onSuccess }: Equi
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div className="space-y-1 min-w-0 flex-1">
                   <Label className="text-xs sm:text-sm font-medium">
-                    Serial Number(s) <span className="text-red-500">*</span>
+                    Serial Number(s) / MAC Address(es) <span className="text-red-500">*</span>
                   </Label>
                   <p className="text-[10px] sm:text-xs text-muted-foreground">
-                    Format: <span className="font-mono text-blue-600">SN-88441</span> or <span className="font-mono text-blue-600">88441</span>
+                    Select input type for each field
                   </p>
                 </div>
                 {!equipment && (
@@ -445,6 +477,7 @@ export function EquipmentForm({ open, onOpenChange, equipment, onSuccess }: Equi
                     onClick={() => {
                       setSerialNumberFields([...serialNumberFields, '']);
                       setSerialNumberErrors([...serialNumberErrors, false]);
+                      setInputTypes([...inputTypes, 'serial']);
                     }}
                     className="h-8 gap-1 text-xs shrink-0"
                   >
@@ -456,30 +489,68 @@ export function EquipmentForm({ open, onOpenChange, equipment, onSuccess }: Equi
               </div>
               <div className="space-y-2">
                 {serialNumberFields.map((serialNumber, index) => {
+                  const inputType = inputTypes[index] || 'serial';
                   const hasError = serialNumber.trim().length > 0 && !validateSerialNumber(serialNumber);
                   return (
                     <div key={index} className="space-y-1">
                       <div className="flex gap-2">
+                        <Select
+                          value={inputType}
+                          onValueChange={(value: 'serial' | 'mac') => {
+                            const newTypes = [...inputTypes];
+                            newTypes[index] = value;
+                            setInputTypes(newTypes);
+                            // Clear the field when switching types
+                            const newFields = [...serialNumberFields];
+                            newFields[index] = '';
+                            setSerialNumberFields(newFields);
+                            if (index === 0) {
+                              handleChange('serialNumber', '');
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="w-32 sm:w-36 h-10 sm:h-11 text-xs sm:text-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="serial">Serial #</SelectItem>
+                            <SelectItem value="mac">MAC Address</SelectItem>
+                          </SelectContent>
+                        </Select>
                         <Input
                           value={serialNumber}
                           onChange={(e) => {
+                            let value = e.target.value;
+                            
+                            // Apply formatting based on selected input type
+                            if (inputType === 'mac') {
+                              // Format MAC address (auto-add colons)
+                              value = formatMacAddress(value);
+                            }
+                            
                             const newFields = [...serialNumberFields];
-                            newFields[index] = e.target.value;
+                            newFields[index] = value;
                             setSerialNumberFields(newFields);
                             
                             // Update error state
                             const newErrors = [...serialNumberErrors];
-                            newErrors[index] = e.target.value.trim().length > 0 && !validateSerialNumber(e.target.value);
+                            newErrors[index] = value.trim().length > 0 && !validateSerialNumber(value);
                             setSerialNumberErrors(newErrors);
                             
                             // Also update formData for the first field (for backward compatibility)
                             if (index === 0) {
-                              handleChange('serialNumber', e.target.value);
+                              handleChange('serialNumber', value);
                             }
                           }}
-                          placeholder={index === 0 ? "e.g., SN-88441 or 88441" : `Serial Number ${index + 1} (e.g., SN-88442)`}
+                          placeholder={
+                            inputType === 'mac' 
+                              ? "e.g., AA:BB:CC:DD:EE:FF (colons added automatically)"
+                              : index === 0 
+                                ? "e.g., SN-88441 or 88441"
+                                : `Serial Number ${index + 1} (e.g., SN-88442)`
+                          }
                           required={index === 0}
-                          className={`h-10 sm:h-11 text-sm ${hasError ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                          className={`h-10 sm:h-11 text-sm flex-1 ${hasError ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                         />
                         {serialNumberFields.length > 1 && !equipment && (
                           <Button
@@ -489,8 +560,10 @@ export function EquipmentForm({ open, onOpenChange, equipment, onSuccess }: Equi
                             onClick={() => {
                               const newFields = serialNumberFields.filter((_, i) => i !== index);
                               const newErrors = serialNumberErrors.filter((_, i) => i !== index);
+                              const newTypes = inputTypes.filter((_, i) => i !== index);
                               setSerialNumberFields(newFields);
                               setSerialNumberErrors(newErrors);
+                              setInputTypes(newTypes);
                             }}
                             className="h-10 sm:h-11 w-10 sm:w-11 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 shrink-0"
                           >
@@ -501,7 +574,9 @@ export function EquipmentForm({ open, onOpenChange, equipment, onSuccess }: Equi
                       {hasError && (
                         <p className="text-[10px] sm:text-xs text-red-600 flex items-center gap-1">
                           <span>⚠</span>
-                          Invalid format. Use "SN-12345" or "12345". Example: SN-88441
+                          {inputType === 'mac' 
+                            ? 'Invalid MAC address format. Use "AA:BB:CC:DD:EE:FF" format (colons added automatically)'
+                            : 'Invalid format. Use "SN-12345" or "12345". Example: SN-88441'}
                         </p>
                       )}
                     </div>

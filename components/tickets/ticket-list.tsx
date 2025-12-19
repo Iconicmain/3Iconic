@@ -30,7 +30,8 @@ interface Ticket {
   status: 'open' | 'in-progress' | 'closed' | 'pending';
   dateTimeReported: string;
   problemDescription?: string;
-  technician?: string;
+  technician?: string; // For backward compatibility
+  technicians?: string[]; // New field for multiple technicians
   createdAt?: string;
   resolvedAt?: string;
   resolutionNotes?: string;
@@ -41,6 +42,17 @@ const statusColors = {
   'in-progress': 'bg-yellow-100 text-yellow-800',
   closed: 'bg-green-100 text-green-800',
   pending: 'bg-blue-100 text-blue-800',
+};
+
+// Helper function to get technicians display text
+const getTechniciansDisplay = (ticket: Ticket): string => {
+  if (ticket.technicians && Array.isArray(ticket.technicians) && ticket.technicians.length > 0) {
+    return ticket.technicians.join(', ');
+  }
+  if (ticket.technician) {
+    return ticket.technician;
+  }
+  return 'Unassigned';
 };
 
 interface TicketListProps {
@@ -462,8 +474,8 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
                       <p className="text-foreground font-medium truncate">{ticket.category}</p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground text-[10px]">Technician</p>
-                      <p className="text-foreground font-medium truncate">{ticket.technician || 'Unassigned'}</p>
+                      <p className="text-muted-foreground text-[10px]">Technician{ticket.technicians && ticket.technicians.length > 1 ? 's' : ''}</p>
+                      <p className="text-foreground font-medium truncate">{getTechniciansDisplay(ticket)}</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground text-[10px]">Created</p>
@@ -564,7 +576,7 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
                         {ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)}
                       </span>
                     </td>
-                    <td className="px-3 lg:px-6 py-3 text-xs lg:text-sm text-foreground hidden xl:table-cell truncate max-w-[100px]">{ticket.technician || 'Unassigned'}</td>
+                    <td className="px-3 lg:px-6 py-3 text-xs lg:text-sm text-foreground hidden xl:table-cell truncate max-w-[100px]" title={getTechniciansDisplay(ticket)}>{getTechniciansDisplay(ticket)}</td>
                     <td className="px-3 lg:px-6 py-3 text-xs lg:text-sm text-muted-foreground whitespace-nowrap">
                       {ticket.createdAt ? formatDate(ticket.createdAt) : formatDate(ticket.dateTimeReported)}
                     </td>

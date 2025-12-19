@@ -198,21 +198,68 @@ export async function DELETE(
     const db = mongoClient.db('tixmgmt');
     const equipmentCollection = db.collection('equipment');
 
-    const result = await equipmentCollection.deleteOne({
+    // Check if equipment exists first
+    const existingEquipment = await equipmentCollection.findOne({
       _id: new ObjectId(id),
     });
 
-    if (result.deletedCount === 0) {
+    if (!existingEquipment) {
       return NextResponse.json(
         { error: 'Equipment not found' },
         { status: 404 }
       );
     }
 
-    return NextResponse.json(
-      { success: true, message: 'Equipment deleted successfully' },
-      { status: 200 }
-    );
+    // If equipment has a batchId, return it to batch (soft delete/return to stock)
+    // Otherwise, permanently delete it
+    if (existingEquipment.batchId) {
+      // Return equipment to batch: Set status to 'available', clear client info, but keep batchId
+      const updateData = {
+        status: 'available',
+        client: null,
+        clientName: null,
+        clientNumber: null,
+        station: null,
+        installDate: null,
+        installationType: 'new-installation',
+        replacedEquipmentId: null,
+        updatedAt: new Date(),
+      };
+
+      const result = await equipmentCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updateData }
+      );
+
+      if (result.matchedCount === 0) {
+        return NextResponse.json(
+          { error: 'Equipment not found' },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json(
+        { success: true, message: 'Equipment returned to batch successfully' },
+        { status: 200 }
+      );
+    } else {
+      // Equipment has no batchId, permanently delete it
+      const result = await equipmentCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
+
+      if (result.deletedCount === 0) {
+        return NextResponse.json(
+          { error: 'Equipment not found' },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json(
+        { success: true, message: 'Equipment deleted successfully' },
+        { status: 200 }
+      );
+    }
   } catch (error) {
     console.error('Error deleting equipment:', error);
     return NextResponse.json(
