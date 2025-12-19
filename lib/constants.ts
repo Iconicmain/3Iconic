@@ -7,6 +7,7 @@ export const AVAILABLE_PAGES = [
   { id: 'expenses', name: 'Expenses', path: '/admin/expenses' },
   { id: 'stations', name: 'Stations', path: '/admin/stations' },
   { id: 'equipment', name: 'Equipment', path: '/admin/equipment' },
+  { id: 'internet-connections', name: 'Internet Connections', path: '/admin/internet-connections' },
   { id: 'users', name: 'User Management', path: '/admin/users' },
   { id: 'settings', name: 'Settings', path: '/admin/settings' },
 ] as const;

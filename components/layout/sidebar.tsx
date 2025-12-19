@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Ticket, DollarSign, Warehouse, Package, Settings, Menu, X, ChevronRight, Users, Calculator } from 'lucide-react';
+import { LayoutDashboard, Ticket, DollarSign, Warehouse, Package, Settings, Menu, X, ChevronRight, Users, Calculator, Wifi } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -43,6 +43,14 @@ const navigation = [
     icon: Package,
     description: 'Equipment inventory',
     pageId: 'equipment'
+  },
+  {
+    name: 'Internet Connections',
+    href: '/admin/internet-connections',
+    icon: Wifi,
+    description: 'Starlink & VPN IPs',
+    pageId: 'internet-connections',
+    superAdminOnly: true
   },
   {
     name: 'Users',
