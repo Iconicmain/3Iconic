@@ -34,6 +34,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!phone || phone.trim() === '') {
+      return NextResponse.json(
+        { error: 'Phone number is required for new technicians' },
+        { status: 400 }
+      );
+    }
+
     const client = await clientPromise;
     const db = client.db('tixmgmt');
     const techniciansCollection = db.collection('technicians');
@@ -52,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     const technician = {
       name: name.trim(),
-      phone: phone?.trim() || null,
+      phone: phone.trim(),
       createdAt: new Date(),
     };
 

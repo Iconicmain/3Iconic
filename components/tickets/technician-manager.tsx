@@ -12,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Trash2, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Loader2, Edit2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -44,6 +44,9 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
   const [fetching, setFetching] = useState(true);
   const [newTechnician, setNewTechnician] = useState('');
   const [newTechnicianPhone, setNewTechnicianPhone] = useState('');
+  const [editingTechnician, setEditingTechnician] = useState<Technician | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; technician: Technician | null }>({
     open: false,
     technician: null,
@@ -80,6 +83,11 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
       return;
     }
 
+    if (!newTechnicianPhone.trim()) {
+      toast.error('Phone number is required for new technicians');
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await fetch('/api/technicians', {
@@ -89,7 +97,7 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
         },
         body: JSON.stringify({ 
           name: newTechnician.trim(),
-          phone: newTechnicianPhone.trim() || undefined,
+          phone: newTechnicianPhone.trim(),
         }),
       });
 
@@ -109,6 +117,55 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
     } catch (error) {
       console.error('Error creating technician:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to create technician');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditTechnician = (technician: Technician) => {
+    setEditingTechnician(technician);
+    setEditName(technician.name);
+    setEditPhone(technician.phone || '');
+  };
+
+  const handleUpdateTechnician = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTechnician?._id) return;
+    if (!editName.trim()) {
+      toast.error('Technician name is required');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/technicians/${editingTechnician._id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          name: editName.trim(),
+          phone: editPhone.trim() || null,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update technician');
+      }
+
+      toast.success('Technician updated successfully!');
+      setEditingTechnician(null);
+      setEditName('');
+      setEditPhone('');
+      fetchTechnicians();
+      if (onTechnicianAdded) {
+        onTechnicianAdded();
+      }
+    } catch (error) {
+      console.error('Error updating technician:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to update technician');
     } finally {
       setLoading(false);
     }
@@ -176,14 +233,15 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
                         id="newTechnicianPhone"
                         value={newTechnicianPhone}
                         onChange={(e) => setNewTechnicianPhone(e.target.value)}
-                        placeholder="Phone number (optional, e.g., +254712345678)"
+                        placeholder="Phone number (required, e.g., +254712345678)"
                         className="h-10 text-sm"
                         disabled={loading}
                         type="tel"
+                        required
                       />
                       <Button
                         type="submit"
-                        disabled={loading || !newTechnician.trim()}
+                        disabled={loading || !newTechnician.trim() || !newTechnicianPhone.trim()}
                         className="w-full h-10 gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                       >
                         {loading ? (
@@ -216,21 +274,32 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
                              key={technician._id || technician.name}
                              className="flex items-center justify-between p-3 bg-white dark:bg-gray-900 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                            >
-                             <div className="flex flex-col">
+                             <div className="flex flex-col flex-1 min-w-0">
                                <span className="text-sm font-medium text-foreground">{technician.name}</span>
                                {technician.phone && (
                                  <span className="text-xs text-muted-foreground">{technician.phone}</span>
                                )}
                              </div>
-                             <Button
-                               variant="ghost"
-                               size="sm"
-                               onClick={() => setDeleteDialog({ open: true, technician })}
-                               className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                               disabled={loading}
-                             >
-                               <Trash2 className="w-4 h-4" />
-                             </Button>
+                             <div className="flex items-center gap-2">
+                               <Button
+                                 variant="ghost"
+                                 size="sm"
+                                 onClick={() => handleEditTechnician(technician)}
+                                 className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                 disabled={loading}
+                               >
+                                 <Edit2 className="w-4 h-4" />
+                               </Button>
+                               <Button
+                                 variant="ghost"
+                                 size="sm"
+                                 onClick={() => setDeleteDialog({ open: true, technician })}
+                                 className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                 disabled={loading}
+                               >
+                                 <Trash2 className="w-4 h-4" />
+                               </Button>
+                             </div>
                            </div>
                          ))}
                 </div>
@@ -248,6 +317,68 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
               Close
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={editingTechnician !== null} onOpenChange={(open) => !open && setEditingTechnician(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Technician</DialogTitle>
+            <DialogDescription>
+              Update technician information
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleUpdateTechnician} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="editName">Technician Name</Label>
+              <Input
+                id="editName"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Enter technician name"
+                className="h-10 text-sm"
+                disabled={loading}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editPhone">Phone Number</Label>
+              <Input
+                id="editPhone"
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                placeholder="Phone number (optional, e.g., +254712345678)"
+                className="h-10 text-sm"
+                disabled={loading}
+                type="tel"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditingTechnician(null)}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={loading || !editName.trim()}
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  'Update Technician'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
