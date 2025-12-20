@@ -163,15 +163,30 @@ export async function sendClientTicketSMS(
   clientName: string, 
   clientNumber: string,
   station: string, 
-  category: string
+  category: string,
+  technicians?: Array<{ name: string; phone: string }>
 ): Promise<void> {
   const customerCareNumber = '+254746089137';
   
-  // Professional message for the client
-  const message = `Hello ${clientName},\n\nThank you for contacting Iconic Fibre. Your support ticket ${ticketId} has been successfully created.\n\nIssue Type: ${category}\nLocation: ${station}\n\nOur technical team is reviewing your request and will take action shortly. You will receive an update once we begin working on your ticket.\n\nIf you have any additional details, please reply to this message or contact us at ${customerCareNumber}.\n\nBest regards,\nIconic Fibre Support Team`;
+  // Build technician information section if technicians are assigned
+  let technicianSection = '';
+  if (technicians && technicians.length > 0) {
+    const technicianList = technicians
+      .filter(tech => tech.name && tech.phone) // Only include technicians with both name and phone
+      .map(tech => `${tech.name}: ${tech.phone}`)
+      .join('\n');
+    
+    if (technicianList) {
+      technicianSection = `\nTechnician${technicians.length > 1 ? 's' : ''}:\n${technicianList}\n`;
+    }
+  }
+  
+  // Concise message for the client
+  const message = `Hello ${clientName},\n\nYour ticket ${ticketId} has been created.\n\nIssue: ${category}\nLocation: ${station}${technicianSection}Our team will attend to this shortly. Maximum resolution time: 48 hours.\n\nFor queries, contact: ${customerCareNumber}\n\nIconic Fibre Support`;
   
   console.log(`[Client SMS] Attempting to send SMS to client for ticket ${ticketId}`);
   console.log(`[Client SMS] Client number:`, clientNumber);
+  console.log(`[Client SMS] Technicians assigned:`, technicians?.length || 0);
   console.log(`[Client SMS] Message:`, message);
   
   try {

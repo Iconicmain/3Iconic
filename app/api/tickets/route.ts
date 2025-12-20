@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import { hasPagePermission } from '@/lib/permissions';
-import { sendTicketCreationSMS, sendClientTicketSMS } from '@/lib/sms';
+import { sendTicketCreationSMS, sendClientTicketSMS, sendTechnicianAssignmentSMS } from '@/lib/sms';
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
       category,
       dateTimeReported,
       problemDescription,
+      technicians,
     } = body;
 
     // Validate required fields
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest) {
       dateTimeReported: new Date(dateTimeReported),
       problemDescription,
       status: 'open',
+      technicians: Array.isArray(technicians) && technicians.length > 0 ? technicians : undefined,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -80,16 +82,60 @@ export async function POST(request: NextRequest) {
     });
 
     // Send SMS notification to client (don't wait for it to complete)
+    // First, fetch technician phone numbers if technicians are assigned
+    let techniciansWithPhones: Array<{ name: string; phone: string }> = [];
+    if (Array.isArray(technicians) && technicians.length > 0) {
+      const techniciansCollection = db.collection('technicians');
+      for (const technicianName of technicians) {
+        const technicianDoc = await techniciansCollection.findOne({ name: technicianName });
+        if (technicianDoc && technicianDoc.phone) {
+          techniciansWithPhones.push({
+            name: technicianName,
+            phone: technicianDoc.phone
+          });
+        }
+      }
+    }
+    
     sendClientTicketSMS(
       ticketId,
       clientName,
       clientNumber,
       station,
-      category
+      category,
+      techniciansWithPhones.length > 0 ? techniciansWithPhones : undefined
     ).catch((error) => {
       console.error('[Ticket API] Failed to send SMS to client:', error);
       // Don't throw - SMS failure shouldn't prevent ticket creation
     });
+
+    // Send SMS to assigned technicians if any
+    if (Array.isArray(technicians) && technicians.length > 0) {
+      const techniciansCollection = db.collection('technicians');
+      
+      for (const technicianName of technicians) {
+        const technicianDoc = await techniciansCollection.findOne({ name: technicianName });
+        const technicianPhone = technicianDoc?.phone || technicianDoc?.phoneNumber;
+
+        if (technicianPhone) {
+          console.log(`[Ticket Creation] ✅ Sending SMS to technician ${technicianName} at ${technicianPhone}`);
+          sendTechnicianAssignmentSMS(
+            technicianPhone,
+            ticketId,
+            category,
+            clientName,
+            station,
+            clientNumber,
+            problemDescription,
+            baseUrl
+          ).catch((error) => {
+            console.error(`[Ticket API] Failed to send assignment SMS to technician ${technicianName}:`, error);
+          });
+        } else {
+          console.log(`[Ticket Creation] ⚠️ No phone number found for technician ${technicianName}, SMS not sent`);
+        }
+      }
+    }
 
     return NextResponse.json(
       { success: true, ticket: { ...ticket, _id: result.insertedId } },
