@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Ticket, DollarSign, Warehouse, Package, Settings, Menu, X, ChevronRight, Users, Calculator, Wifi } from 'lucide-react';
+import { LayoutDashboard, Ticket, DollarSign, Warehouse, Package, Settings, Menu, X, ChevronRight, Users, Calculator, Wifi, MessageSquare } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -73,6 +73,13 @@ const navigation = [
     description: 'Calculate ticket costs',
     pageId: 'ticket-costs',
     superAdminOnly: true
+  },
+  {
+    name: 'Send Message',
+    href: '/admin/send-message',
+    icon: MessageSquare,
+    description: 'Send SMS to clients',
+    pageId: 'send-message'
   },
 ];
 

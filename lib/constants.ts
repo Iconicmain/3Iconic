@@ -10,6 +10,7 @@ export const AVAILABLE_PAGES = [
   { id: 'internet-connections', name: 'Internet Connections', path: '/admin/internet-connections' },
   { id: 'users', name: 'User Management', path: '/admin/users' },
   { id: 'settings', name: 'Settings', path: '/admin/settings' },
+  { id: 'send-message', name: 'Send Message', path: '/admin/send-message' },
 ] as const;
 
 export const PERMISSION_TYPES = ['view', 'add', 'edit', 'delete'] as const;
