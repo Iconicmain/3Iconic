@@ -24,9 +24,15 @@ function LoginForm() {
         console.error('Sign in error:', result.error);
         alert(`Sign in failed: ${result.error}`);
         setLoading(false);
-      } else if (result?.ok) {
+      } else if (result?.ok || result?.url) {
         // If successful, redirect manually
-        window.location.href = callbackUrl;
+        // result.url contains the redirect URL if redirect: false
+        const redirectUrl = result?.url || callbackUrl;
+        window.location.href = redirectUrl;
+      } else {
+        // If no result, something went wrong
+        console.error('Sign in returned no result');
+        setLoading(false);
       }
     } catch (error) {
       console.error('Sign in error:', error);
