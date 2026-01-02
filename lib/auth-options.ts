@@ -45,138 +45,126 @@ export const authOptions: NextAuthConfig = {
         const usersCollection = db.collection<User>('users');
         
         const userEmail = user.email.toLowerCase();
-          
-          // Add timeout protection and use projection for performance
-          const fetchExistingUser = async () => {
-            return await usersCollection.findOne(
-              { email: userEmail },
-              {
-                projection: {
-                  id: 1,
-                  email: 1,
-                  name: 1,
-                  image: 1,
-                  role: 1,
-                  approved: 1,
-                  pagePermissions: 1,
-                }
+        
+        // Add timeout protection and use projection for performance
+        const fetchExistingUser = async () => {
+          return await usersCollection.findOne(
+            { email: userEmail },
+            {
+              projection: {
+                id: 1,
+                email: 1,
+                name: 1,
+                image: 1,
+                role: 1,
+                approved: 1,
+                pagePermissions: 1,
               }
-            );
-          };
+            }
+          );
+        };
 
-          let existingUser: User | null = null;
+        let existingUser: User | null = null;
+        try {
+          existingUser = await Promise.race([
+            fetchExistingUser(),
+            new Promise<null>((_, reject) => 
+              setTimeout(() => reject(new Error('Database query timeout')), 5000)
+            )
+          ]) as User | null;
+        } catch (error) {
+          console.error('[NextAuth] Error fetching existing user:', error);
+          // Continue with user creation/update even if fetch fails
+        }
+        
+        if (!existingUser) {
+          // Check if this is the first user (no users in database) with timeout
+          let isFirstUser = false;
           try {
-            existingUser = await Promise.race([
-              fetchExistingUser(),
-              new Promise<null>((_, reject) => 
+            const totalUsers = await Promise.race([
+              usersCollection.countDocuments(),
+              new Promise<number>((_, reject) => 
                 setTimeout(() => reject(new Error('Database query timeout')), 5000)
               )
-            ]) as User | null;
+            ]) as number;
+            isFirstUser = totalUsers === 0;
           } catch (error) {
-            console.error('[NextAuth] Error fetching existing user:', error);
-            // Continue with user creation/update even if fetch fails
+            console.error('[NextAuth] Error checking user count:', error);
+            // Default to not first user on error
+            isFirstUser = false;
           }
           
-          if (!existingUser) {
-            // Check if this is the first user (no users in database) with timeout
-            let isFirstUser = false;
-            try {
-              const totalUsers = await Promise.race([
-                usersCollection.countDocuments(),
-                new Promise<number>((_, reject) => 
-                  setTimeout(() => reject(new Error('Database query timeout')), 5000)
-                )
-              ]) as number;
-              isFirstUser = totalUsers === 0;
-            } catch (error) {
-              console.error('[NextAuth] Error checking user count:', error);
-              // Default to not first user on error
-              isFirstUser = false;
-            }
-            
-            const userId = generateUUID();
-            const newUser: User = {
-              id: userId,
-              email: userEmail,
-              name: user.name || 'User',
-              image: user.image || null,
-              pagePermissions: isFirstUser 
-                ? AVAILABLE_PAGES.map((page) => ({
-                    pageId: page.id,
-                    permissions: ['view', 'add', 'edit', 'delete'], // First user (superadmin) gets full permissions
-                  }))
-                : [], // New users start with no permissions
-              role: isFirstUser ? 'superadmin' : 'user', // First user is superadmin, others are regular users
-              approved: isFirstUser, // First user is auto-approved, others need approval
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            };
-            
+          const userId = generateUUID();
+          const newUser: User = {
+            id: userId,
+            email: userEmail,
+            name: user.name || 'User',
+            image: user.image || null,
+            pagePermissions: isFirstUser 
+              ? AVAILABLE_PAGES.map((page) => ({
+                  pageId: page.id,
+                  permissions: ['view', 'add', 'edit', 'delete'], // First user (superadmin) gets full permissions
+                }))
+              : [], // New users start with no permissions
+            role: isFirstUser ? 'superadmin' : 'user', // First user is superadmin, others are regular users
+            approved: isFirstUser, // First user is auto-approved, others need approval
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+          
+          try {
+            await Promise.race([
+              usersCollection.insertOne(newUser),
+              new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Database insert timeout')), 5000)
+              )
+            ]);
+            console.log(`[NextAuth] Created new user in database: ${userEmail} (${isFirstUser ? 'superadmin' : 'user'})`);
+          } catch (insertError) {
+            console.error('[NextAuth] Error inserting new user:', insertError);
+            // Don't block sign-in if insert fails
+          }
+        } else {
+          // Update user info if it has changed (name or image) with timeout
+          const needsUpdate = 
+            existingUser.name !== (user.name || 'User') ||
+            existingUser.image !== (user.image || null);
+          
+          if (needsUpdate) {
             try {
               await Promise.race([
-                usersCollection.insertOne(newUser),
+                usersCollection.updateOne(
+                  { email: userEmail },
+                  {
+                    $set: {
+                      name: user.name || 'User',
+                      image: user.image || null,
+                      updatedAt: new Date(),
+                    },
+                  }
+                ),
                 new Promise((_, reject) => 
-                  setTimeout(() => reject(new Error('Database insert timeout')), 5000)
+                  setTimeout(() => reject(new Error('Database update timeout')), 5000)
                 )
               ]);
-              console.log(`[NextAuth] Created new user in database: ${userEmail} (${isFirstUser ? 'superadmin' : 'user'})`);
-            } catch (insertError) {
-              console.error('[NextAuth] Error inserting new user:', insertError);
-              // Don't block sign-in if insert fails
-            }
-          } else {
-            // Update user info if it has changed (name or image) with timeout
-            const needsUpdate = 
-              existingUser.name !== (user.name || 'User') ||
-              existingUser.image !== (user.image || null);
-            
-            if (needsUpdate) {
-              try {
-                await Promise.race([
-                  usersCollection.updateOne(
-                    { email: userEmail },
-                    {
-                      $set: {
-                        name: user.name || 'User',
-                        image: user.image || null,
-                        updatedAt: new Date(),
-                      },
-                    }
-                  ),
-                  new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('Database update timeout')), 5000)
-                  )
-                ]);
-              } catch (updateError) {
-                console.error('[NextAuth] Error updating user:', updateError);
-                // Don't block sign-in if update fails
-              }
+            } catch (updateError) {
+              console.error('[NextAuth] Error updating user:', updateError);
+              // Don't block sign-in if update fails
             }
           }
-        } catch (error) {
-          console.error('[NextAuth] Error creating/updating user in database:', error);
-          // Log detailed error information
-          if (error instanceof Error) {
-            console.error('[NextAuth] Error details:', {
-              message: error.message,
-              stack: error.stack,
-              name: error.name
-            });
-          }
-          // Don't block sign-in if database operation fails - allow user to sign in anyway
-          // The user data will be fetched on next request via JWT callback
         }
       } catch (error) {
-        console.error('[NextAuth] Fatal error in signIn callback:', error);
+        console.error('[NextAuth] Error creating/updating user in database:', error);
+        // Log detailed error information
         if (error instanceof Error) {
-          console.error('[NextAuth] Fatal error details:', {
+          console.error('[NextAuth] Error details:', {
             message: error.message,
             stack: error.stack,
             name: error.name
           });
         }
-        // Even on fatal error, allow sign-in to proceed
-        // The system will handle missing user data gracefully
+        // Don't block sign-in if database operation fails - allow user to sign in anyway
+        // The user data will be fetched on next request via JWT callback
       }
       
       return true; // Allow sign-in to proceed
