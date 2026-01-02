@@ -30,13 +30,32 @@ export default function WaitingApprovalPage() {
       if (isRedirecting) return;
 
       try {
-        const response = await fetch('/api/users/me');
+        // Always bypass cache for approval checks - critical operation
+        const response = await fetch('/api/users/me', {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+          }
+        });
         const data = await response.json();
         
         if (data.approved) {
           // User is approved - check what pages they can access
-          const usersResponse = await fetch('/api/users');
+          // Always bypass cache for user data - critical for permissions
+          const usersResponse = await fetch('/api/users', {
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache',
+            }
+          });
           const usersData = await usersResponse.json();
+          
+          // Trigger session refresh to update JWT token with new permissions
+          if (typeof window !== 'undefined' && (window as any).nextAuth) {
+            // Force session refresh
+            const { update } = await import('next-auth/react');
+            await update();
+          }
           const currentUser = usersData.users?.find((u: any) => u.email === session?.user?.email);
           
           if (currentUser) {

@@ -232,6 +232,12 @@ export async function PUT(
 
     const updatedUser = await usersCollection.findOne({ _id: user._id });
 
+    // If permissions, role, or approval changed, trigger session refresh
+    const criticalFieldsChanged = 
+      pagePermissions !== undefined || 
+      role !== undefined || 
+      approved !== undefined;
+
     return NextResponse.json({
       message: 'User updated successfully',
       user: {
@@ -243,6 +249,14 @@ export async function PUT(
         role: updatedUser?.role || 'user',
         approved: updatedUser?.approved !== undefined ? updatedUser.approved : false,
       },
+      // Signal that session should be refreshed
+      requiresSessionRefresh: criticalFieldsChanged,
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate', // Always bypass cache for user updates
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      }
     });
   } catch (error: any) {
     console.error('Error updating user:', error);

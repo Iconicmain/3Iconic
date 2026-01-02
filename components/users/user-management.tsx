@@ -87,13 +87,20 @@ export function UserManagement() {
 
   const fetchCurrentUser = async () => {
     try {
-      const response = await fetch('/api/users/me');
+      // Always bypass cache for current user data - critical for permissions
+      const response = await fetch('/api/users/me', {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' },
+      });
       if (response.ok) {
         const data = await response.json();
         setCurrentUserRole(data.role || 'user');
         
-        // Also fetch full user data to get permissions
-        const usersResponse = await fetch('/api/users');
+        // Also fetch full user data to get permissions - always bypass cache
+        const usersResponse = await fetch('/api/users', {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' },
+        });
         if (usersResponse.ok) {
           const usersData = await usersResponse.json();
           const currentUser = usersData.users?.find((u: User) => u.email === data.email);
@@ -107,10 +114,18 @@ export function UserManagement() {
     }
   };
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (bypassCache = false) => {
     try {
       setLoading(true);
-      const response = await fetch('/api/users');
+      // Always bypass cache for user data - critical for permissions
+      // User data changes affect security, so always get fresh data
+      const response = await fetch('/api/users', {
+        cache: 'no-store', // Always bypass cache for user data
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        },
+      });
       const data = await response.json();
       // Filter out superadmins from the user list - they shouldn't be displayed
       const filteredUsers = (data.users || []).filter((user: User) => user.role !== 'superadmin');
@@ -226,9 +241,33 @@ export function UserManagement() {
         throw new Error(errorMessage);
       }
 
+      const result = await response.json();
+      
+      // If permissions, role, or approval changed, refresh session
+      if (result.requiresSessionRefresh) {
+        // Refresh session to update JWT token with new permissions
+        const { update } = await import('next-auth/react');
+        await update(); // Trigger session refresh
+        
+        // If updating current user, reload page to reflect changes immediately
+        if (editingUser && typeof window !== 'undefined') {
+          const currentSession = await fetch('/api/users/me', { 
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache' },
+          }).then(r => r.json());
+          if (currentSession.email === editingUser.email) {
+            // Current user was updated, reload to reflect changes
+            window.location.reload();
+            return;
+          }
+        }
+      }
+
       toast.success(editingUser ? 'User updated successfully' : 'User created successfully');
       handleCloseDialog();
-      fetchUsers();
+      
+      // Always bypass cache when fetching users after update
+      fetchUsers(true);
     } catch (error: any) {
       console.error('Error saving user:', error);
       toast.error(error.message || 'Failed to save user');
@@ -250,7 +289,8 @@ export function UserManagement() {
 
       toast.success('User deleted successfully');
       setDeleteUserId(null);
-      fetchUsers();
+      // Always bypass cache after delete
+      fetchUsers(true);
     } catch (error: any) {
       console.error('Error deleting user:', error);
       toast.error(error.message || 'Failed to delete user');

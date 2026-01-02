@@ -26,22 +26,55 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const client = await clientPromise;
-    const db = client.db('tixmgmt');
-    const usersCollection = db.collection<User>('users');
+    // Add timeout protection and use projection for performance
+    const fetchUser = async () => {
+      const client = await clientPromise;
+      const db = client.db('tixmgmt');
+      const usersCollection = db.collection<User>('users');
 
-    const currentUserEmail = session.user.email.toLowerCase();
-    let user = await usersCollection.findOne({ 
-      email: currentUserEmail 
-    });
+      const currentUserEmail = session.user.email!.toLowerCase();
+      
+      // Use projection to only fetch needed fields
+      return await usersCollection.findOne(
+        { email: currentUserEmail },
+        {
+          projection: {
+            id: 1,
+            email: 1,
+            name: 1,
+            role: 1,
+            approved: 1,
+            pagePermissions: 1,
+          }
+        }
+      );
+    };
+
+    let user = await Promise.race([
+      fetchUser(),
+      new Promise<null>((_, reject) => 
+        setTimeout(() => reject(new Error('Database query timeout')), 5000)
+      )
+    ]) as User | null;
 
     // Auto-create user if they don't exist (when they first log in)
     if (!user) {
       const userId = generateUUID();
       
-      // Check if this is the first user (no users in database)
-      const totalUsers = await usersCollection.countDocuments();
-      const isFirstUser = totalUsers === 0;
+      // Check if this is the first user (no users in database) with timeout
+      let isFirstUser = false;
+      try {
+        const totalUsers = await Promise.race([
+          usersCollection.countDocuments(),
+          new Promise<number>((_, reject) => 
+            setTimeout(() => reject(new Error('Database query timeout')), 5000)
+          )
+        ]) as number;
+        isFirstUser = totalUsers === 0;
+      } catch (error) {
+        console.error('[Users API] Error checking user count:', error);
+        isFirstUser = false;
+      }
 
       const newUser: User = {
         id: userId,
@@ -60,8 +93,22 @@ export async function GET(request: NextRequest) {
         updatedAt: new Date(),
       };
 
-      await usersCollection.insertOne(newUser);
-      user = newUser;
+      try {
+        await Promise.race([
+          usersCollection.insertOne(newUser),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Database insert timeout')), 5000)
+          )
+        ]);
+        user = newUser;
+      } catch (insertError) {
+        console.error('[Users API] Error inserting new user:', insertError);
+        // Return error response if insert fails
+        return NextResponse.json(
+          { error: 'Failed to create user' },
+          { status: 500 }
+        );
+      }
     }
 
     return NextResponse.json({
@@ -69,6 +116,10 @@ export async function GET(request: NextRequest) {
       role: user.role || 'user',
       email: user.email,
       name: user.name,
+    }, {
+      headers: {
+        'Cache-Control': 'private, s-maxage=60, stale-while-revalidate=120', // Cache for 60s, serve stale for 120s
+      }
     });
   } catch (error) {
     console.error('Error fetching user status:', error);

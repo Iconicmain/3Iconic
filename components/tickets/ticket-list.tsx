@@ -154,10 +154,14 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
       if (stationFilter !== 'all') params.set('station', stationFilter);
       if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
 
+      // Determine if we should bypass cache (after mutations or when explicitly needed)
+      const shouldBypassCache = resetPage === true; // Bypass cache on explicit refresh
+      
       const response = await fetch(`/api/tickets?${params.toString()}`, {
-        // Use cache for faster subsequent loads
-        cache: 'force-cache',
-        next: { revalidate: 10 }, // Revalidate every 10 seconds
+        // Bypass cache after mutations, use cache for normal loads
+        cache: shouldBypassCache ? 'no-store' : 'force-cache',
+        next: shouldBypassCache ? { revalidate: 0 } : { revalidate: 10 }, // Revalidate every 10 seconds
+        headers: shouldBypassCache ? { 'Cache-Control': 'no-cache' } : undefined,
       });
       
       const data = await response.json();
@@ -183,10 +187,24 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
       setLoading(true);
       try {
         // Fetch all in parallel for maximum speed
+        // Use cache for initial load, but ensure fresh data when needed
         const [ticketsRes, categoriesRes, stationsRes] = await Promise.allSettled([
-          fetch('/api/tickets?page=1&limit=50', { cache: 'force-cache', next: { revalidate: 10 } }),
-          fetch('/api/categories'),
-          fetch('/api/stations'),
+          fetch('/api/tickets?page=1&limit=50', { 
+            cache: 'force-cache', 
+            next: { revalidate: 10 },
+            // Add timestamp to detect stale cache
+            headers: { 'X-Request-Time': Date.now().toString() }
+          }),
+          fetch('/api/categories', {
+            // Categories rarely change, but ensure fresh on initial load
+            cache: 'force-cache',
+            next: { revalidate: 300 },
+          }),
+          fetch('/api/stations', {
+            // Stations rarely change, but ensure fresh on initial load
+            cache: 'force-cache',
+            next: { revalidate: 300 },
+          }),
         ]);
 
         // Process tickets
@@ -475,9 +493,18 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
             if (stationFilter !== 'all') refreshParams.set('station', stationFilter);
             if (debouncedSearch.trim()) refreshParams.set('search', debouncedSearch.trim());
             
+            // Always bypass cache after mutations
             const [ticketsRes, categoriesRes] = await Promise.all([
-              fetch(`/api/tickets?${refreshParams.toString()}`, { cache: 'no-store' }),
-              fetch('/api/categories'),
+              fetch(`/api/tickets?${refreshParams.toString()}`, { 
+                cache: 'no-store',
+                headers: {
+                  'Cache-Control': 'no-cache, no-store, must-revalidate',
+                  'Pragma': 'no-cache',
+                },
+              }),
+              fetch('/api/categories', {
+                cache: 'no-store', // Refresh categories too after ticket creation
+              }),
             ]);
             
             const ticketsData = await ticketsRes.json();
@@ -514,8 +541,13 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
             if (stationFilter !== 'all') refreshParams.set('station', stationFilter);
             if (debouncedSearch.trim()) refreshParams.set('search', debouncedSearch.trim());
             
+            // Always bypass cache after mutations
             const refreshResponse = await fetch(`/api/tickets?${refreshParams.toString()}`, {
               cache: 'no-store',
+              headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+              },
             });
             const refreshData = await refreshResponse.json();
             if (refreshResponse.ok) {

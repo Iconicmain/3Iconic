@@ -12,7 +12,7 @@ export function ApprovalGuard({ children }: { children: React.ReactNode }) {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    const checkApproval = async () => {
+    const checkApproval = () => {
       if (status === 'loading') return;
       
       if (!session) {
@@ -20,11 +20,9 @@ export function ApprovalGuard({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      try {
-        const response = await fetch('/api/users/me');
-        const data = await response.json();
-        
-        if (!data.approved) {
+      // Use session data if available (fast path - no API call)
+      if (session.user?.approved !== undefined) {
+        if (!session.user.approved) {
           // User not approved, redirect to waiting page
           if (pathname !== '/admin/waiting-approval') {
             router.push('/admin/waiting-approval');
@@ -33,11 +31,40 @@ export function ApprovalGuard({ children }: { children: React.ReactNode }) {
           // User is approved, allow access
           setChecking(false);
         }
-      } catch (error) {
-        console.error('Error checking approval:', error);
-        // On error, allow access (fail open)
-        setChecking(false);
+        return;
       }
+
+      // Fallback to API call if session data not available
+      // Always bypass cache for approval checks - critical operation
+      const checkApprovalAPI = async () => {
+        try {
+          const response = await fetch('/api/users/me', {
+            // Always bypass cache for approval checks - critical for security
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+            },
+          });
+          const data = await response.json();
+          
+          if (!data.approved) {
+            // User not approved, redirect to waiting page
+            if (pathname !== '/admin/waiting-approval') {
+              router.push('/admin/waiting-approval');
+            }
+          } else {
+            // User is approved, allow access
+            setChecking(false);
+          }
+        } catch (error) {
+          console.error('Error checking approval:', error);
+          // On error, allow access (fail open)
+          setChecking(false);
+        }
+      };
+
+      checkApprovalAPI();
     };
 
     // Skip check for waiting-approval page
