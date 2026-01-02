@@ -12,7 +12,15 @@ export async function GET(request: NextRequest) {
       .sort({ name: 1 })
       .toArray();
 
-    return NextResponse.json({ categories }, { status: 200 });
+    return NextResponse.json(
+      { categories }, 
+      { 
+        status: 200,
+        headers: {
+          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600', // Cache for 5min, serve stale for 10min
+        }
+      }
+    );
   } catch (error) {
     console.error('Error fetching categories:', error);
     return NextResponse.json(

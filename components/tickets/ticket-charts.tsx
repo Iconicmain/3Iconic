@@ -53,12 +53,16 @@ export function TicketCharts({ refreshTrigger = 0 }: TicketChartsProps) {
     }
   }, [isCollapsed, mounted]);
 
-  // Fetch chart data from API
+  // Fetch chart data from API with caching
   useEffect(() => {
     const fetchChartData = async () => {
       try {
         setLoading(true);
-        const response = await fetch('/api/tickets/stats');
+        // Use cache for faster subsequent loads
+        const response = await fetch('/api/tickets/stats', {
+          cache: 'force-cache',
+          next: { revalidate: 30 }, // Revalidate every 30 seconds
+        });
         const data = await response.json();
         
         if (response.ok) {
@@ -80,7 +84,11 @@ export function TicketCharts({ refreshTrigger = 0 }: TicketChartsProps) {
     };
 
     if (mounted) {
-      fetchChartData();
+      // Small delay to prioritize ticket list loading
+      const timeoutId = setTimeout(() => {
+        fetchChartData();
+      }, 100);
+      return () => clearTimeout(timeoutId);
     }
   }, [mounted, refreshTrigger]);
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,7 @@ import { TicketEditDialog } from './ticket-edit-dialog';
 import { TicketViewDialog } from './ticket-view-dialog';
 import { TechnicianManager } from './technician-manager';
 import { toast } from 'sonner';
+import { useDebounce } from '@/lib/hooks/use-debounce';
 
 interface Ticket {
   _id?: string;
@@ -75,11 +76,17 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [stationFilter, setStationFilter] = useState<string>('all');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const [userPermissions, setUserPermissions] = useState<{ add: boolean; edit: boolean; delete: boolean }>({
     add: false,
     edit: false,
     delete: false,
   });
+
+  // Debounce search term for server-side filtering
+  const debouncedSearch = useDebounce(searchTerm, 300);
 
   const fetchCategories = async () => {
     try {
@@ -133,26 +140,93 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
     }
   };
 
-  const fetchTickets = async () => {
+  const fetchTickets = async (resetPage = false) => {
     try {
       setLoading(true);
-      const response = await fetch('/api/tickets');
+      
+      // Build query params for server-side filtering
+      const params = new URLSearchParams();
+      params.set('page', resetPage ? '1' : page.toString());
+      params.set('limit', '50'); // Fetch 50 tickets per page
+      
+      if (statusFilter !== 'all') params.set('status', statusFilter);
+      if (categoryFilter !== 'all') params.set('category', categoryFilter);
+      if (stationFilter !== 'all') params.set('station', stationFilter);
+      if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
+
+      const response = await fetch(`/api/tickets?${params.toString()}`, {
+        // Use cache for faster subsequent loads
+        cache: 'force-cache',
+        next: { revalidate: 10 }, // Revalidate every 10 seconds
+      });
+      
       const data = await response.json();
       if (response.ok) {
         setTickets(data.tickets || []);
+        if (data.pagination) {
+          setTotalPages(data.pagination.totalPages || 1);
+          setTotalCount(data.pagination.total || 0);
+          if (resetPage) setPage(1);
+        }
       }
     } catch (error) {
       console.error('Error fetching tickets:', error);
+      toast.error('Failed to load tickets');
     } finally {
       setLoading(false);
     }
   };
 
+  // Parallel fetch all initial data
   useEffect(() => {
-    fetchTickets();
-    fetchCategories();
-    fetchStations();
-    fetchUserPermissions();
+    const loadInitialData = async () => {
+      setLoading(true);
+      try {
+        // Fetch all in parallel for maximum speed
+        const [ticketsRes, categoriesRes, stationsRes] = await Promise.allSettled([
+          fetch('/api/tickets?page=1&limit=50', { cache: 'force-cache', next: { revalidate: 10 } }),
+          fetch('/api/categories'),
+          fetch('/api/stations'),
+        ]);
+
+        // Process tickets
+        if (ticketsRes.status === 'fulfilled' && ticketsRes.value.ok) {
+          const ticketsData = await ticketsRes.value.json();
+          setTickets(ticketsData.tickets || []);
+          if (ticketsData.pagination) {
+            setTotalPages(ticketsData.pagination.totalPages || 1);
+            setTotalCount(ticketsData.pagination.total || 0);
+          }
+        }
+
+        // Process categories
+        if (categoriesRes.status === 'fulfilled' && categoriesRes.value.ok) {
+          const categoriesData = await categoriesRes.value.json();
+          const fetchedCategories = categoriesData.categories?.map((cat: { name: string }) => cat.name) || [];
+          setCategories(fetchedCategories);
+          if (fetchedCategories.length === 0) {
+            // Seed if needed (non-blocking)
+            fetch('/api/categories/seed', { method: 'POST' }).then(() => fetchCategories());
+          }
+        }
+
+        // Process stations
+        if (stationsRes.status === 'fulfilled' && stationsRes.value.ok) {
+          const stationsData = await stationsRes.value.json();
+          const fetchedStations = stationsData.stations?.map((station: { name: string }) => station.name) || [];
+          setStations(fetchedStations);
+        }
+
+        // Fetch permissions (non-blocking)
+        fetchUserPermissions();
+      } catch (error) {
+        console.error('Error loading initial data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadInitialData();
   }, []);
 
   // Handle initial ticket ID from URL parameter - open edit dialog
@@ -252,7 +326,27 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
       }
 
       toast.success('Ticket deleted successfully!');
-      fetchTickets();
+      
+      // Refetch tickets with current filters
+      const refreshParams = new URLSearchParams();
+      refreshParams.set('page', page.toString());
+      refreshParams.set('limit', '50');
+      if (statusFilter !== 'all') refreshParams.set('status', statusFilter);
+      if (categoryFilter !== 'all') refreshParams.set('category', categoryFilter);
+      if (stationFilter !== 'all') refreshParams.set('station', stationFilter);
+      if (debouncedSearch.trim()) refreshParams.set('search', debouncedSearch.trim());
+      
+      const refreshResponse = await fetch(`/api/tickets?${refreshParams.toString()}`, {
+        cache: 'no-store', // Force fresh data after delete
+      });
+      const refreshData = await refreshResponse.json();
+      if (refreshResponse.ok) {
+        setTickets(refreshData.tickets || []);
+        if (refreshData.pagination) {
+          setTotalPages(refreshData.pagination.totalPages || 1);
+          setTotalCount(refreshData.pagination.total || 0);
+        }
+      }
       if (onTicketUpdate) {
         onTicketUpdate();
       }
@@ -262,26 +356,80 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
     }
   };
 
-  const filtered = tickets.filter((ticket) => {
-    const matchesSearch = ticket.ticketId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ticket.clientName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || ticket.status === statusFilter;
-    const matchesCategory = categoryFilter === 'all' || ticket.category === categoryFilter;
-    const matchesStation = stationFilter === 'all' || ticket.station === stationFilter;
-    
-    return matchesSearch && matchesStatus && matchesCategory && matchesStation;
-  });
-
-  // Debug: Log filtered tickets when station filter changes
+  // Refetch when filters change (server-side filtering)
   useEffect(() => {
-    if (stationFilter !== 'all') {
-      console.log(`[Station Filter] Active: "${stationFilter}"`);
-      console.log(`[Station Filter] Total tickets: ${tickets.length}, Filtered: ${filtered.length}`);
-      if (filtered.length > 0) {
-        console.log(`[Station Filter] Sample filtered tickets:`, filtered.slice(0, 3).map(t => ({ id: t.ticketId, station: t.station })));
+    const currentPage = page;
+    setPage(1); // Reset to page 1 first
+    const fetch = async () => {
+      setLoading(true);
+      const params = new URLSearchParams();
+      params.set('page', '1');
+      params.set('limit', '50');
+      if (statusFilter !== 'all') params.set('status', statusFilter);
+      if (categoryFilter !== 'all') params.set('category', categoryFilter);
+      if (stationFilter !== 'all') params.set('station', stationFilter);
+      if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
+
+      try {
+        const response = await fetch(`/api/tickets?${params.toString()}`, {
+          cache: 'force-cache',
+          next: { revalidate: 10 },
+        });
+        const data = await response.json();
+        if (response.ok) {
+          setTickets(data.tickets || []);
+          if (data.pagination) {
+            setTotalPages(data.pagination.totalPages || 1);
+            setTotalCount(data.pagination.total || 0);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching tickets:', error);
+      } finally {
+        setLoading(false);
       }
+    };
+    fetch();
+  }, [debouncedSearch, statusFilter, categoryFilter, stationFilter]);
+
+  // Fetch next page when page changes
+  useEffect(() => {
+    if (page > 1) {
+      const fetch = async () => {
+        setLoading(true);
+        const params = new URLSearchParams();
+        params.set('page', page.toString());
+        params.set('limit', '50');
+        if (statusFilter !== 'all') params.set('status', statusFilter);
+        if (categoryFilter !== 'all') params.set('category', categoryFilter);
+        if (stationFilter !== 'all') params.set('station', stationFilter);
+        if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
+
+        try {
+          const response = await fetch(`/api/tickets?${params.toString()}`, {
+            cache: 'force-cache',
+            next: { revalidate: 10 },
+          });
+          const data = await response.json();
+          if (response.ok) {
+            setTickets(data.tickets || []);
+            if (data.pagination) {
+              setTotalPages(data.pagination.totalPages || 1);
+              setTotalCount(data.pagination.total || 0);
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching tickets:', error);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetch();
     }
-  }, [stationFilter, tickets.length, filtered.length]);
+  }, [page, statusFilter, categoryFilter, stationFilter, debouncedSearch]);
+
+  // Use tickets directly since filtering is now server-side
+  const filtered = tickets;
 
 
   return (
@@ -316,9 +464,37 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
         <TicketForm 
           open={formOpen} 
           onOpenChange={setFormOpen}
-          onSuccess={() => {
-            fetchTickets();
-            fetchCategories();
+          onSuccess={async () => {
+            // Refresh data after successful create
+            setPage(1); // Reset to first page
+            const refreshParams = new URLSearchParams();
+            refreshParams.set('page', '1');
+            refreshParams.set('limit', '50');
+            if (statusFilter !== 'all') refreshParams.set('status', statusFilter);
+            if (categoryFilter !== 'all') refreshParams.set('category', categoryFilter);
+            if (stationFilter !== 'all') refreshParams.set('station', stationFilter);
+            if (debouncedSearch.trim()) refreshParams.set('search', debouncedSearch.trim());
+            
+            const [ticketsRes, categoriesRes] = await Promise.all([
+              fetch(`/api/tickets?${refreshParams.toString()}`, { cache: 'no-store' }),
+              fetch('/api/categories'),
+            ]);
+            
+            const ticketsData = await ticketsRes.json();
+            if (ticketsRes.ok) {
+              setTickets(ticketsData.tickets || []);
+              if (ticketsData.pagination) {
+                setTotalPages(ticketsData.pagination.totalPages || 1);
+                setTotalCount(ticketsData.pagination.total || 0);
+              }
+            }
+            
+            const categoriesData = await categoriesRes.json();
+            if (categoriesRes.ok) {
+              const fetchedCategories = categoriesData.categories?.map((cat: { name: string }) => cat.name) || [];
+              setCategories(fetchedCategories);
+            }
+            
             if (onTicketUpdate) {
               onTicketUpdate();
             }
@@ -328,8 +504,27 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
           ticket={selectedTicket}
-          onSuccess={() => {
-            fetchTickets();
+          onSuccess={async () => {
+            // Refresh data after successful edit
+            const refreshParams = new URLSearchParams();
+            refreshParams.set('page', page.toString());
+            refreshParams.set('limit', '50');
+            if (statusFilter !== 'all') refreshParams.set('status', statusFilter);
+            if (categoryFilter !== 'all') refreshParams.set('category', categoryFilter);
+            if (stationFilter !== 'all') refreshParams.set('station', stationFilter);
+            if (debouncedSearch.trim()) refreshParams.set('search', debouncedSearch.trim());
+            
+            const refreshResponse = await fetch(`/api/tickets?${refreshParams.toString()}`, {
+              cache: 'no-store',
+            });
+            const refreshData = await refreshResponse.json();
+            if (refreshResponse.ok) {
+              setTickets(refreshData.tickets || []);
+              if (refreshData.pagination) {
+                setTotalPages(refreshData.pagination.totalPages || 1);
+                setTotalCount(refreshData.pagination.total || 0);
+              }
+            }
             if (onTicketUpdate) {
               onTicketUpdate();
             }
@@ -433,6 +628,67 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
           <CardContent className="pt-6">
             <div className="text-center py-8">
               <p className="text-muted-foreground">No tickets found</p>
+              {totalCount > 0 && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  Try adjusting your filters
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Pagination Controls */}
+      {!loading && filtered.length > 0 && totalPages > 1 && (
+        <Card className="bg-white">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="text-sm text-muted-foreground">
+                Showing {((page - 1) * 50) + 1} to {Math.min(page * 50, totalCount)} of {totalCount} tickets
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                >
+                  Previous
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (page <= 3) {
+                      pageNum = i + 1;
+                    } else if (page >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = page - 2 + i;
+                    }
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={page === pageNum ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setPage(pageNum)}
+                        className="w-8 h-8 p-0"
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>

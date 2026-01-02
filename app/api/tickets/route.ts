@@ -152,16 +152,79 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '50'); // Default 50, can be increased
+    const skip = (page - 1) * limit;
+    
+    // Optional filters from query params
+    const status = searchParams.get('status');
+    const station = searchParams.get('station');
+    const category = searchParams.get('category');
+    const search = searchParams.get('search');
+
     const client = await clientPromise;
     const db = client.db('tixmgmt');
     const ticketsCollection = db.collection('tickets');
 
-    const tickets = await ticketsCollection
-      .find({})
-      .sort({ createdAt: -1 })
-      .toArray();
+    // Build query filter
+    const filter: any = {};
+    if (status && status !== 'all') filter.status = status;
+    if (station && station !== 'all') filter.station = station;
+    if (category && category !== 'all') filter.category = category;
+    if (search) {
+      filter.$or = [
+        { ticketId: { $regex: search, $options: 'i' } },
+        { clientName: { $regex: search, $options: 'i' } },
+      ];
+    }
 
-    return NextResponse.json({ tickets }, { status: 200 });
+    // Optimize query: Use projection to only fetch needed fields for list view
+    // Note: problemDescription and resolutionNotes are excluded to reduce payload size
+    const projection = {
+      ticketId: 1,
+      clientName: 1,
+      clientNumber: 1,
+      station: 1,
+      houseNumber: 1,
+      category: 1,
+      status: 1,
+      dateTimeReported: 1,
+      technician: 1,
+      technicians: 1,
+      createdAt: 1,
+      resolvedAt: 1,
+      _id: 1,
+    };
+
+    // Execute queries in parallel for better performance
+    const [tickets, totalCount] = await Promise.all([
+      ticketsCollection
+        .find(filter, { projection })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .toArray(),
+      ticketsCollection.countDocuments(filter),
+    ]);
+
+    return NextResponse.json(
+      { 
+        tickets,
+        pagination: {
+          page,
+          limit,
+          total: totalCount,
+          totalPages: Math.ceil(totalCount / limit),
+        }
+      },
+      { 
+        status: 200,
+        headers: {
+          'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=30', // Cache for 10s, serve stale for 30s
+        }
+      }
+    );
   } catch (error) {
     console.error('Error fetching tickets:', error);
     return NextResponse.json(
