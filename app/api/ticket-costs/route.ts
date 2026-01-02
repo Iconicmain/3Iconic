@@ -64,25 +64,53 @@ export async function GET(request: NextRequest) {
     });
 
     // Group by technician (calculate total earnings per technician)
+    // Separate solo tickets from joined tickets for Frank and Jilo
     const technicianBreakdown: { [key: string]: { count: number; total: number } } = {};
-    let bothCount = 0;
-    let bothTotal = 0;
+    const bothBreakdown: { frank: { count: number; total: number }, jilo: { count: number; total: number } } = {
+      frank: { count: 0, total: 0 },
+      jilo: { count: 0, total: 0 }
+    };
     
     ticketCosts.forEach((tc: any) => {
       if (tc.technicians && tc.technicians.length > 0) {
-        // Track individual technicians
-        tc.technicians.forEach((tech: string) => {
-          if (!technicianBreakdown[tech]) {
-            technicianBreakdown[tech] = { count: 0, total: 0 };
-          }
-          technicianBreakdown[tech].count += 1;
-          technicianBreakdown[tech].total += tc.pricePerTechnician;
-        });
+        const isJoined = tc.technicians.length > 1;
+        const hasFrank = tc.technicians.includes('Frank');
+        const hasJilo = tc.technicians.includes('Jilo');
+        const isFrankAndJilo = isJoined && hasFrank && hasJilo && tc.technicians.length === 2;
         
-        // Track "Both" for tickets with multiple technicians
-        if (tc.technicians.length > 1) {
-          bothCount += 1;
-          bothTotal += tc.price; // Full ticket price for combined work
+        if (isFrankAndJilo) {
+          // When Frank and Jilo work together, track in "Both" section
+          bothBreakdown.frank.count += 1;
+          bothBreakdown.frank.total += tc.price * 0.60; // 60% for Frank
+          bothBreakdown.jilo.count += 1;
+          bothBreakdown.jilo.total += tc.price * 0.50; // 50% for Jilo
+        } else {
+          // Track individual technicians (solo tickets or with others)
+          tc.technicians.forEach((tech: string) => {
+            // Only track solo tickets for Frank and Jilo (not joined tickets)
+            if (tech === 'Frank' || tech === 'Jilo') {
+              if (!isJoined) {
+                // Solo ticket - 100%
+                if (!technicianBreakdown[tech]) {
+                  technicianBreakdown[tech] = { count: 0, total: 0 };
+                }
+                technicianBreakdown[tech].count += 1;
+                technicianBreakdown[tech].total += tc.price;
+              }
+              // Skip joined tickets for Frank and Jilo (they're handled in "Both")
+            } else {
+              // Other technicians - track all their tickets
+              if (!technicianBreakdown[tech]) {
+                technicianBreakdown[tech] = { count: 0, total: 0 };
+              }
+              technicianBreakdown[tech].count += 1;
+              if (isJoined) {
+                technicianBreakdown[tech].total += tc.pricePerTechnician;
+              } else {
+                technicianBreakdown[tech].total += tc.price;
+              }
+            }
+          });
         }
       } else {
         // If no technicians assigned, track as "Unassigned"
@@ -95,9 +123,10 @@ export async function GET(request: NextRequest) {
       }
     });
     
-    // Add "Both" entry if there are tickets with multiple technicians
-    if (bothCount > 0) {
-      technicianBreakdown['Both'] = { count: bothCount, total: bothTotal };
+    // Add "Both" entries if there are tickets where Frank and Jilo worked together
+    if (bothBreakdown.frank.count > 0 || bothBreakdown.jilo.count > 0) {
+      technicianBreakdown['Both - Frank'] = { count: bothBreakdown.frank.count, total: Math.round(bothBreakdown.frank.total * 100) / 100 };
+      technicianBreakdown['Both - Jilo'] = { count: bothBreakdown.jilo.count, total: Math.round(bothBreakdown.jilo.total * 100) / 100 };
     }
 
     return NextResponse.json({
@@ -108,6 +137,7 @@ export async function GET(request: NextRequest) {
         technician,
         count: data.count,
         total: Math.round(data.total * 100) / 100, // Round to 2 decimal places
+        percentage: technician === 'Both - Frank' ? '60%' : technician === 'Both - Jilo' ? '50%' : (technician === 'Frank' || technician === 'Jilo') ? '100%' : undefined,
       })),
       lastClearedDate: tracking?.lastClearedDate || null,
     }, { status: 200 });
@@ -200,25 +230,53 @@ export async function POST(request: NextRequest) {
     });
 
     // Group by technician for breakdown (calculate total earnings per technician)
+    // Separate solo tickets from joined tickets for Frank and Jilo
     const technicianBreakdown: { [key: string]: { count: number; total: number } } = {};
-    let bothCount = 0;
-    let bothTotal = 0;
+    const bothBreakdown: { frank: { count: number; total: number }, jilo: { count: number; total: number } } = {
+      frank: { count: 0, total: 0 },
+      jilo: { count: 0, total: 0 }
+    };
     
     ticketDetails.forEach((td: any) => {
       if (td.technicians && td.technicians.length > 0) {
-        // Track individual technicians
-        td.technicians.forEach((tech: string) => {
-          if (!technicianBreakdown[tech]) {
-            technicianBreakdown[tech] = { count: 0, total: 0 };
-          }
-          technicianBreakdown[tech].count += 1;
-          technicianBreakdown[tech].total += td.pricePerTechnician;
-        });
+        const isJoined = td.technicians.length > 1;
+        const hasFrank = td.technicians.includes('Frank');
+        const hasJilo = td.technicians.includes('Jilo');
+        const isFrankAndJilo = isJoined && hasFrank && hasJilo && td.technicians.length === 2;
         
-        // Track "Both" for tickets with multiple technicians
-        if (td.technicians.length > 1) {
-          bothCount += 1;
-          bothTotal += td.price; // Full ticket price for combined work
+        if (isFrankAndJilo) {
+          // When Frank and Jilo work together, track in "Both" section
+          bothBreakdown.frank.count += 1;
+          bothBreakdown.frank.total += td.price * 0.60; // 60% for Frank
+          bothBreakdown.jilo.count += 1;
+          bothBreakdown.jilo.total += td.price * 0.50; // 50% for Jilo
+        } else {
+          // Track individual technicians (solo tickets or with others)
+          td.technicians.forEach((tech: string) => {
+            // Only track solo tickets for Frank and Jilo (not joined tickets)
+            if (tech === 'Frank' || tech === 'Jilo') {
+              if (!isJoined) {
+                // Solo ticket - 100%
+                if (!technicianBreakdown[tech]) {
+                  technicianBreakdown[tech] = { count: 0, total: 0 };
+                }
+                technicianBreakdown[tech].count += 1;
+                technicianBreakdown[tech].total += td.price;
+              }
+              // Skip joined tickets for Frank and Jilo (they're handled in "Both")
+            } else {
+              // Other technicians - track all their tickets
+              if (!technicianBreakdown[tech]) {
+                technicianBreakdown[tech] = { count: 0, total: 0 };
+              }
+              technicianBreakdown[tech].count += 1;
+              if (isJoined) {
+                technicianBreakdown[tech].total += td.pricePerTechnician;
+              } else {
+                technicianBreakdown[tech].total += td.price;
+              }
+            }
+          });
         }
       } else {
         // If no technicians assigned, track as "Unassigned"
@@ -231,9 +289,10 @@ export async function POST(request: NextRequest) {
       }
     });
     
-    // Add "Both" entry if there are tickets with multiple technicians
-    if (bothCount > 0) {
-      technicianBreakdown['Both'] = { count: bothCount, total: bothTotal };
+    // Add "Both" entries if there are tickets where Frank and Jilo worked together
+    if (bothBreakdown.frank.count > 0 || bothBreakdown.jilo.count > 0) {
+      technicianBreakdown['Both - Frank'] = { count: bothBreakdown.frank.count, total: Math.round(bothBreakdown.frank.total * 100) / 100 };
+      technicianBreakdown['Both - Jilo'] = { count: bothBreakdown.jilo.count, total: Math.round(bothBreakdown.jilo.total * 100) / 100 };
     }
 
     const paymentDate = new Date();
@@ -248,6 +307,7 @@ export async function POST(request: NextRequest) {
         technician,
         count: data.count,
         total: Math.round(data.total * 100) / 100, // Round to 2 decimal places
+        percentage: technician === 'Both - Frank' ? '60%' : technician === 'Both - Jilo' ? '50%' : (technician === 'Frank' || technician === 'Jilo') ? '100%' : undefined,
       })),
       clearedBy: user.email,
       clearedByName: user.name || user.email,

@@ -48,6 +48,7 @@ interface TechnicianBreakdown {
   technician: string;
   count: number;
   total: number;
+  percentage?: string;
 }
 
 interface PaymentHistory {
@@ -534,38 +535,60 @@ export default function TicketCostsClient() {
                   <div className="space-y-2">
                     {technicianBreakdown
                       .sort((a, b) => {
-                        // Sort "Both" to the end, then alphabetically
-                        if (a.technician === 'Both') return 1;
-                        if (b.technician === 'Both') return -1;
-                        if (a.technician === 'Unassigned') return 1;
-                        if (b.technician === 'Unassigned') return -1;
+                        // Sort order: Frank, Jilo, Unassigned, then "Both - Frank", "Both - Jilo", then others alphabetically
+                        const order: { [key: string]: number } = {
+                          'Frank': 1,
+                          'Jilo': 2,
+                          'Unassigned': 3,
+                          'Both - Frank': 4,
+                          'Both - Jilo': 5,
+                        };
+                        const aOrder = order[a.technician] || 10;
+                        const bOrder = order[b.technician] || 10;
+                        if (aOrder !== bOrder) return aOrder - bOrder;
                         return a.technician.localeCompare(b.technician);
                       })
-                      .map((item) => (
-                        <div
-                          key={item.technician}
-                          className={`flex items-center justify-between p-3 rounded-lg border ${
-                            item.technician === 'Both'
-                              ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
-                              : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800'
-                          }`}
-                        >
-                          <div>
-                            <p className="font-medium text-sm">{item.technician}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {item.count} ticket{item.count !== 1 ? 's' : ''}
-                              {item.technician === 'Both' && ' (multiple technicians)'}
-                            </p>
+                      .map((item) => {
+                        const isBothSection = item.technician.startsWith('Both -');
+                        return (
+                          <div
+                            key={item.technician}
+                            className={`flex items-center justify-between p-3 rounded-lg border ${
+                              isBothSection
+                                ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                                : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                            }`}
+                          >
+                            <div>
+                              <p className="font-medium text-sm">
+                                {item.technician === 'Frank' ? 'FRANK' : 
+                                 item.technician === 'Jilo' ? 'JILO' : 
+                                 item.technician === 'Both - Frank' ? 'FRANK (BOTH)' : 
+                                 item.technician === 'Both - Jilo' ? 'JILO (BOTH)' : 
+                                 item.technician === 'Unassigned' ? 'UNASSIGNED' : 
+                                 item.technician}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {item.count} ticket{item.count !== 1 ? 's' : ''}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className={`text-lg font-bold ${
+                                isBothSection
+                                  ? 'text-blue-600 dark:text-blue-400'
+                                  : 'text-emerald-600 dark:text-emerald-400'
+                              }`}>
+                                Ksh {item.total.toLocaleString()}
+                              </p>
+                              {item.percentage && (
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {item.percentage}
+                                </p>
+                              )}
+                            </div>
                           </div>
-                          <p className={`text-lg font-bold ${
-                            item.technician === 'Both'
-                              ? 'text-blue-600 dark:text-blue-400'
-                              : 'text-emerald-600 dark:text-emerald-400'
-                          }`}>
-                            Ksh {item.total.toLocaleString()}
-                          </p>
-                        </div>
-                      ))}
+                        );
+                      })}
                   </div>
                 </CardContent>
               </Card>
@@ -652,35 +675,55 @@ export default function TicketCostsClient() {
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 {(payment.technicianBreakdown || payment.categoryBreakdown || [])
                                   .sort((a: TechnicianBreakdown, b: TechnicianBreakdown) => {
-                                    // Sort "Both" to the end, then alphabetically
-                                    if (a.technician === 'Both') return 1;
-                                    if (b.technician === 'Both') return -1;
-                                    if (a.technician === 'Unassigned') return 1;
-                                    if (b.technician === 'Unassigned') return -1;
+                                    // Sort order: Frank, Jilo, Unassigned, then "Both - Frank", "Both - Jilo", then others alphabetically
+                                    const order: { [key: string]: number } = {
+                                      'Frank': 1,
+                                      'Jilo': 2,
+                                      'Unassigned': 3,
+                                      'Both - Frank': 4,
+                                      'Both - Jilo': 5,
+                                    };
+                                    const aOrder = order[a.technician] || 10;
+                                    const bOrder = order[b.technician] || 10;
+                                    if (aOrder !== bOrder) return aOrder - bOrder;
                                     return a.technician.localeCompare(b.technician);
                                   })
-                                  .map((item: TechnicianBreakdown) => (
-                                    <div
-                                      key={item.technician}
-                                      className={`flex items-center justify-between text-xs p-2 rounded ${
-                                        item.technician === 'Both'
-                                          ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
-                                          : 'bg-white dark:bg-slate-800'
-                                      }`}
-                                    >
-                                      <span className={item.technician === 'Both' ? 'font-semibold text-blue-700 dark:text-blue-300' : ''}>
-                                        {item.technician}
-                                        {item.technician === 'Both' && ' (multiple technicians)'}
-                                      </span>
-                                      <span className={`font-medium ${
-                                        item.technician === 'Both'
-                                          ? 'text-blue-600 dark:text-blue-400'
-                                          : ''
-                                      }`}>
-                                        {item.count} ticket{item.count !== 1 ? 's' : ''} - Ksh {item.total.toLocaleString()}
-                                      </span>
-                                    </div>
-                                  ))}
+                                  .map((item: TechnicianBreakdown) => {
+                                    const isBothSection = item.technician.startsWith('Both -');
+                                    return (
+                                      <div
+                                        key={item.technician}
+                                        className={`flex items-center justify-between text-xs p-2 rounded ${
+                                          isBothSection
+                                            ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
+                                            : 'bg-white dark:bg-slate-800'
+                                        }`}
+                                      >
+                                        <span className={isBothSection ? 'font-semibold text-blue-700 dark:text-blue-300' : ''}>
+                                          {item.technician === 'Frank' ? 'FRANK' : 
+                                           item.technician === 'Jilo' ? 'JILO' : 
+                                           item.technician === 'Both - Frank' ? 'FRANK (BOTH)' : 
+                                           item.technician === 'Both - Jilo' ? 'JILO (BOTH)' : 
+                                           item.technician === 'Unassigned' ? 'UNASSIGNED' : 
+                                           item.technician}
+                                        </span>
+                                        <div className="text-right">
+                                          <span className={`font-medium ${
+                                            isBothSection
+                                              ? 'text-blue-600 dark:text-blue-400'
+                                              : ''
+                                          }`}>
+                                            {item.count} ticket{item.count !== 1 ? 's' : ''} - Ksh {item.total.toLocaleString()}
+                                          </span>
+                                          {item.percentage && (
+                                            <span className="text-xs text-muted-foreground block mt-0.5">
+                                              {item.percentage}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
                               </div>
                             </div>
                           ) : null}
