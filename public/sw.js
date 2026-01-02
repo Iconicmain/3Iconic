@@ -38,24 +38,32 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
+    }).then(() => {
+      // Claim all clients to ensure service worker takes control
+      return self.clients.claim();
     })
   );
-  return self.clients.claim(); // Take control of all pages
 });
 
 // Fetch event - serve from cache, fallback to network
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
-  // Bypass service worker for navigation requests to admin routes
-  // These routes may redirect and need to be handled by the server/middleware
-  if (event.request.mode === 'navigate' && url.pathname.startsWith('/admin')) {
-    // Let the browser handle navigation requests to admin routes directly
-    // This allows middleware redirects to work properly
+  // Bypass service worker for:
+  // 1. Navigation requests to admin routes (may redirect)
+  // 2. OAuth callback routes (must not be cached)
+  // 3. API auth routes (must not be cached)
+  if (
+    (event.request.mode === 'navigate' && url.pathname.startsWith('/admin')) ||
+    url.pathname.startsWith('/api/auth') ||
+    url.pathname.includes('/callback/')
+  ) {
+    // Let the browser handle these requests directly
+    // This allows OAuth callbacks and middleware redirects to work properly
     return;
   }
   
-  // For non-navigation requests, use cache-first strategy
+  // For other requests, use cache-first strategy
   event.respondWith(
     caches.match(event.request)
       .then((response) => {

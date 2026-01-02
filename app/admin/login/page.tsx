@@ -13,10 +13,24 @@ function LoginForm() {
   const handleGoogleSignIn = async () => {
     try {
       setLoading(true);
-      await signIn('google', { callbackUrl, redirect: true });
+      // Use redirect: false to handle the redirect manually and catch errors
+      const result = await signIn('google', { 
+        callbackUrl, 
+        redirect: false 
+      });
+      
+      // If there's an error, log it
+      if (result?.error) {
+        console.error('Sign in error:', result.error);
+        alert(`Sign in failed: ${result.error}`);
+        setLoading(false);
+      } else if (result?.ok) {
+        // If successful, redirect manually
+        window.location.href = callbackUrl;
+      }
     } catch (error) {
       console.error('Sign in error:', error);
-    } finally {
+      alert('An error occurred during sign in. Please try again.');
       setLoading(false);
     }
   };
