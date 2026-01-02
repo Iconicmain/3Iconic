@@ -2,7 +2,6 @@
 const CACHE_NAME = '3iconic-admin-v1';
 const urlsToCache = [
   '/',
-  '/admin',
   '/admin/login',
   '/manifest.json',
   '/icon.svg',
@@ -44,11 +43,23 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event - serve from cache, fallback to network
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  
+  // Bypass service worker for navigation requests to admin routes
+  // These routes may redirect and need to be handled by the server/middleware
+  if (event.request.mode === 'navigate' && url.pathname.startsWith('/admin')) {
+    // Let the browser handle navigation requests to admin routes directly
+    // This allows middleware redirects to work properly
+    return;
+  }
+  
+  // For non-navigation requests, use cache-first strategy
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
         // Return cached version or fetch from network
-        return response || fetch(event.request);
+        // Use redirect: 'follow' to handle redirects properly
+        return response || fetch(event.request, { redirect: 'follow' });
       })
       .catch(() => {
         // If both fail, return offline page or error

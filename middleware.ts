@@ -3,7 +3,15 @@ import type { NextRequest } from 'next/server';
 import { auth } from '@/auth';
 
 export async function middleware(request: NextRequest) {
-  const session = await auth();
+  // Wrap auth() call in try-catch to handle any errors gracefully
+  let session = null;
+  try {
+    session = await auth();
+  } catch (error) {
+    // If auth() fails, log the error and treat as no session
+    console.error('[Middleware] Error getting session:', error);
+    // Continue with session = null, which will redirect to login
+  }
 
   const isAdminRoute = request.nextUrl.pathname.startsWith('/admin');
   const isLoginPage = request.nextUrl.pathname === '/admin/login';
