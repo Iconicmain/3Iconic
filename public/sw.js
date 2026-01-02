@@ -1,13 +1,5 @@
 // Service Worker for 3Iconic Admin Dashboard PWA
 const CACHE_NAME = '3iconic-admin-v1';
-const urlsToCache = [
-  '/',
-  '/admin/login',
-  '/manifest.json',
-  '/icon.svg',
-  '/icon-192x192.svg',
-  '/icon-512x512.svg',
-];
 
 // Install event - cache resources
 self.addEventListener('install', (event) => {
@@ -15,6 +7,16 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('[Service Worker] Caching app shell');
+        // Use current origin to avoid domain mismatch errors (www vs non-www)
+        const origin = self.location.origin;
+        const urlsToCache = [
+          origin + '/',
+          origin + '/admin/login',
+          origin + '/manifest.json',
+          origin + '/icon.svg',
+          origin + '/icon-192x192.svg',
+          origin + '/icon-512x512.svg',
+        ];
         return cache.addAll(urlsToCache);
       })
       .catch((error) => {
@@ -64,7 +66,8 @@ self.addEventListener('fetch', (event) => {
       .catch(() => {
         // If both fail, return offline page or error
         if (event.request.destination === 'document') {
-          return caches.match('/admin/login');
+          const origin = new URL(event.request.url).origin;
+          return caches.match(origin + '/admin/login');
         }
       })
   );

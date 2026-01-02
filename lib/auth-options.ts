@@ -32,15 +32,19 @@ export const authOptions: NextAuthConfig = {
   callbacks: {
     async signIn({ user, account, profile }) {
       // Create user in database when they sign in for the first time
-      if (user?.email) {
-        try {
-          // Lazy-load MongoDB client to avoid Edge runtime issues
-          const { default: clientPromise } = await import('@/lib/mongodb');
-          const client = await clientPromise;
-          const db = client.db('tixmgmt');
-          const usersCollection = db.collection<User>('users');
-          
-          const userEmail = user.email.toLowerCase();
+      if (!user?.email) {
+        console.error('[NextAuth] signIn: No user email provided');
+        return false;
+      }
+
+      try {
+        // Lazy-load MongoDB client to avoid Edge runtime issues
+        const { default: clientPromise } = await import('@/lib/mongodb');
+        const client = await clientPromise;
+        const db = client.db('tixmgmt');
+        const usersCollection = db.collection<User>('users');
+        
+        const userEmail = user.email.toLowerCase();
           
           // Add timeout protection and use projection for performance
           const fetchExistingUser = async () => {
@@ -151,8 +155,28 @@ export const authOptions: NextAuthConfig = {
           }
         } catch (error) {
           console.error('[NextAuth] Error creating/updating user in database:', error);
-          // Don't block sign-in if database operation fails
+          // Log detailed error information
+          if (error instanceof Error) {
+            console.error('[NextAuth] Error details:', {
+              message: error.message,
+              stack: error.stack,
+              name: error.name
+            });
+          }
+          // Don't block sign-in if database operation fails - allow user to sign in anyway
+          // The user data will be fetched on next request via JWT callback
         }
+      } catch (error) {
+        console.error('[NextAuth] Fatal error in signIn callback:', error);
+        if (error instanceof Error) {
+          console.error('[NextAuth] Fatal error details:', {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+          });
+        }
+        // Even on fatal error, allow sign-in to proceed
+        // The system will handle missing user data gracefully
       }
       
       return true; // Allow sign-in to proceed
