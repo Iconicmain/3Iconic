@@ -38,12 +38,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Pencil, Trash2, Loader2, Wifi, Mail, Network, X, Eye, EyeOff, Eye as ViewIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, Loader2, Wifi, Mail, Network, X, Eye, EyeOff, Eye as ViewIcon, CheckCircle2, Circle, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
+
+interface PaymentLogEntry {
+  date: string;
+  month: string;
+  year: number;
+}
 
 interface EmailEntry {
   email: string;
   password: string;
+  paymentLog?: PaymentLogEntry[];
 }
 
 interface IpEntry {
@@ -77,6 +84,7 @@ export function InternetConnectionsClient() {
   const [showPasswords, setShowPasswords] = useState<{ [key: string]: boolean }>({});
   const [showFormPasswords, setShowFormPasswords] = useState<{ [key: string]: boolean }>({});
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [expandedPaymentHistory, setExpandedPaymentHistory] = useState<{ [key: string]: boolean }>({});
   const [formData, setFormData] = useState({
     station: '',
     starlinkEmails: [{ email: '', password: '' }] as EmailEntry[],
@@ -373,6 +381,112 @@ export function InternetConnectionsClient() {
     return `${diffHours}h ${diffMinutes}m remaining`;
   };
 
+  // Payment tracking functions
+  const getCurrentMonthYear = () => {
+    const now = new Date();
+    return {
+      month: now.toLocaleString('default', { month: 'long' }),
+      year: now.getFullYear(),
+      monthIndex: now.getMonth(),
+    };
+  };
+
+  const getLastPaymentDate = (emailEntry: EmailEntry): Date | null => {
+    if (!emailEntry.paymentLog || emailEntry.paymentLog.length === 0) {
+      return null;
+    }
+    // Sort by date descending and get the most recent payment
+    const sortedPayments = [...emailEntry.paymentLog].sort((a, b) => {
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
+    return new Date(sortedPayments[0].date);
+  };
+
+  const getNextDueDate = (lastPaymentDate: Date): Date => {
+    const nextDue = new Date(lastPaymentDate);
+    nextDue.setDate(nextDue.getDate() + 30);
+    return nextDue;
+  };
+
+  const isPaymentDue = (emailEntry: EmailEntry): boolean => {
+    const lastPayment = getLastPaymentDate(emailEntry);
+    if (!lastPayment) {
+      return true; // No payment history, so it's due
+    }
+    const nextDueDate = getNextDueDate(lastPayment);
+    const now = new Date();
+    return now >= nextDueDate;
+  };
+
+  const handleMarkPayment = async (connectionId: string, email: string) => {
+    const { month, year } = getCurrentMonthYear();
+    const paymentDate = new Date();
+    
+    try {
+      const response = await fetch(`/api/internet-connections/${connectionId}/mark-payment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          month,
+          year,
+          paymentDate: paymentDate.toISOString(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to mark payment');
+      }
+
+      const paymentDate = new Date(data.connection?.starlinkEmails?.find((e: any) => e.email === email)?.paymentLog?.slice(-1)[0]?.date || new Date());
+      toast.success(`Payment recorded on ${paymentDate.toLocaleString()}`);
+      
+      // Update the connection in the response
+      if (data.connection) {
+        const updated = data.connection;
+        // Handle backward compatibility
+        if (updated.starlinkEmails) {
+          updated.starlinkEmails = updated.starlinkEmails.map((item: any) => {
+            if (typeof item === 'string') {
+              return { email: item, password: '' };
+            }
+            return item;
+          });
+        }
+        
+        // Update connections array
+        setConnections(prev => prev.map(conn => 
+          conn._id === connectionId ? updated : conn
+        ));
+        
+        // Update selectedConnection if it's the one being updated
+        if (selectedConnection && selectedConnection._id === connectionId) {
+          setSelectedConnection(updated);
+        }
+      }
+    } catch (error) {
+      console.error('Error marking payment:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to mark payment';
+      toast.error(errorMessage);
+    }
+  };
+
+  const getPaymentHistory = (emailEntry: EmailEntry) => {
+    if (!emailEntry.paymentLog || emailEntry.paymentLog.length === 0) {
+      return [];
+    }
+    // Sort by date descending (most recent first)
+    return [...emailEntry.paymentLog].sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return dateB - dateA;
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -594,20 +708,98 @@ export function InternetConnectionsClient() {
                             </div>
                             {emails.length > 0 ? (
                               <div className="space-y-2">
-                                {emails.map((entry, idx) => (
-                                  <div key={idx} className="p-2.5 sm:p-3 bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                                    <div className="flex items-start gap-2 mb-1">
-                                      <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                                      <span className="text-xs sm:text-sm font-medium break-words overflow-wrap-anywhere">{entry.email}</span>
-                                    </div>
-                                    {entry.password && (
-                                      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-blue-200 dark:border-blue-800">
-                                        <span className="text-xs font-medium text-muted-foreground">Password:</span>
-                                        <span className="text-xs font-mono font-semibold">••••••••</span>
+                                {emails.map((entry, idx) => {
+                                  const isPaid = !isPaymentDue(entry);
+                                  const paymentHistory = getPaymentHistory(entry);
+                                  const lastPayment = getLastPaymentDate(entry);
+                                  const nextDueDate = lastPayment ? getNextDueDate(lastPayment) : null;
+                                  
+                                  return (
+                                    <div key={idx} className="p-2.5 sm:p-3 bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                                      <div className="flex items-start gap-2 mb-1">
+                                        <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                                        <span className="text-xs sm:text-sm font-medium break-words overflow-wrap-anywhere flex-1">{entry.email}</span>
                                       </div>
-                                    )}
-                                  </div>
-                                ))}
+                                      {entry.password && (
+                                        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-blue-200 dark:border-blue-800">
+                                          <span className="text-xs font-medium text-muted-foreground">Password:</span>
+                                          <span className="text-xs font-mono font-semibold">••••••••</span>
+                                        </div>
+                                      )}
+                                      
+                                      {/* Payment Status Section */}
+                                      <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800 space-y-2">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-2">
+                                            {isPaid ? (
+                                              <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
+                                            ) : (
+                                              <Circle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+                                            )}
+                                            <span className={`text-xs font-semibold ${isPaid ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                              {isPaid ? 'Paid' : 'Not Paid'}
+                                            </span>
+                                            {nextDueDate && isPaid && (
+                                              <span className="text-xs text-muted-foreground">
+                                                (Next due: {nextDueDate.toLocaleDateString()})
+                                              </span>
+                                            )}
+                                          </div>
+                                          {!isPaid && connection._id && (
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => handleMarkPayment(connection._id!, entry.email)}
+                                              className="gap-1 text-xs h-7 px-2"
+                                            >
+                                              <CheckCircle2 className="w-3 h-3" />
+                                              Mark Paid
+                                            </Button>
+                                          )}
+                                        </div>
+                                        
+                                        {/* Payment History */}
+                                        {paymentHistory.length > 0 && (
+                                          <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800">
+                                            <div className="flex items-center justify-between mb-1">
+                                              <div className="flex items-center gap-1">
+                                                <Calendar className="w-3 h-3 text-muted-foreground" />
+                                                <span className="text-xs font-medium text-muted-foreground">Payment History:</span>
+                                              </div>
+                                              {paymentHistory.length > 1 && (
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={() => {
+                                                    const key = `${connection._id}-${entry.email}`;
+                                                    setExpandedPaymentHistory(prev => ({
+                                                      ...prev,
+                                                      [key]: !prev[key]
+                                                    }));
+                                                  }}
+                                                  className="gap-1 text-xs h-6 px-2"
+                                                >
+                                                  <ViewIcon className="w-3 h-3" />
+                                                  {expandedPaymentHistory[`${connection._id}-${entry.email}`] ? 'Show Less' : 'View All'}
+                                                </Button>
+                                              )}
+                                            </div>
+                                            <div className="space-y-1">
+                                              {(expandedPaymentHistory[`${connection._id}-${entry.email}`] 
+                                                ? paymentHistory 
+                                                : paymentHistory.slice(0, 1)
+                                              ).map((payment, pIdx) => (
+                                                <div key={pIdx} className="text-xs text-muted-foreground pl-4">
+                                                  {payment.month} {payment.year} - {new Date(payment.date).toLocaleString()}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             ) : (
                               <p className="text-xs sm:text-sm text-muted-foreground italic">No emails configured</p>
@@ -954,25 +1146,101 @@ export function InternetConnectionsClient() {
                   <Label className="text-xs sm:text-sm font-semibold">Starlink Emails</Label>
                   {emails.length > 0 ? (
                     <div className="space-y-2 sm:space-y-3">
-                      {emails.map((entry, idx) => (
-                        <div key={idx} className="p-2.5 sm:p-3 md:p-4 bg-slate-50 dark:bg-slate-900 rounded-lg border space-y-2 max-w-full overflow-x-hidden">
-                          <div className="flex items-start gap-2">
-                            <Mail className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
-                            <div className="flex-1 min-w-0 overflow-hidden">
-                              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Email</p>
-                              <p className="text-xs sm:text-sm md:text-base font-mono break-words overflow-wrap-anywhere">{entry.email}</p>
-                            </div>
-                          </div>
-                          {entry.password && (
-                            <div className="flex items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                      {emails.map((entry, idx) => {
+                        const isPaid = !isPaymentDue(entry);
+                        const paymentHistory = getPaymentHistory(entry);
+                        const lastPayment = getLastPaymentDate(entry);
+                        const nextDueDate = lastPayment ? getNextDueDate(lastPayment) : null;
+                        
+                        return (
+                          <div key={idx} className="p-2.5 sm:p-3 md:p-4 bg-slate-50 dark:bg-slate-900 rounded-lg border space-y-2 max-w-full overflow-x-hidden">
+                            <div className="flex items-start gap-2">
+                              <Mail className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
                               <div className="flex-1 min-w-0 overflow-hidden">
-                                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Password</p>
-                                <p className="text-xs sm:text-sm md:text-base font-mono break-all overflow-wrap-anywhere">{entry.password}</p>
+                                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Email</p>
+                                <p className="text-xs sm:text-sm md:text-base font-mono break-words overflow-wrap-anywhere">{entry.email}</p>
                               </div>
                             </div>
-                          )}
-                        </div>
-                      ))}
+                            {entry.password && (
+                              <div className="flex items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                                <div className="flex-1 min-w-0 overflow-hidden">
+                                  <p className="text-xs sm:text-sm font-medium text-muted-foreground">Password</p>
+                                  <p className="text-xs sm:text-sm md:text-base font-mono break-all overflow-wrap-anywhere">{entry.password}</p>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Payment Status Section */}
+                            <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                              <div className="flex items-center gap-2">
+                                {isPaid ? (
+                                  <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
+                                ) : (
+                                  <Circle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+                                )}
+                                <span className={`text-xs sm:text-sm font-semibold ${isPaid ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                  {isPaid ? 'Paid' : 'Not Paid'}
+                                </span>
+                                {nextDueDate && isPaid && (
+                                  <span className="text-xs sm:text-sm text-muted-foreground">
+                                    (Next due: {nextDueDate.toLocaleDateString()})
+                                  </span>
+                                )}
+                                {!isPaid && selectedConnection._id && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleMarkPayment(selectedConnection._id!, entry.email)}
+                                    className="gap-1 text-xs h-7 px-2 ml-auto"
+                                  >
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    Mark Paid
+                                  </Button>
+                                )}
+                              </div>
+                              
+                              {/* Payment History */}
+                              {paymentHistory.length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-1">
+                                      <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+                                      <p className="text-xs sm:text-sm font-medium text-muted-foreground">Payment History:</p>
+                                    </div>
+                                    {paymentHistory.length > 1 && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          const key = `view-${selectedConnection._id}-${entry.email}`;
+                                          setExpandedPaymentHistory(prev => ({
+                                            ...prev,
+                                            [key]: !prev[key]
+                                          }));
+                                        }}
+                                        className="gap-1 text-xs h-6 px-2"
+                                      >
+                                        <ViewIcon className="w-3 h-3" />
+                                        {expandedPaymentHistory[`view-${selectedConnection._id}-${entry.email}`] ? 'Show Less' : 'View All'}
+                                      </Button>
+                                    )}
+                                  </div>
+                                  <div className="space-y-1">
+                                    {(expandedPaymentHistory[`view-${selectedConnection._id}-${entry.email}`] 
+                                      ? paymentHistory 
+                                      : paymentHistory.slice(0, 1)
+                                    ).map((payment, pIdx) => (
+                                      <div key={pIdx} className="text-xs sm:text-sm text-muted-foreground pl-4">
+                                        {payment.month} {payment.year} - {new Date(payment.date).toLocaleString()}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="p-2.5 sm:p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border">

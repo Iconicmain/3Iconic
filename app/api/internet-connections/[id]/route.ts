@@ -93,20 +93,44 @@ export async function PATCH(
 
     if (starlinkEmails !== undefined) {
       // Handle both array of objects and array of strings for backward compatibility
-      let emailEntries: Array<{ email: string; password: string }> = [];
+      let emailEntries: Array<{ email: string; password: string; paymentLog?: any[] }> = [];
       if (Array.isArray(starlinkEmails)) {
         emailEntries = starlinkEmails
           .map((item: any) => {
             if (typeof item === 'string') {
               return { email: item.trim(), password: '' };
             } else if (item && item.email) {
-              return { email: item.email.trim(), password: item.password || '' };
+              // Preserve paymentLog if it exists
+              const entry: any = { 
+                email: item.email.trim(), 
+                password: item.password || '' 
+              };
+              if (item.paymentLog) {
+                entry.paymentLog = item.paymentLog;
+              }
+              return entry;
             }
             return null;
           })
           .filter((item: any) => item && item.email);
       } else if (starlinkEmails) {
         emailEntries = [{ email: starlinkEmails.trim(), password: '' }];
+      }
+      
+      // Preserve paymentLog from existing entries for matching emails
+      if (currentConnection.starlinkEmails && Array.isArray(currentConnection.starlinkEmails)) {
+        emailEntries = emailEntries.map((newEntry: any) => {
+          const existingEntry = currentConnection.starlinkEmails.find((existing: any) => {
+            const existingEmail = typeof existing === 'string' ? existing : existing.email;
+            return existingEmail === newEntry.email;
+          });
+          
+          if (existingEntry && typeof existingEntry === 'object' && existingEntry.paymentLog) {
+            newEntry.paymentLog = existingEntry.paymentLog;
+          }
+          
+          return newEntry;
+        });
       }
       
       // Validate all email formats
