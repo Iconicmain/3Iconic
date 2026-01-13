@@ -420,7 +420,7 @@ export function InternetConnectionsClient() {
 
   const handleMarkPayment = async (connectionId: string, email: string) => {
     const { month, year } = getCurrentMonthYear();
-    const paymentDate = new Date();
+    const paymentDateTime = new Date();
     
     try {
       const response = await fetch(`/api/internet-connections/${connectionId}/mark-payment`, {
@@ -432,7 +432,7 @@ export function InternetConnectionsClient() {
           email,
           month,
           year,
-          paymentDate: paymentDate.toISOString(),
+          paymentDate: paymentDateTime.toISOString(),
         }),
       });
 
@@ -442,8 +442,8 @@ export function InternetConnectionsClient() {
         throw new Error(data.error || 'Failed to mark payment');
       }
 
-      const paymentDate = new Date(data.connection?.starlinkEmails?.find((e: any) => e.email === email)?.paymentLog?.slice(-1)[0]?.date || new Date());
-      toast.success(`Payment recorded on ${paymentDate.toLocaleString()}`);
+      const recordedPaymentDate = new Date(data.connection?.starlinkEmails?.find((e: any) => e.email === email)?.paymentLog?.slice(-1)[0]?.date || new Date());
+      toast.success(`Payment recorded on ${recordedPaymentDate.toLocaleString()}`);
       
       // Update the connection in the response
       if (data.connection) {
