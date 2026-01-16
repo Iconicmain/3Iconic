@@ -378,7 +378,7 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
   useEffect(() => {
     const currentPage = page;
     setPage(1); // Reset to page 1 first
-    const fetch = async () => {
+    const fetchTicketsData = async () => {
       setLoading(true);
       const params = new URLSearchParams();
       params.set('page', '1');
@@ -407,13 +407,13 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
         setLoading(false);
       }
     };
-    fetch();
+    fetchTicketsData();
   }, [debouncedSearch, statusFilter, categoryFilter, stationFilter]);
 
   // Fetch next page when page changes
   useEffect(() => {
     if (page > 1) {
-      const fetch = async () => {
+      const fetchPageData = async () => {
         setLoading(true);
         const params = new URLSearchParams();
         params.set('page', page.toString());
@@ -442,7 +442,7 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
           setLoading(false);
         }
       };
-      fetch();
+      fetchPageData();
     }
   }, [page, statusFilter, categoryFilter, stationFilter, debouncedSearch]);
 

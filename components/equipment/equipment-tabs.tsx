@@ -5,7 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
-import { Plus, Search, Calendar, AlertCircle, Loader2, Edit, Trash2, Link, Eye } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Plus, Search, Calendar, AlertCircle, Loader2, Edit, Trash2, Link, Eye, CheckSquare, Square, Package } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { EquipmentForm } from './equipment-form';
@@ -15,6 +18,14 @@ import { EquipmentTemplateManager } from './equipment-template-manager';
 import { BatchForm } from './batch-form';
 import { BatchTracking } from './batch-tracking';
 import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface Equipment {
   _id?: string;
@@ -47,7 +58,10 @@ function EquipmentTable({
   onEdit,
   onDelete,
   onAttach,
-  onView
+  onView,
+  selectedItems,
+  onSelectionChange,
+  showCheckboxes
 }: { 
   equipment: Equipment[], 
   actions?: boolean, 
@@ -55,9 +69,46 @@ function EquipmentTable({
   onEdit?: (equipment: Equipment) => void,
   onDelete?: (equipment: Equipment) => void,
   onAttach?: (equipment: Equipment) => void,
-  onView?: (equipment: Equipment) => void
+  onView?: (equipment: Equipment) => void,
+  selectedItems?: string[],
+  onSelectionChange?: (selectedIds: string[]) => void,
+  showCheckboxes?: boolean
 }) {
   const [searchTerm, setSearchTerm] = useState('');
+  
+  const isSelected = (itemId: string) => {
+    return selectedItems?.includes(itemId) || false;
+  };
+  
+  const canSelect = (item: Equipment) => {
+    // Only allow selection of items that don't already belong to a batch
+    return !item.batchId;
+  };
+  
+  const toggleSelection = (itemId: string, item: Equipment, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    if (!onSelectionChange || !selectedItems || !canSelect(item)) return;
+    
+    const newSelection = isSelected(itemId)
+      ? selectedItems.filter(id => id !== itemId)
+      : [...selectedItems, itemId];
+    onSelectionChange(newSelection);
+  };
+  
+  const toggleSelectAll = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!onSelectionChange || !selectedItems) return;
+    
+    const selectableItems = filtered.filter(item => canSelect(item));
+    const allSelected = selectableItems.length > 0 && selectableItems.every(item => isSelected(item._id || ''));
+    if (allSelected) {
+      onSelectionChange([]);
+    } else {
+      onSelectionChange(selectableItems.map(item => item._id || '').filter(Boolean));
+    }
+  };
 
   const filtered = equipment.filter((item) =>
     item.equipmentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -107,6 +158,17 @@ function EquipmentTable({
             <CardContent className="pt-3 pb-3 px-3 sm:px-4">
               <div className="space-y-2">
                 <div className="flex justify-between items-start gap-2">
+                  {showCheckboxes && (
+                    <div onClick={(e) => e.stopPropagation()} className="flex-shrink-0">
+                      <Checkbox
+                        checked={isSelected(item._id || '')}
+                        disabled={!canSelect(item)}
+                        onCheckedChange={() => toggleSelection(item._id || '', item)}
+                        title={item.batchId ? 'Equipment already belongs to a batch' : ''}
+                        className="w-5 h-5"
+                      />
+                    </div>
+                  )}
                   <div className="min-w-0 flex-1">
                     <p className="font-bold text-sm text-purple-700 truncate">{item.equipmentId}</p>
                     <p className="font-semibold text-sm text-purple-700 truncate">{item.name}</p>
@@ -131,6 +193,15 @@ function EquipmentTable({
                     <p className="text-muted-foreground text-[10px] font-medium">Serial</p>
                     <p className="text-foreground font-mono text-[10px] truncate">{item.serialNumber}</p>
                   </div>
+                  {tabType === 'available' && item.batch?.name && (
+                    <div className="col-span-2">
+                      <p className="text-muted-foreground text-[10px] font-medium">Batch</p>
+                      <Badge variant="secondary" className="gap-1 text-[10px]">
+                        <Package className="w-2.5 h-2.5" />
+                        {item.batch.name}
+                      </Badge>
+                    </div>
+                  )}
                   {tabType === 'bought' && (
                     <>
                       <div>
@@ -214,10 +285,30 @@ function EquipmentTable({
         <table className="w-full min-w-0 table-auto">
           <thead>
             <tr className="border-b border-border">
+              {showCheckboxes && (
+                <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-purple-600 bg-purple-50 w-12">
+                  <div className="flex items-center">
+                    <Checkbox
+                      checked={filtered.filter(item => canSelect(item)).length > 0 && filtered.filter(item => canSelect(item)).every(item => isSelected(item._id || ''))}
+                      onCheckedChange={(checked) => {
+                        const selectableItems = filtered.filter(item => canSelect(item));
+                        if (checked) {
+                          onSelectionChange?.(selectableItems.map(item => item._id || '').filter(Boolean));
+                        } else {
+                          onSelectionChange?.([]);
+                        }
+                      }}
+                      onClick={toggleSelectAll}
+                      className="w-5 h-5"
+                    />
+                  </div>
+                </th>
+              )}
               <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-purple-600 bg-purple-50">ID</th>
               <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-purple-600 bg-purple-50">Name</th>
               <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-muted-foreground">Model</th>
               <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-muted-foreground">Serial Number</th>
+              {tabType === 'available' && <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-muted-foreground">Batch</th>}
               {tabType === 'bought' && <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-muted-foreground">Cost</th>}
               {tabType === 'bought' && <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-muted-foreground">Warranty</th>}
               {tabType === 'installed' && <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-blue-600 bg-blue-50">Station</th>}
@@ -234,6 +325,19 @@ function EquipmentTable({
                 className="hover:bg-muted/50 transition-colors cursor-pointer"
                 onClick={() => tabType === 'installed' && onView?.(item)}
               >
+                {showCheckboxes && (
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 text-sm" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center">
+                      <Checkbox
+                        checked={isSelected(item._id || '')}
+                        disabled={!canSelect(item)}
+                        onCheckedChange={() => toggleSelection(item._id || '', item)}
+                        title={item.batchId ? 'Equipment already belongs to a batch' : ''}
+                        className="w-5 h-5"
+                      />
+                    </div>
+                  </td>
+                )}
                 <td className="px-4 sm:px-6 py-3 sm:py-4 text-sm">
                   <div className="flex items-center gap-2">
                     <div className="w-1 h-6 bg-purple-500 rounded-full hidden sm:block"></div>
@@ -248,6 +352,18 @@ function EquipmentTable({
                 </td>
                 <td className="px-4 sm:px-6 py-3 sm:py-4 text-sm text-foreground">{item.model}</td>
                 <td className="px-4 sm:px-6 py-3 sm:py-4 text-sm text-muted-foreground font-mono text-xs">{item.serialNumber}</td>
+                {tabType === 'available' && (
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 text-sm">
+                    {item.batch?.name ? (
+                      <Badge variant="secondary" className="gap-1">
+                        <Package className="w-3 h-3" />
+                        {item.batch.name}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </td>
+                )}
                 {tabType === 'bought' && (
                   <>
                     <td className="px-4 sm:px-6 py-3 sm:py-4 text-sm font-semibold text-foreground">Ksh {item.cost?.toLocaleString() || '0'}</td>
@@ -362,7 +478,9 @@ export function EquipmentTabs({ onEquipmentUpdate }: EquipmentTabsProps) {
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
   const [batchFormOpen, setBatchFormOpen] = useState(false);
+  const [createBatchFromSelectedOpen, setCreateBatchFromSelectedOpen] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
+  const [selectedEquipmentIds, setSelectedEquipmentIds] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState('installed');
   const [mainView, setMainView] = useState<'equipment' | 'batches'>('equipment');
   const [mounted, setMounted] = useState(false);
@@ -397,10 +515,55 @@ export function EquipmentTabs({ onEquipmentUpdate }: EquipmentTabsProps) {
 
   const boughtEquipment = getFilteredEquipment('bought');
   // Available tab shows both "available" and "bought" equipment (bought means it's available)
+  // Only show equipment that doesn't already belong to a batch for selection
   const availableEquipment = equipment.filter((item) => 
-    item.status === 'available' || item.status === 'bought'
+    (item.status === 'available' || item.status === 'bought')
   );
   const installedEquipment = getFilteredEquipment('installed');
+  
+  // Get selected equipment objects
+  const selectedEquipmentItems = equipment.filter(item => 
+    selectedEquipmentIds.includes(item._id || '')
+  );
+  
+  const handleCreateBatchFromSelected = async (batchData: {
+    name: string;
+    description: string;
+    purchaseDate: string;
+    purchaseCost?: string;
+    supplier?: string;
+  }) => {
+    try {
+      const response = await fetch('/api/equipment-batches/create-from-selected', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...batchData,
+          equipmentIds: selectedEquipmentIds,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create batch');
+      }
+
+      toast.success(`Batch created successfully with ${selectedEquipmentIds.length} equipment items`);
+      setCreateBatchFromSelectedOpen(false);
+      setSelectedEquipmentIds([]);
+      fetchEquipment();
+      if (onEquipmentUpdate) {
+        onEquipmentUpdate();
+      }
+    } catch (error) {
+      console.error('Error creating batch:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create batch';
+      toast.error(errorMessage);
+    }
+  };
 
   const handleEdit = (equipment: Equipment) => {
     setSelectedEquipment(equipment);
@@ -557,7 +720,19 @@ export function EquipmentTabs({ onEquipmentUpdate }: EquipmentTabsProps) {
           <TabsContent value="available" className="mt-4 sm:mt-6 w-full max-w-full overflow-x-hidden">
             <Card className="bg-white w-full max-w-full overflow-x-hidden">
               <CardHeader className="p-4 sm:p-6">
-                <CardTitle className="text-lg sm:text-xl">Available Equipment</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg sm:text-xl">Available Equipment</CardTitle>
+                  {selectedEquipmentIds.length > 0 && (
+                    <Button
+                      onClick={() => setCreateBatchFromSelectedOpen(true)}
+                      className="gap-2"
+                      variant="default"
+                    >
+                      <Package className="w-4 h-4" />
+                      Create Batch ({selectedEquipmentIds.length})
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="p-4 sm:p-6 w-full max-w-full overflow-x-hidden">
                 {availableEquipment.length === 0 ? (
@@ -572,6 +747,9 @@ export function EquipmentTabs({ onEquipmentUpdate }: EquipmentTabsProps) {
                     onEdit={handleEdit}
                     onDelete={handleDelete}
                     onAttach={handleAttach}
+                    selectedItems={selectedEquipmentIds}
+                    onSelectionChange={setSelectedEquipmentIds}
+                    showCheckboxes={true}
                   />
                 )}
               </CardContent>
@@ -671,6 +849,188 @@ export function EquipmentTabs({ onEquipmentUpdate }: EquipmentTabsProps) {
           }
         }}
       />
+
+      {/* Create Batch from Selected Equipment Dialog */}
+      <CreateBatchFromSelectedDialog
+        open={createBatchFromSelectedOpen}
+        onOpenChange={setCreateBatchFromSelectedOpen}
+        selectedEquipment={selectedEquipmentItems}
+        onCreateBatch={handleCreateBatchFromSelected}
+      />
     </div>
+  );
+}
+
+// Create Batch from Selected Equipment Dialog Component
+function CreateBatchFromSelectedDialog({
+  open,
+  onOpenChange,
+  selectedEquipment,
+  onCreateBatch,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  selectedEquipment: Equipment[];
+  onCreateBatch: (data: {
+    name: string;
+    description: string;
+    purchaseDate: string;
+    purchaseCost?: string;
+    supplier?: string;
+  }) => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    purchaseDate: new Date().toISOString().split('T')[0],
+    purchaseCost: '',
+    supplier: '',
+  });
+
+  useEffect(() => {
+    if (open) {
+      // Calculate total cost from selected equipment
+      const totalCost = selectedEquipment.reduce((sum, item) => {
+        return sum + (Number(item.cost) || 0);
+      }, 0);
+
+      // Auto-generate name from equipment types
+      const uniqueNames = [...new Set(selectedEquipment.map(item => item.name))];
+      const autoName = uniqueNames.length === 1 
+        ? `${uniqueNames[0]} Batch`
+        : `Mixed Equipment Batch`;
+
+      setFormData({
+        name: autoName,
+        description: `Batch containing ${selectedEquipment.length} equipment items`,
+        purchaseDate: new Date().toISOString().split('T')[0],
+        purchaseCost: totalCost > 0 ? totalCost.toString() : '',
+        supplier: '',
+      });
+    }
+  }, [open, selectedEquipment]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name || !formData.purchaseDate) {
+      toast.error('Name and purchase date are required');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await onCreateBatch(formData);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const totalCost = selectedEquipment.reduce((sum, item) => {
+    return sum + (Number(item.cost) || 0);
+  }, 0);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Create Batch from Selected Equipment</DialogTitle>
+          <DialogDescription>
+            Create a new batch from {selectedEquipment.length} selected equipment {selectedEquipment.length === 1 ? 'item' : 'items'}
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="name">Batch Name *</Label>
+            <Input
+              id="name"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              required
+              placeholder="Enter batch name"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="description">Description</Label>
+            <Textarea
+              id="description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Enter batch description"
+              rows={3}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="purchaseDate">Purchase Date *</Label>
+              <Input
+                id="purchaseDate"
+                type="date"
+                value={formData.purchaseDate}
+                onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="purchaseCost">Purchase Cost (Ksh)</Label>
+              <Input
+                id="purchaseCost"
+                type="number"
+                value={formData.purchaseCost}
+                onChange={(e) => setFormData({ ...formData, purchaseCost: e.target.value })}
+                placeholder="Auto-calculated from equipment"
+              />
+              {totalCost > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Total cost from equipment: Ksh {totalCost.toLocaleString()}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="supplier">Supplier</Label>
+            <Input
+              id="supplier"
+              value={formData.supplier}
+              onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
+              placeholder="Enter supplier name"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Selected Equipment ({selectedEquipment.length} items)</Label>
+            <div className="border rounded-md p-3 max-h-48 overflow-y-auto bg-muted/50">
+              <div className="space-y-1">
+                {selectedEquipment.map((item) => (
+                  <div key={item._id} className="text-sm flex items-center justify-between">
+                    <span className="font-medium">{item.equipmentId} - {item.name}</span>
+                    <span className="text-muted-foreground">Ksh {item.cost?.toLocaleString() || '0'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Create Batch
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

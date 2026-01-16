@@ -66,9 +66,10 @@ export async function GET(request: NextRequest) {
     // Group by technician (calculate total earnings per technician)
     // Separate solo tickets from joined tickets for Frank and Jilo
     const technicianBreakdown: { [key: string]: { count: number; total: number } } = {};
-    const bothBreakdown: { frank: { count: number; total: number }, jilo: { count: number; total: number } } = {
+    const bothBreakdown: { frank: { count: number; total: number }, jilo: { count: number; total: number }, totalBothAmount: number } = {
       frank: { count: 0, total: 0 },
-      jilo: { count: 0, total: 0 }
+      jilo: { count: 0, total: 0 },
+      totalBothAmount: 0
     };
     
     ticketCosts.forEach((tc: any) => {
@@ -80,10 +81,10 @@ export async function GET(request: NextRequest) {
         
         if (isFrankAndJilo) {
           // When Frank and Jilo work together, track in "Both" section
+          // First accumulate the total amount where they worked together
           bothBreakdown.frank.count += 1;
-          bothBreakdown.frank.total += tc.price * 0.60; // 60% for Frank
           bothBreakdown.jilo.count += 1;
-          bothBreakdown.jilo.total += tc.price * 0.50; // 50% for Jilo
+          bothBreakdown.totalBothAmount += tc.price; // Total amount for calculation
         } else {
           // Track individual technicians (solo tickets or with others)
           tc.technicians.forEach((tech: string) => {
@@ -124,22 +125,53 @@ export async function GET(request: NextRequest) {
     });
     
     // Add "Both" entries if there are tickets where Frank and Jilo worked together
+    // Calculate amounts based on percentage of total (Frank 60% of total, Jilo 50% of total)
+    // Note: 60% + 50% = 110%, so the sum of breakdown will exceed totalCost
+    // This is intentional - each person gets their percentage of the "both" total amount
+    let frankPercentage: string | undefined;
+    let jiloPercentage: string | undefined;
+    
+    if (bothBreakdown.totalBothAmount > 0) {
+      // Calculate totals: Frank gets 60% of "both" total, Jilo gets 50% of "both" total
+      // Example: If "both" tickets total 1,200
+      //   Frank = 1,200 × 0.60 = 720 (60% of 1,200)
+      //   Jilo = 1,200 × 0.50 = 600 (50% of 1,200)
+      //   Sum = 720 + 600 = 1,320 (110% of the "both" total)
+      bothBreakdown.frank.total = bothBreakdown.totalBothAmount * 0.60;
+      bothBreakdown.jilo.total = bothBreakdown.totalBothAmount * 0.50;
+      // Percentages are always 60% and 50% of the total "both" amount
+      frankPercentage = '60%';
+      jiloPercentage = '50%';
+    }
+    
     if (bothBreakdown.frank.count > 0 || bothBreakdown.jilo.count > 0) {
-      technicianBreakdown['Both - Frank'] = { count: bothBreakdown.frank.count, total: Math.round(bothBreakdown.frank.total * 100) / 100 };
-      technicianBreakdown['Both - Jilo'] = { count: bothBreakdown.jilo.count, total: Math.round(bothBreakdown.jilo.total * 100) / 100 };
+      technicianBreakdown['Both - Frank'] = { 
+        count: bothBreakdown.frank.count, 
+        total: Math.round(bothBreakdown.frank.total * 100) / 100 
+      };
+      technicianBreakdown['Both - Jilo'] = { 
+        count: bothBreakdown.jilo.count, 
+        total: Math.round(bothBreakdown.jilo.total * 100) / 100 
+      };
     }
 
+    // Calculate breakdown total for verification
+    // Note: Breakdown sum may exceed totalCost because Frank (60%) + Jilo (50%) = 110% of "both" total
+    const breakdownTotal = Object.values(technicianBreakdown).reduce((sum, data) => sum + data.total, 0);
+    
     return NextResponse.json({
-      totalCost,
+      totalCost, // Total cost of all tickets (sum of ticket prices)
+      breakdownTotal: Math.round(breakdownTotal * 100) / 100, // Sum of all breakdown amounts (may exceed totalCost due to 110% split for "both")
       ticketCount: tickets.length,
       ticketCosts,
       technicianBreakdown: Object.entries(technicianBreakdown).map(([technician, data]) => ({
         technician,
         count: data.count,
         total: Math.round(data.total * 100) / 100, // Round to 2 decimal places
-        percentage: technician === 'Both - Frank' ? '60%' : technician === 'Both - Jilo' ? '50%' : (technician === 'Frank' || technician === 'Jilo') ? '100%' : undefined,
+        percentage: technician === 'Both - Frank' ? frankPercentage : technician === 'Both - Jilo' ? jiloPercentage : (technician === 'Frank' || technician === 'Jilo') ? '100%' : undefined,
       })),
       lastClearedDate: tracking?.lastClearedDate || null,
+      bothTotalAmount: bothBreakdown.totalBothAmount, // Total amount where Frank and Jilo worked together (for verification)
     }, { status: 200 });
   } catch (error) {
     console.error('Error fetching ticket costs:', error);

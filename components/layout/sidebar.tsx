@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Ticket, DollarSign, Warehouse, Package, Settings, Menu, X, ChevronRight, Users, Calculator, Wifi, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, Ticket, DollarSign, Warehouse, Package, Settings, Menu, X, ChevronRight, Users, Calculator, Wifi, MessageSquare, ClipboardList, ClipboardCheck } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -81,6 +81,21 @@ const navigation = [
     description: 'Send SMS to clients',
     pageId: 'send-message'
   },
+  {
+    name: 'Request Equipment',
+    href: '/admin/equipment-requests',
+    icon: ClipboardList,
+    description: 'Request equipment',
+    pageId: 'equipment-requests'
+  },
+  {
+    name: 'Manage Requests',
+    href: '/admin/manage-requests',
+    icon: ClipboardCheck,
+    description: 'Review requests',
+    pageId: 'manage-requests',
+    superAdminOnly: true
+  },
 ];
 
 export function Sidebar() {
@@ -138,7 +153,13 @@ export function Sidebar() {
   }, []);
 
   // Filter navigation items based on user permissions
-  const filteredNavigation = navigation.filter(item => allowedPages.has(item.pageId));
+  // Always show equipment-requests for authenticated users
+  const filteredNavigation = navigation.filter(item => {
+    if (item.pageId === 'equipment-requests') {
+      return !loading; // Show if user is authenticated (loading is false)
+    }
+    return allowedPages.has(item.pageId);
+  });
 
   return (
     <>
