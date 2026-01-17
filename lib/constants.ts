@@ -13,6 +13,7 @@ export const AVAILABLE_PAGES = [
   { id: 'send-message', name: 'Send Message', path: '/admin/send-message' },
   { id: 'equipment-requests', name: 'Request Equipment', path: '/admin/equipment-requests' },
   { id: 'manage-requests', name: 'Manage Requests', path: '/admin/manage-requests' },
+  { id: 'station-tasks', name: 'Station Tasks', path: '/admin/station-tasks' },
 ] as const;
 
 export const PERMISSION_TYPES = ['view', 'add', 'edit', 'delete'] as const;

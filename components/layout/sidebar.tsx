@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Ticket, DollarSign, Warehouse, Package, Settings, Menu, X, ChevronRight, Users, Calculator, Wifi, MessageSquare, ClipboardList, ClipboardCheck } from 'lucide-react';
+import { LayoutDashboard, Ticket, DollarSign, Warehouse, Package, Settings, Menu, X, ChevronRight, Users, Calculator, Wifi, MessageSquare, ClipboardList, ClipboardCheck, CheckSquare } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -96,6 +96,13 @@ const navigation = [
     pageId: 'manage-requests',
     superAdminOnly: true
   },
+  {
+    name: 'Station Tasks',
+    href: '/admin/station-tasks',
+    icon: CheckSquare,
+    description: 'Track station tasks',
+    pageId: 'station-tasks'
+  },
 ];
 
 export function Sidebar() {
@@ -153,9 +160,9 @@ export function Sidebar() {
   }, []);
 
   // Filter navigation items based on user permissions
-  // Always show equipment-requests for authenticated users
+  // Always show equipment-requests and station-tasks for authenticated users
   const filteredNavigation = navigation.filter(item => {
-    if (item.pageId === 'equipment-requests') {
+    if (item.pageId === 'equipment-requests' || item.pageId === 'station-tasks') {
       return !loading; // Show if user is authenticated (loading is false)
     }
     return allowedPages.has(item.pageId);

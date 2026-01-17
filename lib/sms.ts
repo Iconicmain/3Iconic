@@ -408,3 +408,38 @@ export async function sendCategoryChangeSMS(
   }
 }
 
+/**
+ * Send SMS to technician when assigned to a station task
+ */
+export async function sendStationTaskAssignmentSMS(
+  technicianPhone: string,
+  taskTitle: string,
+  stationName: string,
+  stationId: string,
+  taskDescription: string,
+  baseUrl?: string
+): Promise<void> {
+  const appUrl = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const taskLink = `${appUrl}/admin/station-tasks`;
+  
+  // Truncate description if too long
+  const shortDescription = taskDescription && taskDescription.length > 100 
+    ? taskDescription.substring(0, 100) + '...' 
+    : taskDescription || 'No description provided';
+  
+  const message = `New Station Task Assigned\n\nA new station task has been assigned to you.\n\nTask: ${taskTitle}\nStation: ${stationName} (${stationId})\nDescription: ${shortDescription}\n\nKindly complete the task and mark it as done once finished.\n\nView Tasks: ${taskLink}\n\n3 Iconic Concepts Limited – Support Team`;
+  
+  console.log(`[Station Task Assignment SMS] Attempting to send to ${technicianPhone} for task: ${taskTitle}`);
+  
+  try {
+    const result = await sendSMS({
+      mobile: [technicianPhone],
+      msg: message,
+    });
+    console.log(`[Station Task Assignment SMS] ✅ SMS sent successfully to technician for task: ${taskTitle}`, result);
+  } catch (error) {
+    console.error(`[Station Task Assignment SMS] ❌ Failed to send SMS to technician for task: ${taskTitle}`, error);
+    // Don't throw - SMS failure shouldn't prevent task assignment
+  }
+}
+
