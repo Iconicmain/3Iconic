@@ -147,6 +147,77 @@ export default function CoveragePage() {
                         </div>
                       </div>
 
+                      {/* Central Content */}
+                      <div className="absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 text-center">
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ duration: 0.6 }}
+                          className="relative rounded-full bg-gradient-to-br from-primary/30 via-primary/20 to-accent/20 p-10 backdrop-blur-md border-2 border-primary/40 shadow-lg"
+                        >
+                          {/* Central Icon/Logo */}
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <motion.div
+                              animate={{ rotate: 360 }}
+                              transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                              className="absolute h-16 w-16 rounded-full border-2 border-primary/50"
+                            >
+                              <div className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 rounded-full bg-primary"></div>
+                            </motion.div>
+                          </div>
+                          
+                          <div className="relative z-10">
+                            <div className="font-heading text-4xl font-bold text-primary mb-1">27+</div>
+                            <div className="text-sm font-semibold text-foreground">Towns Covered</div>
+                            <div className="mt-2 text-xs text-muted-foreground">Across Kenya</div>
+                          </div>
+                        </motion.div>
+                      </div>
+
+                      {/* Connection Lines - Curved paths connecting to center */}
+                      <svg className="absolute inset-0 z-0 w-full h-full" style={{ overflow: 'visible', pointerEvents: 'none' }}>
+                        {kenyaTowns.slice(0, 8).map((town, i) => {
+                          const angle = (i / 8) * Math.PI * 2
+                          const radius = 120
+                          const centerX = 50
+                          const centerY = 50
+                          const startX = centerX + Math.cos(angle) * (radius / 100) * 30
+                          const startY = centerY + Math.sin(angle) * (radius / 100) * 30
+                          const endX = centerX
+                          const endY = centerY
+                          const controlX = centerX + Math.cos(angle) * (radius / 100) * 15
+                          const controlY = centerY + Math.sin(angle) * (radius / 100) * 15
+                          
+                          return (
+                            <motion.path
+                              key={town.name}
+                              d={`M ${startX}% ${startY}% Q ${controlX}% ${controlY}% ${endX}% ${endY}%`}
+                              stroke={town.status === 'available' ? '#0B6B3A' : '#22C55E'}
+                              strokeWidth="2"
+                              fill="none"
+                              strokeDasharray="5 5"
+                              initial={{ pathLength: 0, opacity: 0 }}
+                              animate={{ pathLength: 1, opacity: 0.4 }}
+                              transition={{ duration: 2, delay: i * 0.15, ease: "easeOut" }}
+                            />
+                          )
+                        })}
+                      </svg>
+
+                      {/* Concentric Circles */}
+                      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-0">
+                        <motion.div
+                          animate={{ scale: [1, 1.1, 1] }}
+                          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                          className="absolute h-32 w-32 rounded-full border-2 border-dashed border-primary/30 -translate-x-1/2 -translate-y-1/2"
+                        ></motion.div>
+                        <motion.div
+                          animate={{ scale: [1, 1.15, 1] }}
+                          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                          className="absolute h-48 w-48 rounded-full border-2 border-dashed border-primary/20 -translate-x-1/2 -translate-y-1/2"
+                        ></motion.div>
+                      </div>
+
                       {/* Map Pins */}
                       {kenyaTowns.slice(0, 15).map((town, i) => (
                         <motion.div
@@ -159,7 +230,7 @@ export default function CoveragePage() {
                             repeat: Infinity,
                             ease: 'easeInOut',
                           }}
-                          className="absolute"
+                          className="absolute z-10"
                           style={{
                             top: `${20 + Math.sin(i) * 30}%`,
                             left: `${25 + Math.cos(i) * 35}%`,

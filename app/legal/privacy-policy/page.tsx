@@ -34,7 +34,7 @@ const sections = [
   {
     title: 'Contact Us',
     content:
-      'If you have any questions about this Privacy Policy, please contact us at privacy@iconicfibre.co.ke or call 0700 123 456.',
+      'If you have any questions about this Privacy Policy, please contact us at info@3iconic.co.ke or call +254746089137.',
   },
 ]
 

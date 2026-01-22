@@ -13,7 +13,7 @@ const contactMethods = [
   {
     icon: Phone,
     title: 'Call Us',
-    value: '0700 123 456',
+    value: '+254746089137',
     description: 'Available 24/7',
     color: 'text-blue-500',
     bg: 'bg-blue-500/10',
@@ -21,7 +21,7 @@ const contactMethods = [
   {
     icon: MessageCircle,
     title: 'WhatsApp',
-    value: '+254 700 123 456',
+    value: '+254746089137',
     description: 'Chat anytime',
     color: 'text-green-500',
     bg: 'bg-green-500/10',
@@ -29,7 +29,7 @@ const contactMethods = [
   {
     icon: Mail,
     title: 'Email',
-    value: 'hello@iconicfibre.co.ke',
+    value: 'info@3iconic.co.ke',
     description: 'Response within 2 hours',
     color: 'text-purple-500',
     bg: 'bg-purple-500/10',
@@ -83,23 +83,40 @@ export default function ContactPage() {
             transition={{ delay: 0.1, duration: 0.6 }}
             className="mt-12 grid gap-6 sm:grid-cols-3"
           >
-            {contactMethods.map((method, index) => (
-              <motion.div
-                key={method.title}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 + index * 0.1, duration: 0.6 }}
-              >
-                <GlassCard className="h-full p-6 text-center" gradient hover>
-                  <div className={`mx-auto mb-4 inline-flex rounded-xl ${method.bg} p-3`}>
-                    <method.icon className={`h-6 w-6 ${method.color}`} />
-                  </div>
-                  <h3 className="font-heading text-lg font-bold text-foreground">{method.title}</h3>
-                  <div className="mt-2 font-semibold text-primary">{method.value}</div>
-                  <p className="mt-1 text-sm text-muted-foreground">{method.description}</p>
-                </GlassCard>
-              </motion.div>
-            ))}
+            {contactMethods.map((method, index) => {
+              const getLink = () => {
+                if (method.title === 'Call Us') {
+                  return `tel:+254746089137`
+                }
+                if (method.title === 'WhatsApp') {
+                  return `https://wa.me/254746089137`
+                }
+                if (method.title === 'Email') {
+                  return `mailto:info@3iconic.co.ke`
+                }
+                return '#'
+              }
+
+              return (
+                <motion.div
+                  key={method.title}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 + index * 0.1, duration: 0.6 }}
+                >
+                  <a href={getLink()} target={method.title === 'WhatsApp' ? '_blank' : '_self'} rel={method.title === 'WhatsApp' ? 'noopener noreferrer' : undefined}>
+                    <GlassCard className="h-full p-6 text-center cursor-pointer" gradient hover>
+                      <div className={`mx-auto mb-4 inline-flex rounded-xl ${method.bg} p-3`}>
+                        <method.icon className={`h-6 w-6 ${method.color}`} />
+                      </div>
+                      <h3 className="font-heading text-lg font-bold text-foreground">{method.title}</h3>
+                      <div className="mt-2 font-semibold text-primary">{method.value}</div>
+                      <p className="mt-1 text-sm text-muted-foreground">{method.description}</p>
+                    </GlassCard>
+                  </a>
+                </motion.div>
+              )
+            })}
           </motion.div>
 
           {/* Main Content: Form + Info */}

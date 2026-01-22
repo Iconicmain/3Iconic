@@ -86,20 +86,20 @@ export function Footer() {
 
         {/* Contact Bar */}
         <div className="mt-12 grid gap-4 border-t border-border/50 pt-8 sm:grid-cols-3">
-          <div className="flex items-center gap-3 text-sm">
+          <a href="tel:+254746089137" className="flex items-center gap-3 text-sm hover:text-primary transition-colors">
             <Phone className="h-5 w-5 text-primary" />
             <div>
               <div className="font-medium">Call Us</div>
-              <div className="text-muted-foreground">0700 123 456</div>
+              <div className="text-muted-foreground">+254746089137</div>
             </div>
-          </div>
-          <div className="flex items-center gap-3 text-sm">
+          </a>
+          <a href="mailto:info@3iconic.co.ke" className="flex items-center gap-3 text-sm hover:text-primary transition-colors">
             <Mail className="h-5 w-5 text-primary" />
             <div>
               <div className="font-medium">Email</div>
-              <div className="text-muted-foreground">hello@iconicfibre.co.ke</div>
+              <div className="text-muted-foreground">info@3iconic.co.ke</div>
             </div>
-          </div>
+          </a>
           <div className="flex items-center gap-3 text-sm">
             <MapPin className="h-5 w-5 text-primary" />
             <div>

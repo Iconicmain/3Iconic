@@ -95,8 +95,8 @@ export default function TermsOfServicePage() {
                 >
                   <h3 className="font-heading text-xl font-bold text-foreground">Questions?</h3>
                   <p className="mt-2 text-muted-foreground">
-                    If you have any questions about these Terms, please contact us at legal@iconicfibre.co.ke or
-                    call 0700 123 456.
+                    If you have any questions about these Terms, please contact us at info@3iconic.co.ke or
+                    call +254746089137.
                   </p>
                 </motion.div>
               </div>

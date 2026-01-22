@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { GlassCard } from '@/components/isp/glass-card'
-import { Activity, Clock, MapPin, Headset } from 'lucide-react'
+import { Activity, Clock, MapPin, Headset, Wifi, Globe } from 'lucide-react'
 import Link from 'next/link'
 import { stats } from '@/lib/isp-data'
 
@@ -101,6 +101,7 @@ export function HeroSection() {
             <div className="relative h-[400px] w-full lg:h-[500px]">
               {/* Abstract fiber visualization */}
               <div className="absolute inset-0 flex items-center justify-center">
+                {/* Outer rotating circles */}
                 <motion.div
                   animate={{
                     rotate: [0, 360],
@@ -123,6 +124,8 @@ export function HeroSection() {
                   }}
                   className="absolute h-48 w-48 rounded-full border-2 border-dashed border-accent/30 lg:h-64 lg:w-64"
                 />
+                
+                {/* Central gradient blob */}
                 <motion.div
                   animate={{
                     scale: [1, 1.2, 1],
@@ -133,8 +136,76 @@ export function HeroSection() {
                     repeat: Infinity,
                     ease: 'easeInOut',
                   }}
-                  className="absolute h-32 w-32 rounded-full bg-gradient-to-br from-primary/40 to-accent/40 blur-2xl"
+                  className="absolute h-32 w-32 rounded-full bg-gradient-to-br from-primary/40 to-accent/40 blur-2xl lg:h-40 lg:w-40"
                 />
+
+                {/* Central Content - WiFi/Global Icon */}
+                <div className="absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2">
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.6, delay: 0.5 }}
+                    className="relative rounded-full bg-gradient-to-br from-primary/30 via-primary/20 to-accent/20 p-8 lg:p-10 backdrop-blur-md border-2 border-primary/40 shadow-lg"
+                  >
+                    {/* Rotating indicator ring */}
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                      className="absolute inset-0 flex items-center justify-center"
+                    >
+                      <div className="h-20 w-20 lg:h-24 lg:w-24 rounded-full border-2 border-primary/50">
+                        <div className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 rounded-full bg-primary"></div>
+                      </div>
+                    </motion.div>
+                    
+                    {/* WiFi Icon */}
+                    <div className="relative z-10 flex items-center justify-center">
+                      <motion.div
+                        animate={{ 
+                          scale: [1, 1.1, 1],
+                          opacity: [0.8, 1, 0.8]
+                        }}
+                        transition={{ 
+                          duration: 2, 
+                          repeat: Infinity, 
+                          ease: "easeInOut" 
+                        }}
+                      >
+                        <Wifi className="h-12 w-12 lg:h-16 lg:w-16 text-primary" strokeWidth={2} />
+                      </motion.div>
+                    </div>
+                  </motion.div>
+                </div>
+
+                {/* Connection lines - curved paths */}
+                <svg className="absolute inset-0 z-0 w-full h-full" style={{ overflow: 'visible', pointerEvents: 'none' }}>
+                  {[...Array(6)].map((_, i) => {
+                    const angle = (i / 6) * Math.PI * 2
+                    const radius = 100
+                    const centerX = 50
+                    const centerY = 50
+                    const startX = centerX + Math.cos(angle) * (radius / 100) * 25
+                    const startY = centerY + Math.sin(angle) * (radius / 100) * 25
+                    const endX = centerX
+                    const endY = centerY
+                    const controlX = centerX + Math.cos(angle) * (radius / 100) * 12
+                    const controlY = centerY + Math.sin(angle) * (radius / 100) * 12
+                    
+                    return (
+                      <motion.path
+                        key={i}
+                        d={`M ${startX}% ${startY}% Q ${controlX}% ${controlY}% ${endX}% ${endY}%`}
+                        stroke="#0B6B3A"
+                        strokeWidth="2"
+                        fill="none"
+                        strokeDasharray="5 5"
+                        initial={{ pathLength: 0, opacity: 0 }}
+                        animate={{ pathLength: 1, opacity: 0.4 }}
+                        transition={{ duration: 2, delay: 0.8 + i * 0.15, ease: "easeOut" }}
+                      />
+                    )
+                  })}
+                </svg>
               </div>
 
               {/* Floating connection dots */}

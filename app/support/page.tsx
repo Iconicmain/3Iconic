@@ -231,12 +231,16 @@ export default function SupportPage() {
                 <Button size="lg" className="font-semibold">
                   Open a Ticket
                 </Button>
-                <Button size="lg" variant="outline" className="font-semibold">
-                  Call Support
-                </Button>
-                <Button size="lg" variant="outline" className="font-semibold">
-                  WhatsApp Us
-                </Button>
+                <a href="tel:+254746089137">
+                  <Button size="lg" variant="outline" className="font-semibold">
+                    Call Support
+                  </Button>
+                </a>
+                <a href="https://wa.me/254746089137" target="_blank" rel="noopener noreferrer">
+                  <Button size="lg" variant="outline" className="font-semibold">
+                    WhatsApp Us
+                  </Button>
+                </a>
               </div>
             </GlassCard>
           </motion.div>

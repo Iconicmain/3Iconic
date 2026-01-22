@@ -1,14 +1,25 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Download, X } from 'lucide-react';
 
 export function PWAInstaller() {
+  const pathname = usePathname();
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallButton, setShowInstallButton] = useState(false);
 
+  // Only show on admin pages
+  const isAdminPage = pathname?.startsWith('/admin');
+
   useEffect(() => {
+    // Don't register PWA features on non-admin pages
+    if (!isAdminPage) {
+      setShowInstallButton(false);
+      setDeferredPrompt(null);
+      return;
+    }
     // Register service worker
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker
@@ -38,7 +49,7 @@ export function PWAInstaller() {
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
-  }, []);
+  }, [isAdminPage]);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) {
@@ -58,7 +69,8 @@ export function PWAInstaller() {
     setShowInstallButton(false);
   };
 
-  if (!showInstallButton) {
+  // Only show on admin pages
+  if (!isAdminPage || !showInstallButton) {
     return null;
   }
 
