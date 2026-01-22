@@ -1,22 +1,32 @@
 import type { Metadata, Viewport } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Inter, Space_Grotesk } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from '@/components/ui/sonner'
 import { Providers } from './providers'
 import './globals.css'
 
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+})
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ['latin'],
+  variable: '--font-heading',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
-  title: '3Iconic Admin Dashboard',
-  description: 'Enterprise-grade Admin Dashboard for Ticket & Equipment Management',
+  title: 'Iconic Fibre | Fast. Reliable. Kenyan-built Internet.',
+  description:
+    'Premium fiber and wireless internet connectivity for homes and businesses across Kenya. Experience true speed with Iconic Fibre.',
   generator: 'v0.app',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: '3Iconic Admin',
+    title: 'Iconic Fibre',
   },
   icons: {
     icon: [
@@ -50,7 +60,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   userScalable: true,
-  themeColor: '#059669',
+  themeColor: '#0B6B3A',
 }
 
 export default function RootLayout({
@@ -59,8 +69,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <body className={`font-sans antialiased`}>
+    <html lang="en" className="scroll-smooth">
+      <body className={`${inter.variable} ${spaceGrotesk.variable} font-sans antialiased`}>
         <Providers>
           {children}
           <Toaster />

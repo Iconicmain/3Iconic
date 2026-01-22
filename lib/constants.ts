@@ -9,6 +9,7 @@ export const AVAILABLE_PAGES = [
   { id: 'equipment', name: 'Equipment', path: '/admin/equipment' },
   { id: 'internet-connections', name: 'Internet Connections', path: '/admin/internet-connections' },
   { id: 'users', name: 'User Management', path: '/admin/users' },
+  { id: 'jobs', name: 'Jobs', path: '/admin/jobs' },
   { id: 'settings', name: 'Settings', path: '/admin/settings' },
   { id: 'send-message', name: 'Send Message', path: '/admin/send-message' },
   { id: 'equipment-requests', name: 'Request Equipment', path: '/admin/equipment-requests' },

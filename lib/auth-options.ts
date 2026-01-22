@@ -223,7 +223,10 @@ export const authOptions: NextAuthConfig = {
             )
           ]);
         } catch (error) {
-          console.error('[NextAuth] Error fetching user data for JWT:', error);
+          // Only log non-source-map errors to avoid console noise
+          if (error instanceof Error && !error.message.includes('source map')) {
+            console.error('[NextAuth] Error fetching user data for JWT:', error);
+          }
           // On error, keep existing token data (don't clear it)
           // This prevents auth failures if DB is temporarily unavailable
         }

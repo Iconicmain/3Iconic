@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Ticket, DollarSign, Warehouse, Package, Settings, Menu, X, ChevronRight, Users, Calculator, Wifi, MessageSquare, ClipboardList, ClipboardCheck, CheckSquare } from 'lucide-react';
+import { LayoutDashboard, Ticket, DollarSign, Warehouse, Package, Settings, Menu, X, ChevronRight, Users, Calculator, Wifi, MessageSquare, ClipboardList, ClipboardCheck, CheckSquare, Briefcase } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -58,6 +58,13 @@ const navigation = [
     icon: Users,
     description: 'User management',
     pageId: 'users'
+  },
+  {
+    name: 'Jobs',
+    href: '/admin/jobs',
+    icon: Briefcase,
+    description: 'Manage job positions',
+    pageId: 'jobs'
   },
   {
     name: 'Settings',
