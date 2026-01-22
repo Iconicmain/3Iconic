@@ -184,12 +184,13 @@ export function HeroSection() {
                     const radius = 100
                     const centerX = 50
                     const centerY = 50
-                    const startX = centerX + Math.cos(angle) * (radius / 100) * 25
-                    const startY = centerY + Math.sin(angle) * (radius / 100) * 25
+                    // Round to 2 decimal places to prevent hydration mismatches
+                    const startX = Math.round((centerX + Math.cos(angle) * (radius / 100) * 25) * 100) / 100
+                    const startY = Math.round((centerY + Math.sin(angle) * (radius / 100) * 25) * 100) / 100
                     const endX = centerX
                     const endY = centerY
-                    const controlX = centerX + Math.cos(angle) * (radius / 100) * 12
-                    const controlY = centerY + Math.sin(angle) * (radius / 100) * 12
+                    const controlX = Math.round((centerX + Math.cos(angle) * (radius / 100) * 12) * 100) / 100
+                    const controlY = Math.round((centerY + Math.sin(angle) * (radius / 100) * 12) * 100) / 100
                     
                     return (
                       <motion.path

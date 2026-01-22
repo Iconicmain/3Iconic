@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { NavBar } from '@/components/isp/nav-bar'
 import { Footer } from '@/components/isp/footer'
@@ -8,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Phone, Mail, MapPin, MessageCircle, Clock } from 'lucide-react'
+import { toast } from 'sonner'
 
 const contactMethods = [
   {
@@ -55,6 +57,72 @@ const offices = [
 ]
 
 export default function ContactPage() {
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    subject: '',
+    message: '',
+  })
+  const [loading, setLoading] = useState(false)
+
+  const handleInputChange = (field: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    // Validate form
+    if (!formData.firstName || !formData.lastName || !formData.email || !formData.phone || !formData.subject || !formData.message) {
+      toast.error('Please fill in all fields')
+      return
+    }
+
+    // Basic email validation
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      toast.error('Please enter a valid email address')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to send message')
+      }
+
+      toast.success('Message sent successfully! We\'ll get back to you soon.')
+      
+      // Reset form
+      setFormData({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        subject: '',
+        message: '',
+      })
+    } catch (error) {
+      console.error('Error sending message:', error)
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to send message. Please try again.'
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-muted/20 to-background">
       <NavBar />
@@ -129,17 +197,50 @@ export default function ContactPage() {
             >
               <GlassCard className="p-8" gradient>
                 <h2 className="mb-6 font-heading text-2xl font-bold text-foreground">Send us a Message</h2>
-                <form className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <Input placeholder="First Name" />
-                    <Input placeholder="Last Name" />
+                    <Input
+                      placeholder="First Name"
+                      value={formData.firstName}
+                      onChange={(e) => handleInputChange('firstName', e.target.value)}
+                      required
+                    />
+                    <Input
+                      placeholder="Last Name"
+                      value={formData.lastName}
+                      onChange={(e) => handleInputChange('lastName', e.target.value)}
+                      required
+                    />
                   </div>
-                  <Input type="email" placeholder="Email Address" />
-                  <Input placeholder="Phone Number" />
-                  <Input placeholder="Subject" />
-                  <Textarea placeholder="Your message..." rows={5} />
-                  <Button size="lg" className="w-full font-semibold">
-                    Send Message
+                  <Input
+                    type="email"
+                    placeholder="Email Address"
+                    value={formData.email}
+                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    required
+                  />
+                  <Input
+                    type="tel"
+                    placeholder="Phone Number"
+                    value={formData.phone}
+                    onChange={(e) => handleInputChange('phone', e.target.value)}
+                    required
+                  />
+                  <Input
+                    placeholder="Subject"
+                    value={formData.subject}
+                    onChange={(e) => handleInputChange('subject', e.target.value)}
+                    required
+                  />
+                  <Textarea
+                    placeholder="Your message..."
+                    rows={5}
+                    value={formData.message}
+                    onChange={(e) => handleInputChange('message', e.target.value)}
+                    required
+                  />
+                  <Button type="submit" size="lg" className="w-full font-semibold" disabled={loading}>
+                    {loading ? 'Sending...' : 'Send Message'}
                   </Button>
                 </form>
               </GlassCard>

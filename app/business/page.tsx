@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { NavBar } from '@/components/isp/nav-bar'
 import { Footer } from '@/components/isp/footer'
@@ -9,6 +10,16 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Shield, Clock, HeadsetIcon, TrendingUp, Building2, Server } from 'lucide-react'
 import { caseStudies } from '@/lib/isp-data'
+import { toast } from 'sonner'
+import Link from 'next/link'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 
 const slaFeatures = [
   {
@@ -34,6 +45,135 @@ const slaFeatures = [
 ]
 
 export default function BusinessPage() {
+  const [quoteData, setQuoteData] = useState({
+    companyName: '',
+    email: '',
+    phone: '',
+    requirements: '',
+  })
+  const [loading, setLoading] = useState(false)
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [scheduleData, setScheduleData] = useState({
+    fullName: '',
+    companyName: '',
+    email: '',
+    phone: '',
+    preferredDate: '',
+    preferredTime: '',
+    message: '',
+  })
+  const [scheduleLoading, setScheduleLoading] = useState(false)
+
+  const handleInputChange = (field: string, value: string) => {
+    setQuoteData((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleSubmitQuote = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    // Validate form
+    if (!quoteData.companyName || !quoteData.email || !quoteData.phone || !quoteData.requirements) {
+      toast.error('Please fill in all fields')
+      return
+    }
+
+    // Basic email validation
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(quoteData.email)) {
+      toast.error('Please enter a valid email address')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await fetch('/api/business/quote', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(quoteData),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to submit quote request')
+      }
+
+      toast.success('Quote request submitted! Our team will contact you soon.')
+      
+      // Reset form
+      setQuoteData({
+        companyName: '',
+        email: '',
+        phone: '',
+        requirements: '',
+      })
+    } catch (error) {
+      console.error('Error submitting quote request:', error)
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to submit request. Please try again.'
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleScheduleInputChange = (field: string, value: string) => {
+    setScheduleData((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleScheduleCall = async () => {
+    // Validate form
+    if (!scheduleData.fullName || !scheduleData.email || !scheduleData.phone) {
+      toast.error('Please fill in all required fields')
+      return
+    }
+
+    // Basic email validation
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(scheduleData.email)) {
+      toast.error('Please enter a valid email address')
+      return
+    }
+
+    setScheduleLoading(true)
+    try {
+      const response = await fetch('/api/business/schedule-call', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(scheduleData),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to schedule call')
+      }
+
+      toast.success('Call request submitted! Our team will contact you to schedule.')
+      
+      // Reset form and close modal
+      setScheduleData({
+        fullName: '',
+        companyName: '',
+        email: '',
+        phone: '',
+        preferredDate: '',
+        preferredTime: '',
+        message: '',
+      })
+      setShowScheduleModal(false)
+    } catch (error) {
+      console.error('Error scheduling call:', error)
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to schedule call. Please try again.'
+      )
+    } finally {
+      setScheduleLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-muted/20 to-background">
       <NavBar />
@@ -61,12 +201,18 @@ export default function BusinessPage() {
               Dedicated links, SLA guarantees, and enterprise-grade support for Kenyan businesses
             </p>
             <div className="mt-8 flex flex-wrap justify-center gap-4">
-              <Button size="lg" className="font-semibold">
+              <Button 
+                size="lg" 
+                className="font-semibold"
+                onClick={() => setShowScheduleModal(true)}
+              >
                 Talk to Sales
               </Button>
-              <Button size="lg" variant="outline" className="font-semibold">
-                View Business Plans
-              </Button>
+              <Link href="/packages">
+                <Button size="lg" variant="outline" className="font-semibold">
+                  View Business Plans
+                </Button>
+              </Link>
             </div>
           </motion.div>
 
@@ -154,12 +300,37 @@ export default function BusinessPage() {
                 </div>
                 <div className="rounded-xl border border-border/50 bg-background/50 p-6">
                   <h3 className="mb-4 font-heading text-xl font-bold">Get a Custom Quote</h3>
-                  <form className="space-y-4">
-                    <Input placeholder="Company Name" />
-                    <Input type="email" placeholder="Email Address" />
-                    <Input placeholder="Phone Number" />
-                    <Textarea placeholder="Tell us about your requirements..." rows={4} />
-                    <Button className="w-full font-semibold">Request Quote</Button>
+                  <form onSubmit={handleSubmitQuote} className="space-y-4">
+                    <Input
+                      placeholder="Company Name"
+                      value={quoteData.companyName}
+                      onChange={(e) => handleInputChange('companyName', e.target.value)}
+                      required
+                    />
+                    <Input
+                      type="email"
+                      placeholder="Email Address"
+                      value={quoteData.email}
+                      onChange={(e) => handleInputChange('email', e.target.value)}
+                      required
+                    />
+                    <Input
+                      type="tel"
+                      placeholder="Phone Number"
+                      value={quoteData.phone}
+                      onChange={(e) => handleInputChange('phone', e.target.value)}
+                      required
+                    />
+                    <Textarea
+                      placeholder="Tell us about your requirements..."
+                      rows={4}
+                      value={quoteData.requirements}
+                      onChange={(e) => handleInputChange('requirements', e.target.value)}
+                      required
+                    />
+                    <Button type="submit" className="w-full font-semibold" disabled={loading}>
+                      {loading ? 'Submitting...' : 'Request Quote'}
+                    </Button>
                   </form>
                 </div>
               </div>
@@ -235,12 +406,18 @@ export default function BusinessPage() {
                 Speak with our enterprise team to design the perfect solution
               </p>
               <div className="mt-8 flex flex-wrap justify-center gap-4">
-                <Button size="lg" className="font-semibold">
+                <Button 
+                  size="lg" 
+                  className="font-semibold"
+                  onClick={() => setShowScheduleModal(true)}
+                >
                   Schedule a Call
                 </Button>
-                <Button size="lg" variant="outline" className="font-semibold">
-                  Download Brochure
-                </Button>
+                <Link href="/business/brochure">
+                  <Button size="lg" variant="outline" className="font-semibold">
+                    Download Brochure
+                  </Button>
+                </Link>
               </div>
             </GlassCard>
           </motion.div>
@@ -248,6 +425,117 @@ export default function BusinessPage() {
       </main>
 
       <Footer />
+
+      {/* Schedule Call Modal */}
+      <Dialog open={showScheduleModal} onOpenChange={setShowScheduleModal}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-2xl">Schedule a Call</DialogTitle>
+            <DialogDescription>
+              Let's discuss how Iconic Fibre can transform your business connectivity.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label htmlFor="scheduleFullName">Full Name *</Label>
+              <Input
+                id="scheduleFullName"
+                value={scheduleData.fullName}
+                onChange={(e) => handleScheduleInputChange('fullName', e.target.value)}
+                placeholder="John Doe"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="scheduleCompany">Company Name</Label>
+              <Input
+                id="scheduleCompany"
+                value={scheduleData.companyName}
+                onChange={(e) => handleScheduleInputChange('companyName', e.target.value)}
+                placeholder="Your Company Ltd"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="scheduleEmail">Email Address *</Label>
+              <Input
+                id="scheduleEmail"
+                type="email"
+                value={scheduleData.email}
+                onChange={(e) => handleScheduleInputChange('email', e.target.value)}
+                placeholder="john@company.com"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="schedulePhone">Phone Number *</Label>
+              <Input
+                id="schedulePhone"
+                type="tel"
+                value={scheduleData.phone}
+                onChange={(e) => handleScheduleInputChange('phone', e.target.value)}
+                placeholder="+254700000000"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="scheduleDate">Preferred Date</Label>
+                <Input
+                  id="scheduleDate"
+                  type="date"
+                  value={scheduleData.preferredDate}
+                  onChange={(e) => handleScheduleInputChange('preferredDate', e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="scheduleTime">Preferred Time</Label>
+                <Input
+                  id="scheduleTime"
+                  type="time"
+                  value={scheduleData.preferredTime}
+                  onChange={(e) => handleScheduleInputChange('preferredTime', e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="scheduleMessage">Additional Notes (Optional)</Label>
+              <Textarea
+                id="scheduleMessage"
+                value={scheduleData.message}
+                onChange={(e) => handleScheduleInputChange('message', e.target.value)}
+                placeholder="Tell us what you'd like to discuss..."
+                rows={3}
+              />
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowScheduleModal(false)}
+                className="flex-1"
+                disabled={scheduleLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleScheduleCall}
+                className="flex-1"
+                disabled={scheduleLoading}
+              >
+                {scheduleLoading ? 'Submitting...' : 'Request Call'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

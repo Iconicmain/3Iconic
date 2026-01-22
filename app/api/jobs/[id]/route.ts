@@ -66,8 +66,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       department: job.department,
       location: job.location,
       type: job.type,
-      description: job.description,
+      description: job.description || '',
+      roleOverview: job.roleOverview || '',
       requirements: job.requirements || [],
+      minimumRequirements: job.minimumRequirements || [],
+      niceToHave: job.niceToHave || [],
       benefits: job.benefits || [],
       salary: job.salary || '',
       experience: job.experience || '',
@@ -75,6 +78,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       responsibilities: job.responsibilities || [],
       skills: job.skills || [],
       applicationEmail: job.applicationEmail || '',
+      safetyNote: job.safetyNote || '',
       status: job.status || 'open',
       applications: job.applications || 0,
       postedDate: job.postedDate || job.createdAt?.toISOString() || new Date().toISOString(),
@@ -159,9 +163,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // Only include fields that are actually provided and allowed
     const allowedFieldNames = [
       'title', 'department', 'location', 'type', 'description',
-      'requirements', 'benefits', 'salary', 'experience',
+      'roleOverview', 'requirements', 'minimumRequirements', 'niceToHave',
+      'benefits', 'salary', 'experience',
       'applicationDeadline', 'responsibilities', 'skills',
-      'applicationEmail', 'status'
+      'applicationEmail', 'safetyNote', 'status'
     ]
     
     allowedFieldNames.forEach(field => {
@@ -200,41 +205,68 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     
     if (!updatedJob) {
       console.error('[PUT /api/jobs/[id]] Update succeeded but failed to fetch updated job')
-      return NextResponse.json({ error: 'Update succeeded but failed to fetch updated job' }, { status: 500 })
+      // Even if we can't fetch the updated job, the update succeeded
+      // Return a success response with the status that was set
+      return NextResponse.json({ 
+        success: true,
+        id: id,
+        status: updateFields.status || existingJob.status,
+        message: 'Job updated successfully'
+      })
     }
     
     console.log('[PUT /api/jobs/[id]] Update successful, new status:', updatedJob.status)
     
     // Format response - use custom id if it exists, otherwise use _id
+    // Safely handle all fields to prevent serialization errors
     const formattedJob = {
-      id: updatedJob.id || updatedJob._id.toString(),
-      title: updatedJob.title,
-      department: updatedJob.department,
-      location: updatedJob.location,
-      type: updatedJob.type,
-      description: updatedJob.description,
-      requirements: updatedJob.requirements || [],
-      benefits: updatedJob.benefits || [],
+      id: updatedJob.id || updatedJob._id?.toString() || id,
+      title: updatedJob.title || '',
+      department: updatedJob.department || '',
+      location: updatedJob.location || '',
+      type: updatedJob.type || '',
+      description: updatedJob.description || '',
+      roleOverview: updatedJob.roleOverview || '',
+      requirements: Array.isArray(updatedJob.requirements) ? updatedJob.requirements : [],
+      minimumRequirements: Array.isArray(updatedJob.minimumRequirements) ? updatedJob.minimumRequirements : [],
+      niceToHave: Array.isArray(updatedJob.niceToHave) ? updatedJob.niceToHave : [],
+      benefits: Array.isArray(updatedJob.benefits) ? updatedJob.benefits : [],
       salary: updatedJob.salary || '',
       experience: updatedJob.experience || '',
       applicationDeadline: updatedJob.applicationDeadline || '',
-      responsibilities: updatedJob.responsibilities || [],
-      skills: updatedJob.skills || [],
+      responsibilities: Array.isArray(updatedJob.responsibilities) ? updatedJob.responsibilities : [],
+      skills: Array.isArray(updatedJob.skills) ? updatedJob.skills : [],
       applicationEmail: updatedJob.applicationEmail || '',
+      safetyNote: updatedJob.safetyNote || '',
       status: updatedJob.status || 'open',
-      applications: updatedJob.applications || 0,
-      postedDate: updatedJob.postedDate || updatedJob.createdAt?.toISOString() || new Date().toISOString(),
-      createdAt: updatedJob.createdAt?.toISOString(),
-      updatedAt: updatedJob.updatedAt?.toISOString(),
+      applications: typeof updatedJob.applications === 'number' ? updatedJob.applications : 0,
+      postedDate: updatedJob.postedDate 
+        ? (updatedJob.postedDate instanceof Date ? updatedJob.postedDate.toISOString() : String(updatedJob.postedDate))
+        : (updatedJob.createdAt instanceof Date ? updatedJob.createdAt.toISOString() : new Date().toISOString()),
+      createdAt: updatedJob.createdAt instanceof Date ? updatedJob.createdAt.toISOString() : (updatedJob.createdAt ? String(updatedJob.createdAt) : undefined),
+      updatedAt: updatedJob.updatedAt instanceof Date ? updatedJob.updatedAt.toISOString() : (updatedJob.updatedAt ? String(updatedJob.updatedAt) : new Date().toISOString()),
     }
 
     return NextResponse.json(formattedJob)
   } catch (error: any) {
     console.error('[PUT /api/jobs/[id]] Error updating job:', error)
+    console.error('[PUT /api/jobs/[id]] Error stack:', error?.stack)
+    console.error('[PUT /api/jobs/[id]] Error name:', error?.name)
+    
+    // Check if it's a MongoDB error
+    if (error?.name === 'MongoServerError' || error?.code) {
+      console.error('[PUT /api/jobs/[id]] MongoDB error code:', error?.code)
+    }
+    
     const errorMessage = error?.message || 'Failed to update job'
     return NextResponse.json({ 
       error: errorMessage,
-      details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+      details: process.env.NODE_ENV === 'development' ? {
+        message: error?.message,
+        name: error?.name,
+        code: error?.code,
+        stack: error?.stack
+      } : undefined
     }, { status: 500 })
   }
 }

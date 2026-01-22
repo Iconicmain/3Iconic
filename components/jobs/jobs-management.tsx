@@ -44,7 +44,10 @@ interface Job {
   location: string
   type: string
   description: string
+  roleOverview?: string
   requirements: string[]
+  minimumRequirements?: string[]
+  niceToHave?: string[]
   benefits: string[]
   salary?: string
   experience?: string
@@ -52,6 +55,7 @@ interface Job {
   responsibilities?: string[]
   skills?: string[]
   applicationEmail?: string
+  safetyNote?: string
   status?: 'open' | 'closed'
   applications?: number
   postedDate?: string
@@ -59,7 +63,7 @@ interface Job {
 
 const DEPARTMENTS = ['Operations', 'Engineering', 'Support', 'Sales']
 const JOB_TYPES = ['Full-time', 'Part-time', 'Contract', 'Internship']
-const LOCATIONS = ['Nairobi', 'Nyeri', 'Nakuru', 'Thika', 'Nanyuki', 'Embu', 'Kirinyaga', 'Muranga', 'Remote']
+const LOCATIONS = ['Nairobi', 'Mombasa', 'Nyeri', 'Nakuru', 'Thika', 'Nanyuki', 'Embu', 'Kirinyaga', 'Muranga', 'Remote']
 const EXPERIENCE_LEVELS = ['Entry Level', '1-2 years', '3-5 years', '5+ years', 'Senior', 'Executive']
 
 export function JobsManagement() {
@@ -73,13 +77,18 @@ export function JobsManagement() {
   const [newBenefit, setNewBenefit] = useState('')
   const [newResponsibility, setNewResponsibility] = useState('')
   const [newSkill, setNewSkill] = useState('')
+  const [newMinimumReq, setNewMinimumReq] = useState('')
+  const [newNiceToHave, setNewNiceToHave] = useState('')
   const [formData, setFormData] = useState<Partial<Job>>({
     title: '',
     department: 'Operations',
     location: 'Nairobi',
     type: 'Full-time',
     description: '',
+    roleOverview: '',
     requirements: [],
+    minimumRequirements: [],
+    niceToHave: [],
     benefits: [],
     salary: '',
     experience: '',
@@ -87,6 +96,7 @@ export function JobsManagement() {
     responsibilities: [],
     skills: [],
     applicationEmail: '',
+    safetyNote: '',
     status: 'open',
   })
 
@@ -169,7 +179,10 @@ export function JobsManagement() {
       location: 'Nairobi',
       type: 'Full-time',
       description: '',
+      roleOverview: '',
       requirements: [],
+      minimumRequirements: [],
+      niceToHave: [],
       benefits: [],
       salary: '',
       experience: '',
@@ -177,6 +190,7 @@ export function JobsManagement() {
       responsibilities: [],
       skills: [],
       applicationEmail: '',
+      safetyNote: '',
       status: 'open',
     })
     setEditingJob(null)
@@ -184,6 +198,8 @@ export function JobsManagement() {
     setNewBenefit('')
     setNewResponsibility('')
     setNewSkill('')
+    setNewMinimumReq('')
+    setNewNiceToHave('')
   }
 
   const openEditDialog = (job: Job) => {
@@ -194,7 +210,10 @@ export function JobsManagement() {
       location: job.location,
       type: job.type,
       description: job.description,
+      roleOverview: job.roleOverview || '',
       requirements: [...(job.requirements || [])],
+      minimumRequirements: [...(job.minimumRequirements || [])],
+      niceToHave: [...(job.niceToHave || [])],
       benefits: [...(job.benefits || [])],
       salary: job.salary || '',
       experience: job.experience || '',
@@ -202,6 +221,7 @@ export function JobsManagement() {
       responsibilities: [...(job.responsibilities || [])],
       skills: [...(job.skills || [])],
       applicationEmail: job.applicationEmail || '',
+      safetyNote: job.safetyNote || '',
       status: job.status || 'open',
     })
     setIsDialogOpen(true)
@@ -276,6 +296,38 @@ export function JobsManagement() {
     setFormData({ ...formData, skills: updated })
   }
 
+  const addMinimumRequirement = () => {
+    if (newMinimumReq.trim()) {
+      setFormData({
+        ...formData,
+        minimumRequirements: [...(formData.minimumRequirements || []), newMinimumReq.trim()],
+      })
+      setNewMinimumReq('')
+    }
+  }
+
+  const removeMinimumRequirement = (index: number) => {
+    const updated = [...(formData.minimumRequirements || [])]
+    updated.splice(index, 1)
+    setFormData({ ...formData, minimumRequirements: updated })
+  }
+
+  const addNiceToHave = () => {
+    if (newNiceToHave.trim()) {
+      setFormData({
+        ...formData,
+        niceToHave: [...(formData.niceToHave || []), newNiceToHave.trim()],
+      })
+      setNewNiceToHave('')
+    }
+  }
+
+  const removeNiceToHave = (index: number) => {
+    const updated = [...(formData.niceToHave || [])]
+    updated.splice(index, 1)
+    setFormData({ ...formData, niceToHave: updated })
+  }
+
   const toggleJobStatus = async (job: Job) => {
     const newStatus = job.status === 'closed' ? 'open' : 'closed'
     try {
@@ -291,21 +343,59 @@ export function JobsManagement() {
       console.log('Response status:', response.status, 'Response:', responseText)
 
       if (response.ok) {
+        let responseData
+        try {
+          responseData = JSON.parse(responseText)
+        } catch (e) {
+          console.warn('Failed to parse response, but status was OK. Refreshing jobs list...')
+          // Even if parsing fails, if status is OK, the update likely succeeded
+          fetchJobs()
+          toast.success(`Job ${newStatus === 'open' ? 'opened' : 'closed'} successfully`)
+          return
+        }
+        
         toast.success(`Job ${newStatus === 'open' ? 'opened' : 'closed'} successfully`)
         fetchJobs()
       } else {
+        // If we get an error, try to verify if the update actually succeeded
+        // by checking the job status after a short delay
         let errorData = {}
         try {
           errorData = JSON.parse(responseText)
         } catch (e) {
           console.error('Failed to parse error response:', responseText)
         }
+        
         console.error('Failed to update job status:', errorData, 'Status:', response.status)
-        toast.error(errorData.error || `Failed to update job status (${response.status})`)
+        
+        // Wait a bit and then refresh to check if the update actually went through
+        setTimeout(async () => {
+          try {
+            const verifyResponse = await fetch(`/api/jobs/${job.id}`)
+            if (verifyResponse.ok) {
+              const verifyData = await verifyResponse.json()
+              // If the status actually changed, treat it as success
+              if (verifyData.status === newStatus) {
+                toast.success(`Job ${newStatus === 'open' ? 'opened' : 'closed'} successfully`)
+                fetchJobs()
+                return
+              }
+            }
+          } catch (verifyError) {
+            console.error('Error verifying job status:', verifyError)
+          }
+          
+          // If verification failed, show the original error
+          toast.error(errorData.error || `Failed to update job status (${response.status})`)
+        }, 500)
       }
     } catch (error) {
       console.error('Error updating job status:', error)
-      toast.error('Error updating job status')
+      // On network errors, still try to refresh to see if it worked
+      setTimeout(() => {
+        fetchJobs()
+      }, 1000)
+      toast.error('Error updating job status. Please refresh to verify.')
     }
   }
 
@@ -475,14 +565,26 @@ export function JobsManagement() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Job Description *</Label>
+                <Label htmlFor="roleOverview">Role Overview *</Label>
+                <Textarea
+                  id="roleOverview"
+                  value={formData.roleOverview}
+                  onChange={(e) => setFormData({ ...formData, roleOverview: e.target.value })}
+                  required
+                  rows={3}
+                  placeholder="Brief overview of the role and what makes it unique..."
+                />
+                <p className="text-xs text-muted-foreground">This appears at the top of the job posting</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description">Full Job Description</Label>
                 <Textarea
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  required
                   rows={4}
-                  placeholder="Describe the role, company culture, and what makes this position unique..."
+                  placeholder="Additional details about the role, company culture, etc..."
                 />
               </div>
 
@@ -516,13 +618,13 @@ export function JobsManagement() {
               </div>
 
               <div className="space-y-2">
-                <Label>Requirements & Qualifications</Label>
+                <Label>What We're Looking For (Requirements)</Label>
                 <div className="flex gap-2">
                   <Input
                     value={newRequirement}
                     onChange={(e) => setNewRequirement(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addRequirement())}
-                    placeholder="Add requirement (e.g., Degree, Certification, etc.)..."
+                    placeholder="Add requirement (e.g., Proven experience, Skills, etc.)..."
                   />
                   <Button type="button" onClick={addRequirement} variant="outline">
                     Add
@@ -535,6 +637,64 @@ export function JobsManagement() {
                       <button
                         type="button"
                         onClick={() => removeRequirement(index)}
+                        className="ml-1 hover:text-destructive"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Minimum Requirements *</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={newMinimumReq}
+                    onChange={(e) => setNewMinimumReq(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addMinimumRequirement())}
+                    placeholder="Add minimum requirement (e.g., 1 year experience, Valid ID, etc.)..."
+                  />
+                  <Button type="button" onClick={addMinimumRequirement} variant="outline">
+                    Add
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {formData.minimumRequirements?.map((req, index) => (
+                    <Badge key={index} variant="default" className="gap-1">
+                      {req}
+                      <button
+                        type="button"
+                        onClick={() => removeMinimumRequirement(index)}
+                        className="ml-1 hover:text-destructive"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Nice to Have (Optional)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={newNiceToHave}
+                    onChange={(e) => setNewNiceToHave(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addNiceToHave())}
+                    placeholder="Add nice-to-have qualification..."
+                  />
+                  <Button type="button" onClick={addNiceToHave} variant="outline">
+                    Add
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {formData.niceToHave?.map((req, index) => (
+                    <Badge key={index} variant="outline" className="gap-1">
+                      {req}
+                      <button
+                        type="button"
+                        onClick={() => removeNiceToHave(index)}
                         className="ml-1 hover:text-destructive"
                       >
                         <X className="h-3 w-3" />
@@ -574,7 +734,7 @@ export function JobsManagement() {
               </div>
 
               <div className="space-y-2">
-                <Label>Benefits</Label>
+                <Label>What We Offer (Benefits)</Label>
                 <div className="flex gap-2">
                   <Input
                     value={newBenefit}
@@ -600,6 +760,17 @@ export function JobsManagement() {
                     </Badge>
                   ))}
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="safetyNote">Safety Note (Optional)</Label>
+                <Textarea
+                  id="safetyNote"
+                  value={formData.safetyNote}
+                  onChange={(e) => setFormData({ ...formData, safetyNote: e.target.value })}
+                  rows={2}
+                  placeholder="Any safety considerations or requirements for this role..."
+                />
               </div>
 
               <DialogFooter>

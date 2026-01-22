@@ -28,6 +28,7 @@ export const kenyaTowns = [
   { name: 'Naivasha', county: 'Nakuru', status: 'available', installDays: '3-5' },
   { name: 'Kisumu', county: 'Kisumu', status: 'expanding', installDays: '8-10' },
   { name: 'Mombasa', county: 'Mombasa', status: 'expanding', installDays: '10-14' },
+  { name: 'Ngóng', county: 'Kajiado', status: 'available', installDays: '3-5' },
 ]
 
 export const homePlans = [
@@ -35,7 +36,7 @@ export const homePlans = [
     id: 'home-basic',
     name: 'Home Basic',
     speed: '10 Mbps',
-    price: 2499,
+    price: 1500,
     currency: 'KES',
     popular: false,
     features: [
@@ -49,8 +50,8 @@ export const homePlans = [
   {
     id: 'home-standard',
     name: 'Home Standard',
-    speed: '25 Mbps',
-    price: 3999,
+    speed: '20 Mbps',
+    price: 2500,
     currency: 'KES',
     popular: true,
     features: [

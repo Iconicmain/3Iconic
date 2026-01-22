@@ -7,14 +7,33 @@ import { Footer } from '@/components/isp/footer'
 import { GlassCard } from '@/components/isp/glass-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { Search, MapPin, CheckCircle2, Clock, AlertCircle, TrendingUp } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Search, MapPin, CheckCircle2, Clock, AlertCircle, TrendingUp, X } from 'lucide-react'
 import { kenyaTowns, counties } from '@/lib/isp-data'
+import { toast } from 'sonner'
 
 export default function CoveragePage() {
   const [search, setSearch] = useState('')
   const [selectedCounty, setSelectedCounty] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [showRequestModal, setShowRequestModal] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [requestData, setRequestData] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+    location: '',
+    message: '',
+  })
 
   const filteredTowns = kenyaTowns.filter((town) => {
     const matchesSearch = town.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -23,6 +42,60 @@ export default function CoveragePage() {
     const matchesStatus = statusFilter === 'all' || town.status === statusFilter
     return matchesSearch && matchesCounty && matchesStatus
   })
+
+  const handleInputChange = (field: string, value: string) => {
+    setRequestData((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleSubmitRequest = async () => {
+    // Validate form
+    if (!requestData.fullName || !requestData.email || !requestData.phone || !requestData.location) {
+      toast.error('Please fill in all required fields')
+      return
+    }
+
+    // Basic email validation
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requestData.email)) {
+      toast.error('Please enter a valid email address')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await fetch('/api/coverage/request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to submit request')
+      }
+
+      toast.success('Coverage request submitted! We\'ll notify you when Iconic Fibre arrives in your area.')
+      
+      // Reset form and close modal
+      setRequestData({
+        fullName: '',
+        email: '',
+        phone: '',
+        location: '',
+        message: '',
+      })
+      setShowRequestModal(false)
+    } catch (error) {
+      console.error('Error submitting coverage request:', error)
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to submit request. Please try again.'
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-muted/20 to-background">
@@ -118,7 +191,12 @@ export default function CoveragePage() {
                 <p className="mt-2 text-sm text-muted-foreground">
                   Register your interest and we'll notify you when Iconic Fibre arrives.
                 </p>
-                <Button className="mt-4 w-full font-semibold">Request Coverage</Button>
+                <Button 
+                  className="mt-4 w-full font-semibold"
+                  onClick={() => setShowRequestModal(true)}
+                >
+                  Request Coverage
+                </Button>
               </GlassCard>
             </motion.div>
 
@@ -350,6 +428,95 @@ export default function CoveragePage() {
       </main>
 
       <Footer />
+
+      {/* Request Coverage Modal */}
+      <Dialog open={showRequestModal} onOpenChange={setShowRequestModal}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-2xl">Request Coverage</DialogTitle>
+            <DialogDescription>
+              Register your interest and we'll notify you when Iconic Fibre arrives in your area.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label htmlFor="fullName">Full Name *</Label>
+              <Input
+                id="fullName"
+                value={requestData.fullName}
+                onChange={(e) => handleInputChange('fullName', e.target.value)}
+                placeholder="John Doe"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email Address *</Label>
+              <Input
+                id="email"
+                type="email"
+                value={requestData.email}
+                onChange={(e) => handleInputChange('email', e.target.value)}
+                placeholder="john@example.com"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone Number *</Label>
+              <Input
+                id="phone"
+                type="tel"
+                value={requestData.phone}
+                onChange={(e) => handleInputChange('phone', e.target.value)}
+                placeholder="+254700000000"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="location">Location (County / Town) *</Label>
+              <Input
+                id="location"
+                value={requestData.location}
+                onChange={(e) => handleInputChange('location', e.target.value)}
+                placeholder="e.g., Kisumu, Kakamega"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="message">Additional Message (Optional)</Label>
+              <Textarea
+                id="message"
+                value={requestData.message}
+                onChange={(e) => handleInputChange('message', e.target.value)}
+                placeholder="Tell us about your area or specific location..."
+                rows={3}
+              />
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowRequestModal(false)}
+                className="flex-1"
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSubmitRequest}
+                className="flex-1"
+                disabled={loading}
+              >
+                {loading ? 'Submitting...' : 'Submit Request'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

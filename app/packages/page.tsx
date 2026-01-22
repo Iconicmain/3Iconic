@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
+import Link from 'next/link'
 import { NavBar } from '@/components/isp/nav-bar'
 import { Footer } from '@/components/isp/footer'
 import { GlassCard } from '@/components/isp/glass-card'
@@ -246,13 +247,17 @@ export default function PackagesPage() {
               <p className="mt-2 text-center text-muted-foreground">
                 All plans include unlimited data, no throttling, and 24/7 support. Need help choosing?
               </p>
-              <div className="mt-6 flex justify-center gap-4">
-                <Button size="lg" className="font-semibold">
-                  Talk to Sales
-                </Button>
-                <Button size="lg" variant="outline" className="font-semibold">
-                  View FAQ
-                </Button>
+              <div className="mt-6 flex flex-col sm:flex-row justify-center gap-4">
+                <Link href="/contact">
+                  <Button size="lg" className="font-semibold w-full sm:w-auto">
+                    Talk to Sales
+                  </Button>
+                </Link>
+                <Link href="/support">
+                  <Button size="lg" variant="outline" className="font-semibold w-full sm:w-auto">
+                    View FAQ
+                  </Button>
+                </Link>
               </div>
             </GlassCard>
           </motion.div>
