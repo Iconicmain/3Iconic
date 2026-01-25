@@ -104,7 +104,7 @@ export function Footer() {
             <MapPin className="h-5 w-5 text-primary" />
             <div>
               <div className="font-medium">Headquarters</div>
-              <div className="text-muted-foreground">Nyeri, Kenya</div>
+              <div className="text-muted-foreground">Gilgil, Kenya</div>
             </div>
           </div>
         </div>
