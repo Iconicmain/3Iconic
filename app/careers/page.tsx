@@ -15,18 +15,14 @@ import { Checkbox } from '@/components/ui/checkbox'
 import {
   Briefcase,
   MapPin,
-  TrendingUp,
   Users,
   Clock,
-  GraduationCap,
   Award,
-  Laptop,
   ChevronRight,
   ChevronDown,
   ChevronUp,
   X,
   Check,
-  Mail,
   Upload,
   ArrowLeft,
   ArrowRight,
@@ -34,66 +30,6 @@ import {
 } from 'lucide-react'
 import { jobs as defaultJobs } from '@/lib/isp-data'
 import { toast } from 'sonner'
-
-const benefits = [
-  {
-    icon: Clock,
-    title: 'Flexible Hours',
-    description: 'Work when you are most productive. Balance life and work your way',
-  },
-  {
-    icon: TrendingUp,
-    title: 'Career Growth',
-    description: 'Training, certifications, and clear promotion paths',
-  },
-  {
-    icon: GraduationCap,
-    title: 'Learning Budget',
-    description: 'Annual allowance for courses and conferences',
-  },
-  {
-    icon: Award,
-    title: 'Performance Bonuses',
-    description: 'Reward your hard work with competitive performance-based bonuses',
-  },
-  {
-    icon: Laptop,
-    title: 'Equipment Provided',
-    description: 'Latest tools and tech for your role',
-  },
-  {
-    icon: Users,
-    title: 'Team Culture',
-    description: 'Collaborative, supportive, and inclusive environment',
-  },
-]
-
-const cultureAspects = [
-  {
-    title: 'Innovation First',
-    description: 'Build new solutions, do not just maintain old ones',
-    stat: '40%',
-    statLabel: 'time on new projects',
-  },
-  {
-    title: 'Kenya-Centric',
-    description: 'Solve problems for Kenya, by Kenyans',
-    stat: '100%',
-    statLabel: 'local team',
-  },
-  {
-    title: 'Impact Visible',
-    description: 'See your work connect real communities',
-    stat: '27+',
-    statLabel: 'towns served',
-  },
-  {
-    title: 'Fast Growth',
-    description: 'Join a company expanding rapidly',
-    stat: '3x',
-    statLabel: 'growth in 2 years',
-  },
-]
 
 interface Job {
   id: string
@@ -322,78 +258,6 @@ export default function CareersPage() {
                 matters.
             </p>
           </motion.div>
-          </div>
-        </section>
-
-        {/* Culture Stats */}
-        <section className="relative px-4 py-8 sm:px-6 sm:py-12 md:py-16 lg:px-8 lg:py-16">
-          <div className="mx-auto max-w-7xl">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-              className="mb-8 text-center sm:mb-12"
-            >
-              <h2 className="font-heading text-2xl font-bold text-foreground sm:text-3xl md:text-4xl">Life at Iconic Fibre</h2>
-            </motion.div>
-
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
-              {cultureAspects.map((aspect, index) => (
-                <motion.div
-                  key={aspect.title}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: index * 0.1, duration: 0.6 }}
-                >
-                  <GlassCard className="h-full p-5 text-center sm:p-6" gradient hover>
-                    <div className="font-heading text-3xl font-bold text-primary sm:text-4xl">{aspect.stat}</div>
-                    <div className="mt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      {aspect.statLabel}
-                    </div>
-                    <h3 className="mt-3 font-heading text-base font-bold text-foreground sm:text-lg sm:mt-4">{aspect.title}</h3>
-                    <p className="mt-2 text-xs text-muted-foreground sm:text-sm">{aspect.description}</p>
-                  </GlassCard>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Benefits Section */}
-        <section className="relative px-4 py-8 sm:px-6 sm:py-12 md:py-16 lg:px-8 lg:py-16">
-          <div className="mx-auto max-w-7xl">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-              className="mb-8 text-center sm:mb-12"
-            >
-              <h2 className="font-heading text-2xl font-bold text-foreground sm:text-3xl md:text-4xl">Benefits & Perks</h2>
-              <p className="mt-3 text-base text-muted-foreground sm:mt-4 sm:text-lg">We take care of our team</p>
-            </motion.div>
-
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
-              {benefits.map((benefit, index) => (
-                <motion.div
-                  key={benefit.title}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: index * 0.1, duration: 0.6 }}
-                >
-                  <GlassCard className="h-full p-5 sm:p-6" gradient hover>
-                    <div className="mb-3 inline-flex rounded-lg bg-primary/10 p-2.5 sm:p-3">
-                      <benefit.icon className="h-5 w-5 text-primary sm:h-6 sm:w-6" />
-                    </div>
-                    <h3 className="font-heading text-base font-bold text-foreground sm:text-lg">{benefit.title}</h3>
-                    <p className="mt-2 text-xs leading-relaxed text-muted-foreground sm:text-sm">{benefit.description}</p>
-                  </GlassCard>
-                </motion.div>
-              ))}
-            </div>
           </div>
         </section>
 
