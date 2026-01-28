@@ -9,6 +9,7 @@ interface StatsCardProps {
   trend?: 'up' | 'down';
   icon?: React.ReactNode;
   className?: string;
+  subtitle?: string;
 }
 
 export function StatsCard({
@@ -18,6 +19,7 @@ export function StatsCard({
   trend,
   icon,
   className,
+  subtitle,
 }: StatsCardProps) {
   return (
     <Card className={cn('bg-white', className)}>
@@ -28,6 +30,9 @@ export function StatsCard({
               {title}
             </p>
             <p className="text-2xl sm:text-3xl font-bold text-foreground truncate">{value}</p>
+            {subtitle && (
+              <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+            )}
             {change !== undefined && (
               <div className="flex items-center gap-1 mt-2">
                 <div

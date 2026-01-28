@@ -40,7 +40,7 @@ const contactMethods = [
 
 const offices = [
   {
-    name: 'Nyeri Headquarters',
+    name: 'Gilgil Headquarters',
     address: 'Kimathi Way, Nyeri Town',
     hours: 'Mon-Fri: 8am-6pm, Sat: 9am-2pm',
   },

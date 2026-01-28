@@ -91,6 +91,14 @@ export default function CareersPage() {
       .finally(() => {
         setLoading(false)
       })
+
+    // Track page visit
+    fetch('/api/careers/visit', {
+      method: 'POST',
+    }).catch((error) => {
+      // Silently fail - don't interrupt user experience
+      console.error('Failed to track visit:', error)
+    })
   }, [])
 
   const departments = ['all', 'Operations', 'Engineering', 'Support', 'Sales']

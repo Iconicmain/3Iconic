@@ -6,7 +6,7 @@ import { Header } from '@/components/layout/header';
 import { StatsCard } from './stats-card';
 import { ChartCard } from './chart-card';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Ticket, Coins, Warehouse, Package, TrendingUp, Users } from 'lucide-react';
+import { Ticket, Coins, Warehouse, Package, TrendingUp, Users, Briefcase } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const COLORS = ['#059669', '#f97316', '#ef4444', '#3b82f6'];
@@ -22,6 +22,13 @@ interface DashboardData {
   equipmentData: { name: string; value: number }[];
   equipmentAvailableVsInstalled: { month: string; available: number; installed: number }[];
   recentTickets: { id: string; client: string; status: string; date: string }[];
+  careersVisits: {
+    totalVisits: number;
+    visitsLast30Days: number;
+    visitsLast7Days: number;
+    visitsToday: number;
+    monthlyVisits: { month: string; visits: number }[];
+  };
 }
 
 export function Dashboard() {
@@ -36,6 +43,13 @@ export function Dashboard() {
     equipmentData: [],
     equipmentAvailableVsInstalled: [],
     recentTickets: [],
+    careersVisits: {
+      totalVisits: 0,
+      visitsLast30Days: 0,
+      visitsLast7Days: 0,
+      visitsToday: 0,
+      monthlyVisits: [],
+    },
   });
   const [loading, setLoading] = useState(true);
 
@@ -48,7 +62,7 @@ export function Dashboard() {
       setLoading(true);
       
       // Fetch all data in parallel
-      const [ticketsRes, expensesRes, stationsRes, equipmentRes, ticketsStatsRes, stationsStatsRes, equipmentStatsRes] = await Promise.all([
+      const [ticketsRes, expensesRes, stationsRes, equipmentRes, ticketsStatsRes, stationsStatsRes, equipmentStatsRes, careersStatsRes] = await Promise.all([
         fetch('/api/tickets'),
         fetch('/api/expenses'),
         fetch('/api/stations'),
@@ -56,6 +70,7 @@ export function Dashboard() {
         fetch('/api/tickets/stats'),
         fetch('/api/stations/stats'),
         fetch('/api/equipment/stats'),
+        fetch('/api/careers/stats'),
       ]);
 
       const ticketsData = await ticketsRes.json();
@@ -65,6 +80,22 @@ export function Dashboard() {
       const ticketsStats = await ticketsStatsRes.json();
       const stationsStats = await stationsStatsRes.json();
       const equipmentStats = await equipmentStatsRes.json();
+      
+      // Get careers stats, handle errors gracefully
+      let careersStats = {
+        totalVisits: 0,
+        visitsLast30Days: 0,
+        visitsLast7Days: 0,
+        visitsToday: 0,
+        monthlyVisits: [],
+      };
+      try {
+        if (careersStatsRes.ok) {
+          careersStats = await careersStatsRes.json();
+        }
+      } catch (error) {
+        console.error('Error fetching careers stats:', error);
+      }
 
       const tickets = ticketsData.tickets || [];
       const expenses = expensesData.expenses || [];
@@ -141,6 +172,13 @@ export function Dashboard() {
         equipmentData: equipmentDataFromStats,
         equipmentAvailableVsInstalled: equipmentAvailableVsInstalledData,
         recentTickets: recentTicketsData,
+        careersVisits: {
+          totalVisits: careersStats.totalVisits || 0,
+          visitsLast30Days: careersStats.visitsLast30Days || 0,
+          visitsLast7Days: careersStats.visitsLast7Days || 0,
+          visitsToday: careersStats.visitsToday || 0,
+          monthlyVisits: careersStats.monthlyVisits || [],
+        },
       });
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -264,7 +302,7 @@ export function Dashboard() {
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6 sm:mb-8">
             <StatsCard
               title="Total Tickets"
               value={data.totalTickets.toLocaleString()}
@@ -285,10 +323,16 @@ export function Dashboard() {
               value={data.totalStations.toLocaleString()}
               icon={<Warehouse className="w-6 h-6 sm:w-8 sm:h-8" />}
             />
+            <StatsCard
+              title="Careers Page Visits"
+              value={data.careersVisits.totalVisits.toLocaleString()}
+              icon={<Briefcase className="w-6 h-6 sm:w-8 sm:h-8" />}
+              subtitle={`${data.careersVisits.visitsLast30Days} last 30 days`}
+            />
           </div>
 
           {/* Charts Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
             <ChartCard title="Monthly Tickets" description="Open vs Closed">
               <div className="h-[250px] sm:h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -320,6 +364,20 @@ export function Dashboard() {
                     strokeWidth={2}
                   />
                   </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </ChartCard>
+
+            <ChartCard title="Careers Page Visits" description="Monthly visit trends">
+              <div className="h-[250px] sm:h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.careersVisits.monthlyVisits}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="visits" fill="#3b82f6" />
+                  </BarChart>
                 </ResponsiveContainer>
               </div>
             </ChartCard>
