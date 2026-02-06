@@ -274,10 +274,19 @@ export async function DELETE(
 
     const { id } = await params;
 
+    // Validate ObjectId format early for faster error response
+    if (!ObjectId.isValid(id)) {
+      return NextResponse.json(
+        { error: 'Invalid ticket ID' },
+        { status: 400 }
+      );
+    }
+
     const client = await clientPromise;
     const db = client.db('tixmgmt');
     const ticketsCollection = db.collection('tickets');
 
+    // Fast deletion - no need to fetch first, just delete directly
     const result = await ticketsCollection.deleteOne({ _id: new ObjectId(id) });
 
     if (result.deletedCount === 0) {
@@ -287,8 +296,9 @@ export async function DELETE(
       );
     }
 
+    // Return minimal response for faster network transfer
     return NextResponse.json(
-      { success: true, message: 'Ticket deleted successfully' },
+      { success: true },
       { status: 200 }
     );
   } catch (error) {

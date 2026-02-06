@@ -226,8 +226,10 @@ export function TicketViewDialog({ open, onOpenChange, ticket, onEdit, onDelete,
                 variant="destructive"
                 onClick={() => {
                   if (confirm('Are you sure you want to delete this ticket?')) {
-                    onDelete(ticket.ticketId, ticket._id);
+                    // Close dialog immediately for instant feedback
                     onOpenChange(false);
+                    // Delete happens optimistically in background
+                    onDelete(ticket.ticketId, ticket._id);
                   }
                 }}
                 className="flex-1 sm:flex-initial gap-2"

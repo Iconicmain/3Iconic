@@ -328,50 +328,81 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
       return;
     }
 
+    // Quick confirmation - non-blocking
     if (!confirm('Are you sure you want to delete this ticket?')) {
       return;
     }
 
-    try {
-      const response = await fetch(`/api/tickets/${ticket_id}`, {
-        method: 'DELETE',
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to delete ticket');
-      }
-
-      toast.success('Ticket deleted successfully!');
+    // Find the ticket to delete for optimistic update and potential rollback
+    const ticketToDelete = tickets.find(t => t._id === ticket_id || t.ticketId === ticketId);
+    
+    // OPTIMISTIC UPDATE: Remove ticket from UI immediately (super fast!)
+    setTickets(prevTickets => {
+      const filtered = prevTickets.filter(t => t._id !== ticket_id && t.ticketId !== ticketId);
       
-      // Refetch tickets with current filters
-      const refreshParams = new URLSearchParams();
-      refreshParams.set('page', page.toString());
-      refreshParams.set('limit', '50');
-      if (statusFilter !== 'all') refreshParams.set('status', statusFilter);
-      if (categoryFilter !== 'all') refreshParams.set('category', categoryFilter);
-      if (stationFilter !== 'all') refreshParams.set('station', stationFilter);
-      if (debouncedSearch.trim()) refreshParams.set('search', debouncedSearch.trim());
+      // If current page becomes empty and we're not on page 1, go to previous page
+      if (filtered.length === 0 && page > 1) {
+        setPage(prev => Math.max(1, prev - 1));
+      }
       
-      const refreshResponse = await fetch(`/api/tickets?${refreshParams.toString()}`, {
-        cache: 'no-store', // Force fresh data after delete
-      });
-      const refreshData = await refreshResponse.json();
-      if (refreshResponse.ok) {
-        setTickets(refreshData.tickets || []);
-        if (refreshData.pagination) {
-          setTotalPages(refreshData.pagination.totalPages || 1);
-          setTotalCount(refreshData.pagination.total || 0);
-        }
+      return filtered;
+    });
+    
+    // Update counts optimistically (instant feedback)
+    const newTotalCount = Math.max(0, totalCount - 1);
+    setTotalCount(newTotalCount);
+    
+    // Recalculate total pages if needed
+    const itemsPerPage = 50;
+    const newTotalPages = Math.max(1, Math.ceil(newTotalCount / itemsPerPage));
+    if (newTotalPages < totalPages) {
+      setTotalPages(newTotalPages);
+      // If current page is beyond new total pages, go to last page
+      if (page > newTotalPages && newTotalPages > 0) {
+        setPage(newTotalPages);
       }
-      if (onTicketUpdate) {
-        onTicketUpdate();
-      }
-    } catch (error) {
-      console.error('Error deleting ticket:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to delete ticket');
     }
+
+    // Show success toast immediately (instant feedback)
+    toast.success('Ticket deleted successfully!');
+
+    // Call onTicketUpdate immediately for real-time updates across components
+    if (onTicketUpdate) {
+      onTicketUpdate();
+    }
+
+    // Perform actual deletion in background (non-blocking, doesn't slow down UI)
+    fetch(`/api/tickets/${ticket_id}`, {
+      method: 'DELETE',
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        
+        if (!response.ok) {
+          // Revert optimistic update on error
+          if (ticketToDelete) {
+            setTickets(prevTickets => {
+              // Insert back in correct position (sorted by date)
+              const updated = [...prevTickets, ticketToDelete];
+              return updated.sort((a, b) => {
+                const dateA = new Date(a.dateTimeReported || a.createdAt || 0).getTime();
+                const dateB = new Date(b.dateTimeReported || b.createdAt || 0).getTime();
+                return dateB - dateA;
+              });
+            });
+            setTotalCount(prev => prev + 1);
+            // Restore total pages
+            const itemsPerPage = 50;
+            const restoredTotalPages = Math.ceil((totalCount) / itemsPerPage);
+            setTotalPages(restoredTotalPages);
+          }
+          throw new Error(data.error || 'Failed to delete ticket');
+        }
+      })
+      .catch((error) => {
+        console.error('Error deleting ticket:', error);
+        toast.error(error instanceof Error ? error.message : 'Failed to delete ticket. Please refresh the page.');
+      });
   };
 
   // Refetch when filters change (server-side filtering)
