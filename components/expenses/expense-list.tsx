@@ -308,8 +308,8 @@ export function ExpenseList() {
         exp.category,
         (exp.expenseType || 'recurrent') === 'recurrent' ? 'Recurrent' : 'Capital',
         exp.station || 'General',
-        exp.amount,
-        exp.transactionCost || 0,
+        Number(exp.amount) || 0,
+        Number(exp.transactionCost) || 0,
         exp.date,
         exp.status === 'fully-paid' ? 'Fully Paid' : 'Partially Paid',
         exp.sellerPin || '',
@@ -373,14 +373,14 @@ export function ExpenseList() {
     return matchesSearch && matchesCategory && matchesStatus && matchesType;
   });
 
-  const totalAmount = filtered.reduce((sum, exp) => sum + exp.amount, 0);
-  const totalTransactionCost = filtered.reduce((sum, exp) => sum + (exp.transactionCost || 0), 0);
+  const totalAmount = filtered.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
+  const totalTransactionCost = filtered.reduce((sum, exp) => sum + (Number(exp.transactionCost) || 0), 0);
   const recurrentAmount = filtered
     .filter((exp) => (exp.expenseType || 'recurrent') === 'recurrent')
-    .reduce((sum, exp) => sum + exp.amount, 0);
+    .reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
   const capitalAmount = filtered
     .filter((exp) => exp.expenseType === 'capital')
-    .reduce((sum, exp) => sum + exp.amount, 0);
+    .reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
   const recurrentCount = filtered.filter((exp) => (exp.expenseType || 'recurrent') === 'recurrent').length;
   const capitalCount = filtered.filter((exp) => exp.expenseType === 'capital').length;
 
@@ -764,16 +764,16 @@ export function ExpenseList() {
                       <p className="text-muted-foreground text-xs">Amount</p>
                       <div className="flex flex-col">
                         <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 rounded-md inline-block border-2 border-emerald-300 dark:border-emerald-700">
-                          Ksh {expense.amount.toLocaleString()}
+                          Ksh {(Number(expense.amount) || 0).toLocaleString()}
                         </p>
-                        {expense.status === 'partially-paid' && expense.balance !== undefined && (
+                        {expense.status === 'partially-paid' && expense.balance !== undefined && expense.balance !== null && (
                           <p className="text-[10px] text-orange-600 dark:text-orange-400 mt-0.5 ml-0.5">
-                            Bal: Ksh {expense.balance.toLocaleString()}
+                            Bal: Ksh {(Number(expense.balance) || 0).toLocaleString()}
                           </p>
                         )}
-                        {expense.transactionCost && expense.transactionCost > 0 && (
+                        {expense.transactionCost && Number(expense.transactionCost) > 0 && (
                           <p className="text-[10px] text-orange-600 dark:text-orange-400 mt-0.5 ml-0.5">
-                            Fee: Ksh {expense.transactionCost.toLocaleString()}
+                            Fee: Ksh {(Number(expense.transactionCost) || 0).toLocaleString()}
                           </p>
                         )}
                       </div>
@@ -864,16 +864,16 @@ export function ExpenseList() {
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400 tracking-wide">
-                          Ksh {expense.amount.toLocaleString()}
+                          Ksh {(Number(expense.amount) || 0).toLocaleString()}
                         </span>
-                        {expense.status === 'partially-paid' && expense.balance !== undefined && (
+                        {expense.status === 'partially-paid' && expense.balance !== undefined && expense.balance !== null && (
                           <span className="text-xs text-orange-600 dark:text-orange-400 mt-0.5">
-                            Bal: Ksh {expense.balance.toLocaleString()}
+                            Bal: Ksh {(Number(expense.balance) || 0).toLocaleString()}
                           </span>
                         )}
-                        {expense.transactionCost && expense.transactionCost > 0 && (
+                        {expense.transactionCost && Number(expense.transactionCost) > 0 && (
                           <span className="text-xs text-orange-600 dark:text-orange-400 mt-0.5">
-                            Fee: Ksh {expense.transactionCost.toLocaleString()}
+                            Fee: Ksh {(Number(expense.transactionCost) || 0).toLocaleString()}
                           </span>
                         )}
                       </div>

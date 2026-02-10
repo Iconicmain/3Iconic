@@ -33,7 +33,7 @@ const calculateMonthlyTrend = (expenses: Expense[]) => {
     if (!monthlyData[monthKey]) {
       monthlyData[monthKey] = 0;
     }
-    monthlyData[monthKey] += expense.amount;
+    monthlyData[monthKey] += Number(expense.amount) || 0;
   });
 
   // Get last 6 months
@@ -59,7 +59,7 @@ const calculateCategoryDistribution = (expenses: Expense[]) => {
     if (!categoryData[expense.category]) {
       categoryData[expense.category] = 0;
     }
-    categoryData[expense.category] += expense.amount;
+    categoryData[expense.category] += Number(expense.amount) || 0;
   });
 
   return Object.entries(categoryData).map(([name, value]) => ({
@@ -73,10 +73,11 @@ const calculateStationComparison = (expenses: Expense[]) => {
   const stationData: { [key: string]: number } = {};
   
   expenses.forEach((expense) => {
-    if (!stationData[expense.station]) {
-      stationData[expense.station] = 0;
+    const station = expense.station || 'General';
+    if (!stationData[station]) {
+      stationData[station] = 0;
     }
-    stationData[expense.station] += expense.amount;
+    stationData[station] += Number(expense.amount) || 0;
   });
 
   return Object.entries(stationData)
@@ -103,7 +104,7 @@ const calculateYearComparison = (expenses: Expense[]) => {
     if (!yearData[year][month]) {
       yearData[year][month] = 0;
     }
-    yearData[year][month] += expense.amount;
+    yearData[year][month] += Number(expense.amount) || 0;
   });
 
   // Get last 6 months for comparison
@@ -134,10 +135,11 @@ const calculateExpenseTypeBreakdown = (expenses: Expense[]) => {
   
   expenses.forEach((expense) => {
     const type = expense.expenseType || 'recurrent';
+    const amount = Number(expense.amount) || 0;
     if (type === 'capital') {
-      typeData.capital += expense.amount;
+      typeData.capital += amount;
     } else {
-      typeData.recurrent += expense.amount;
+      typeData.recurrent += amount;
     }
   });
 
@@ -149,7 +151,7 @@ const calculateExpenseTypeBreakdown = (expenses: Expense[]) => {
 
 // Helper function to calculate transaction costs
 const calculateTransactionCosts = (expenses: Expense[]) => {
-  return expenses.reduce((sum, exp) => sum + (exp.transactionCost || 0), 0);
+  return expenses.reduce((sum, exp) => sum + (Number(exp.transactionCost) || 0), 0);
 };
 
 export function ExpenseCharts() {
@@ -254,7 +256,7 @@ export function ExpenseCharts() {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="month" style={{ fontSize: '12px' }} />
             <YAxis style={{ fontSize: '12px' }} />
-            <Tooltip formatter={(value) => `Ksh ${value.toLocaleString()}`} />
+            <Tooltip formatter={(value) => `Ksh ${(Number(value) || 0).toLocaleString()}`} />
             <Line type="monotone" dataKey="expenses" stroke="#059669" strokeWidth={2} />
           </LineChart>
         </ResponsiveContainer>
@@ -276,7 +278,7 @@ export function ExpenseCharts() {
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
               ))}
             </Pie>
-            <Tooltip formatter={(value) => `Ksh ${value.toLocaleString()}`} />
+            <Tooltip formatter={(value) => `Ksh ${(Number(value) || 0).toLocaleString()}`} />
             <Legend wrapperStyle={{ fontSize: '12px' }} />
           </PieChart>
         </ResponsiveContainer>
@@ -288,7 +290,7 @@ export function ExpenseCharts() {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="station" style={{ fontSize: '12px' }} />
             <YAxis style={{ fontSize: '12px' }} />
-            <Tooltip formatter={(value) => `Ksh ${value.toLocaleString()}`} />
+            <Tooltip formatter={(value) => `Ksh ${(Number(value) || 0).toLocaleString()}`} />
             <Bar dataKey="expenses" fill="#059669" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
@@ -300,7 +302,7 @@ export function ExpenseCharts() {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="month" style={{ fontSize: '12px' }} />
             <YAxis style={{ fontSize: '12px' }} />
-            <Tooltip formatter={(value) => `Ksh ${value.toLocaleString()}`} />
+            <Tooltip formatter={(value) => `Ksh ${(Number(value) || 0).toLocaleString()}`} />
             <Legend wrapperStyle={{ fontSize: '12px' }} />
                 {yearComparison.length > 0 && Object.keys(yearComparison[0]).filter(k => k !== 'month').map((year, index) => (
                   <Line 
@@ -321,7 +323,7 @@ export function ExpenseCharts() {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="name" style={{ fontSize: '12px' }} />
             <YAxis style={{ fontSize: '12px' }} />
-            <Tooltip formatter={(value) => `Ksh ${value.toLocaleString()}`} />
+            <Tooltip formatter={(value) => `Ksh ${(Number(value) || 0).toLocaleString()}`} />
             <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]}>
               {expenseTypeBreakdown.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={entry.name === 'Recurrent' ? '#3b82f6' : '#f59e0b'} />
@@ -330,7 +332,7 @@ export function ExpenseCharts() {
           </BarChart>
         </ResponsiveContainer>
         <div className="mt-2 text-center text-xs text-muted-foreground">
-          Total Transaction Costs: Ksh {totalTransactionCosts.toLocaleString()}
+          Total Transaction Costs: Ksh {(Number(totalTransactionCosts) || 0).toLocaleString()}
         </div>
       </ChartCard>
         </>
