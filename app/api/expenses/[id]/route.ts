@@ -40,6 +40,7 @@ export async function GET(
       balance: expense.balance,
       date: expense.date instanceof Date ? expense.date.toISOString().split('T')[0] : expense.date,
       status: expense.status,
+      expenseType: expense.expenseType || 'recurrent',
       createdAt: expense.createdAt,
       updatedAt: expense.updatedAt,
     };
@@ -78,6 +79,7 @@ export async function PUT(
       balance,
       date,
       status,
+      expenseType,
     } = body;
 
     // Validate required fields (station is optional)
@@ -119,6 +121,7 @@ export async function PUT(
       balance: balance !== undefined ? Number(balance) : undefined,
       date: new Date(date),
       status: status || 'partially-paid',
+      expenseType: expenseType === 'capital' ? 'capital' : 'recurrent',
       updatedAt: new Date(),
     };
 

@@ -45,6 +45,7 @@ interface Expense {
   balance?: number; // Remaining balance for partially paid expenses
   date: string;
   status: 'fully-paid' | 'partially-paid';
+  expenseType?: 'recurrent' | 'capital';
 }
 
 const statusColors = {
@@ -69,6 +70,7 @@ export function ExpenseList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
   const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(false);
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [expenseFormOpen, setExpenseFormOpen] = useState(false);
@@ -86,6 +88,7 @@ export function ExpenseList() {
     dateTo: '',
     month: '',
     status: 'all',
+    type: 'all',
   });
   const [mounted, setMounted] = useState(false);
 
@@ -254,6 +257,12 @@ export function ExpenseList() {
       expensesToExport = expensesToExport.filter(exp => exp.status === exportFilters.status);
     }
 
+    if (exportFilters.type !== 'all') {
+      expensesToExport = expensesToExport.filter(
+        exp => (exp.expenseType || 'recurrent') === exportFilters.type
+      );
+    }
+
     // Filter by date range
     if (exportFilters.dateFrom) {
       const fromDate = new Date(exportFilters.dateFrom);
@@ -283,7 +292,7 @@ export function ExpenseList() {
     }
 
     // Convert to CSV
-    const headers = ['ID', 'Description', 'Category', 'Station', 'Amount (Ksh)', 'Date', 'Status'];
+    const headers = ['ID', 'Description', 'Category', 'Station', 'Type', 'Amount (Ksh)', 'Date', 'Status'];
     const csvRows = [
       headers.join(','),
       ...expensesToExport.map(exp => [
@@ -291,6 +300,7 @@ export function ExpenseList() {
         `"${exp.description.replace(/"/g, '""')}"`,
         exp.category,
         exp.station || 'General',
+        (exp.expenseType || 'recurrent') === 'recurrent' ? 'Recurrent' : 'Capital',
         exp.amount,
         exp.date,
         exp.status === 'fully-paid' ? 'Fully Paid' : 'Partially Paid',
@@ -316,6 +326,9 @@ export function ExpenseList() {
     }
     if (exportFilters.status !== 'all') {
       filename += `_${exportFilters.status}`;
+    }
+    if (exportFilters.type !== 'all') {
+      filename += `_${exportFilters.type}`;
     }
     filename += '.csv';
 
@@ -346,7 +359,9 @@ export function ExpenseList() {
       (expense.station && expense.station.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesCategory = categoryFilter === 'all' || expense.category === categoryFilter;
     const matchesStatus = statusFilter === 'all' || expense.status === statusFilter;
-    return matchesSearch && matchesCategory && matchesStatus;
+    const matchesType =
+      typeFilter === 'all' || (expense.expenseType || 'recurrent') === typeFilter;
+    return matchesSearch && matchesCategory && matchesStatus && matchesType;
   });
 
   const totalAmount = filtered.reduce((sum, exp) => sum + exp.amount, 0);
@@ -447,16 +462,28 @@ export function ExpenseList() {
                 <span className="hidden sm:inline">Manage</span>
               </Button>
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-40">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="fully-paid">Fully Paid</SelectItem>
-                <SelectItem value="partially-paid">Partially Paid</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full sm:w-40">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="fully-paid">Fully Paid</SelectItem>
+                  <SelectItem value="partially-paid">Partially Paid</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="w-full sm:w-40">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="recurrent">Recurrent</SelectItem>
+                  <SelectItem value="capital">Capital</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -525,6 +552,24 @@ export function ExpenseList() {
                   <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="fully-paid">Fully Paid</SelectItem>
                   <SelectItem value="partially-paid">Partially Paid</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Type Filter */}
+            <div className="space-y-2">
+              <Label htmlFor="export-type">Expense Type</Label>
+              <Select
+                value={exportFilters.type}
+                onValueChange={(value) => setExportFilters(prev => ({ ...prev, type: value }))}
+              >
+                <SelectTrigger id="export-type">
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="recurrent">Recurrent</SelectItem>
+                  <SelectItem value="capital">Capital</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -669,6 +714,12 @@ export function ExpenseList() {
                         {expense.category}
                       </p>
                     </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Type</p>
+                  <p className="text-foreground font-semibold text-xs px-2.5 py-1 rounded-md inline-block bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300">
+                    {(expense.expenseType || 'recurrent') === 'recurrent' ? 'Recurrent' : 'Capital'}
+                  </p>
+                </div>
                     <div>
                       <p className="text-muted-foreground text-xs">Station</p>
                       <p className="text-foreground font-medium">{expense.station || 'General'}</p>
@@ -730,6 +781,7 @@ export function ExpenseList() {
                   <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">ID</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">Description</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">Category</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">Type</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">Station</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">Amount</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">Status</th>
@@ -749,6 +801,11 @@ export function ExpenseList() {
                     <td className="px-6 py-4">
                       <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/30 px-2.5 py-1 rounded-md inline-block">
                         {expense.category}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-md inline-block bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300">
+                        {(expense.expenseType || 'recurrent') === 'recurrent' ? 'Recurrent' : 'Capital'}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-foreground">

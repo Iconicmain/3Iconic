@@ -32,6 +32,7 @@ interface Expense {
   balance?: number;
   date: string;
   status: 'fully-paid' | 'partially-paid';
+  expenseType?: 'recurrent' | 'capital';
 }
 
 interface ExpenseFormProps {
@@ -56,6 +57,7 @@ export function ExpenseForm({ open, onOpenChange, onSuccess, expense }: ExpenseF
     balance: '',
     date: new Date().toISOString().split('T')[0], // Default to today
     status: 'partially-paid' as 'fully-paid' | 'partially-paid',
+    expenseType: 'recurrent' as 'recurrent' | 'capital',
   });
 
   const fetchCategories = async () => {
@@ -103,6 +105,7 @@ export function ExpenseForm({ open, onOpenChange, onSuccess, expense }: ExpenseF
           balance: expense.balance?.toString() || '',
           date: expense.date,
           status: expense.status,
+          expenseType: expense.expenseType || 'recurrent',
         });
       } else {
         // Reset form when creating new
@@ -114,6 +117,7 @@ export function ExpenseForm({ open, onOpenChange, onSuccess, expense }: ExpenseF
           balance: '',
           date: new Date().toISOString().split('T')[0],
           status: 'partially-paid',
+          expenseType: 'recurrent',
         });
       }
     }
@@ -160,6 +164,7 @@ export function ExpenseForm({ open, onOpenChange, onSuccess, expense }: ExpenseF
           balance: formData.balance && formData.status === 'partially-paid' ? parseFloat(formData.balance) : undefined,
           date: formData.date,
           status: formData.status,
+          expenseType: formData.expenseType,
         }),
       });
 
@@ -177,6 +182,7 @@ export function ExpenseForm({ open, onOpenChange, onSuccess, expense }: ExpenseF
         amount: '',
         date: new Date().toISOString().split('T')[0],
         status: 'partially-paid',
+        expenseType: 'recurrent',
       });
       onOpenChange(false);
       if (onSuccess) {
@@ -278,6 +284,27 @@ export function ExpenseForm({ open, onOpenChange, onSuccess, expense }: ExpenseF
                     </SelectContent>
                   </Select>
                 )}
+              </div>
+
+              {/* Expense Type */}
+              <div>
+                <Label htmlFor="expenseType" className="text-xs sm:text-sm font-medium flex items-center gap-1">
+                  <span className="font-bold">Expense Type</span>
+                  <span className="text-xs text-muted-foreground font-normal">(Recurrent vs Capital)</span>
+                </Label>
+                <Select
+                  value={formData.expenseType}
+                  onValueChange={(value) => handleChange('expenseType', value as 'recurrent' | 'capital')}
+                  disabled={loading}
+                >
+                  <SelectTrigger className="mt-1 h-11 text-sm border-2 border-emerald-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-300 shadow-sm bg-emerald-50/50 dark:bg-emerald-950/20 font-medium">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="recurrent">Recurrent Expense</SelectItem>
+                    <SelectItem value="capital">Capital Expense</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Station */}
