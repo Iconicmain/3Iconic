@@ -183,7 +183,15 @@ export function ExpenseCharts() {
         const response = await fetch('/api/expenses');
         if (response.ok) {
           const data = await response.json();
-          setExpenses(data.expenses || []);
+          // Sanitize expenses data to ensure all numeric fields are valid
+          const sanitizedExpenses = (data.expenses || []).map((exp: any) => ({
+            ...exp,
+            amount: Number(exp.amount) || 0,
+            transactionCost: Number(exp.transactionCost) || 0,
+            expenseType: exp.expenseType || 'recurrent',
+            station: exp.station || 'General',
+          }));
+          setExpenses(sanitizedExpenses);
         } else {
           console.error('Failed to fetch expenses');
         }

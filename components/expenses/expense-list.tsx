@@ -121,7 +121,15 @@ export function ExpenseList() {
       const response = await fetch('/api/expenses');
       if (response.ok) {
         const data = await response.json();
-        setExpenses(data.expenses || []);
+        // Sanitize expenses data to ensure all numeric fields are valid
+        const sanitizedExpenses = (data.expenses || []).map((exp: any) => ({
+          ...exp,
+          amount: Number(exp.amount) || 0,
+          balance: exp.balance !== undefined && exp.balance !== null ? Number(exp.balance) : undefined,
+          transactionCost: Number(exp.transactionCost) || 0,
+          expenseType: exp.expenseType || 'recurrent',
+        }));
+        setExpenses(sanitizedExpenses);
       } else {
         console.error('Failed to fetch expenses');
       }
@@ -696,27 +704,27 @@ export function ExpenseList() {
               {/* Total Amount */}
               <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 p-4 rounded-lg border-2 border-blue-200 dark:border-blue-800">
                 <p className="text-sm font-medium text-muted-foreground mb-1">Total Amount</p>
-                <p className="text-2xl sm:text-3xl font-bold text-blue-700 dark:text-blue-300">Ksh {totalAmount.toLocaleString()}</p>
+                <p className="text-2xl sm:text-3xl font-bold text-blue-700 dark:text-blue-300">Ksh {(Number(totalAmount) || 0).toLocaleString()}</p>
               </div>
               
               {/* Recurrent Expenses */}
               <div className="bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 p-4 rounded-lg border-2 border-blue-300 dark:border-blue-700">
                 <p className="text-sm font-medium text-muted-foreground mb-1">Recurrent Expenses</p>
-                <p className="text-xl sm:text-2xl font-bold text-blue-700 dark:text-blue-300">Ksh {recurrentAmount.toLocaleString()}</p>
+                <p className="text-xl sm:text-2xl font-bold text-blue-700 dark:text-blue-300">Ksh {(Number(recurrentAmount) || 0).toLocaleString()}</p>
                 <p className="text-xs text-muted-foreground mt-1">{recurrentCount} {recurrentCount === 1 ? 'entry' : 'entries'}</p>
               </div>
               
               {/* Capital Expenses */}
               <div className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 p-4 rounded-lg border-2 border-amber-300 dark:border-amber-700">
                 <p className="text-sm font-medium text-muted-foreground mb-1">Capital Expenses</p>
-                <p className="text-xl sm:text-2xl font-bold text-amber-700 dark:text-amber-300">Ksh {capitalAmount.toLocaleString()}</p>
+                <p className="text-xl sm:text-2xl font-bold text-amber-700 dark:text-amber-300">Ksh {(Number(capitalAmount) || 0).toLocaleString()}</p>
                 <p className="text-xs text-muted-foreground mt-1">{capitalCount} {capitalCount === 1 ? 'entry' : 'entries'}</p>
               </div>
               
               {/* Transaction Costs */}
               <div className="bg-gradient-to-br from-orange-50 to-red-50 dark:from-orange-950/20 dark:to-red-950/20 p-4 rounded-lg border-2 border-orange-300 dark:border-orange-700">
                 <p className="text-sm font-medium text-muted-foreground mb-1">Transaction Costs</p>
-                <p className="text-xl sm:text-2xl font-bold text-orange-700 dark:text-orange-300">Ksh {totalTransactionCost.toLocaleString()}</p>
+                <p className="text-xl sm:text-2xl font-bold text-orange-700 dark:text-orange-300">Ksh {(Number(totalTransactionCost) || 0).toLocaleString()}</p>
                 <p className="text-xs text-muted-foreground mt-1">Fees & charges</p>
               </div>
           </div>
