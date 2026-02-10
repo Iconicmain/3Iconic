@@ -33,6 +33,8 @@ interface Expense {
   date: string;
   status: 'fully-paid' | 'partially-paid';
   expenseType?: 'recurrent' | 'capital';
+  transactionCost?: number;
+  sellerPin?: string | null;
 }
 
 interface ExpenseFormProps {
@@ -58,6 +60,8 @@ export function ExpenseForm({ open, onOpenChange, onSuccess, expense }: ExpenseF
     date: new Date().toISOString().split('T')[0], // Default to today
     status: 'partially-paid' as 'fully-paid' | 'partially-paid',
     expenseType: 'recurrent' as 'recurrent' | 'capital',
+    transactionCost: '',
+    sellerPin: '',
   });
 
   const fetchCategories = async () => {
@@ -106,6 +110,8 @@ export function ExpenseForm({ open, onOpenChange, onSuccess, expense }: ExpenseF
           date: expense.date,
           status: expense.status,
           expenseType: expense.expenseType || 'recurrent',
+          transactionCost: expense.transactionCost?.toString() || '',
+          sellerPin: expense.sellerPin || '',
         });
       } else {
         // Reset form when creating new
@@ -118,6 +124,8 @@ export function ExpenseForm({ open, onOpenChange, onSuccess, expense }: ExpenseF
           date: new Date().toISOString().split('T')[0],
           status: 'partially-paid',
           expenseType: 'recurrent',
+          transactionCost: '',
+          sellerPin: '',
         });
       }
     }
@@ -165,6 +173,8 @@ export function ExpenseForm({ open, onOpenChange, onSuccess, expense }: ExpenseF
           date: formData.date,
           status: formData.status,
           expenseType: formData.expenseType,
+          transactionCost: formData.transactionCost ? parseFloat(formData.transactionCost) : 0,
+          sellerPin: formData.sellerPin.trim() || null,
         }),
       });
 
@@ -180,9 +190,12 @@ export function ExpenseForm({ open, onOpenChange, onSuccess, expense }: ExpenseF
         category: '',
         station: '__general__',
         amount: '',
+        balance: '',
         date: new Date().toISOString().split('T')[0],
         status: 'partially-paid',
         expenseType: 'recurrent',
+        transactionCost: '',
+        sellerPin: '',
       });
       onOpenChange(false);
       if (onSuccess) {
@@ -355,6 +368,42 @@ export function ExpenseForm({ open, onOpenChange, onSuccess, expense }: ExpenseF
                   placeholder="0.00"
                   className="mt-1 h-10 text-sm border-2 border-blue-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 font-semibold"
                   required
+                  disabled={loading}
+                />
+              </div>
+
+              {/* Transaction Cost */}
+              <div>
+                <Label htmlFor="transactionCost" className="text-xs sm:text-sm font-medium flex items-center gap-1">
+                  Transaction Cost (Ksh)
+                  <span className="text-xs text-muted-foreground font-normal">(Optional - fees, charges, etc.)</span>
+                </Label>
+                <Input
+                  id="transactionCost"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formData.transactionCost}
+                  onChange={(e) => handleChange('transactionCost', e.target.value)}
+                  placeholder="0.00"
+                  className="mt-1 h-10 text-sm border-2 border-orange-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  disabled={loading}
+                />
+              </div>
+
+              {/* Seller PIN */}
+              <div>
+                <Label htmlFor="sellerPin" className="text-xs sm:text-sm font-medium flex items-center gap-1">
+                  Seller's PIN
+                  <span className="text-xs text-muted-foreground font-normal">(Optional - tax identification number)</span>
+                </Label>
+                <Input
+                  id="sellerPin"
+                  type="text"
+                  value={formData.sellerPin}
+                  onChange={(e) => handleChange('sellerPin', e.target.value)}
+                  placeholder="e.g., P051234567A"
+                  className="mt-1 h-10 text-sm border-2 border-slate-200 focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
                   disabled={loading}
                 />
               </div>

@@ -46,11 +46,18 @@ interface Expense {
   date: string;
   status: 'fully-paid' | 'partially-paid';
   expenseType?: 'recurrent' | 'capital';
+  transactionCost?: number;
+  sellerPin?: string | null;
 }
 
 const statusColors = {
   'fully-paid': 'bg-green-600 text-white dark:bg-green-700',
   'partially-paid': 'bg-purple-500 text-white dark:bg-purple-600',
+};
+
+const expenseTypeColors = {
+  'recurrent': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 border-blue-300 dark:border-blue-700',
+  'capital': 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700',
 };
 
 const SUMMARY_COLLAPSED_KEY = 'expense_summary_collapsed';
@@ -292,18 +299,20 @@ export function ExpenseList() {
     }
 
     // Convert to CSV
-    const headers = ['ID', 'Description', 'Category', 'Station', 'Type', 'Amount (Ksh)', 'Date', 'Status'];
+    const headers = ['ID', 'Description', 'Category', 'Type', 'Station', 'Amount (Ksh)', 'Transaction Cost (Ksh)', 'Date', 'Status', "Seller's PIN"];
     const csvRows = [
       headers.join(','),
       ...expensesToExport.map(exp => [
         exp.id,
         `"${exp.description.replace(/"/g, '""')}"`,
         exp.category,
-        exp.station || 'General',
         (exp.expenseType || 'recurrent') === 'recurrent' ? 'Recurrent' : 'Capital',
+        exp.station || 'General',
         exp.amount,
+        exp.transactionCost || 0,
         exp.date,
         exp.status === 'fully-paid' ? 'Fully Paid' : 'Partially Paid',
+        exp.sellerPin || '',
       ].join(','))
     ];
 
@@ -365,6 +374,15 @@ export function ExpenseList() {
   });
 
   const totalAmount = filtered.reduce((sum, exp) => sum + exp.amount, 0);
+  const totalTransactionCost = filtered.reduce((sum, exp) => sum + (exp.transactionCost || 0), 0);
+  const recurrentAmount = filtered
+    .filter((exp) => (exp.expenseType || 'recurrent') === 'recurrent')
+    .reduce((sum, exp) => sum + exp.amount, 0);
+  const capitalAmount = filtered
+    .filter((exp) => exp.expenseType === 'capital')
+    .reduce((sum, exp) => sum + exp.amount, 0);
+  const recurrentCount = filtered.filter((exp) => (exp.expenseType || 'recurrent') === 'recurrent').length;
+  const capitalCount = filtered.filter((exp) => exp.expenseType === 'capital').length;
 
   if (loading) {
     return (
@@ -671,18 +689,36 @@ export function ExpenseList() {
         </div>
         <div className={cn(
           "transition-all duration-300 ease-in-out overflow-hidden",
-          isSummaryCollapsed ? "max-h-0 opacity-0" : "max-h-[200px] opacity-100"
+          isSummaryCollapsed ? "max-h-0 opacity-0" : "max-h-[400px] opacity-100"
         )}>
           <CardContent className="pt-2 pb-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Total Amount */}
               <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 p-4 rounded-lg border-2 border-blue-200 dark:border-blue-800">
                 <p className="text-sm font-medium text-muted-foreground mb-1">Total Amount</p>
-                <p className="text-3xl font-bold text-blue-700 dark:text-blue-300">Ksh {totalAmount.toLocaleString()}</p>
-            </div>
-              <div className="text-left sm:text-right bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 p-4 rounded-lg border-2 border-green-200 dark:border-green-800">
-                <p className="text-sm font-medium text-muted-foreground mb-1">Matching Entries</p>
-                <p className="text-2xl font-bold text-green-700 dark:text-green-300">{filtered.length}</p>
-            </div>
+                <p className="text-2xl sm:text-3xl font-bold text-blue-700 dark:text-blue-300">Ksh {totalAmount.toLocaleString()}</p>
+              </div>
+              
+              {/* Recurrent Expenses */}
+              <div className="bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 p-4 rounded-lg border-2 border-blue-300 dark:border-blue-700">
+                <p className="text-sm font-medium text-muted-foreground mb-1">Recurrent Expenses</p>
+                <p className="text-xl sm:text-2xl font-bold text-blue-700 dark:text-blue-300">Ksh {recurrentAmount.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground mt-1">{recurrentCount} {recurrentCount === 1 ? 'entry' : 'entries'}</p>
+              </div>
+              
+              {/* Capital Expenses */}
+              <div className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 p-4 rounded-lg border-2 border-amber-300 dark:border-amber-700">
+                <p className="text-sm font-medium text-muted-foreground mb-1">Capital Expenses</p>
+                <p className="text-xl sm:text-2xl font-bold text-amber-700 dark:text-amber-300">Ksh {capitalAmount.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground mt-1">{capitalCount} {capitalCount === 1 ? 'entry' : 'entries'}</p>
+              </div>
+              
+              {/* Transaction Costs */}
+              <div className="bg-gradient-to-br from-orange-50 to-red-50 dark:from-orange-950/20 dark:to-red-950/20 p-4 rounded-lg border-2 border-orange-300 dark:border-orange-700">
+                <p className="text-sm font-medium text-muted-foreground mb-1">Transaction Costs</p>
+                <p className="text-xl sm:text-2xl font-bold text-orange-700 dark:text-orange-300">Ksh {totalTransactionCost.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground mt-1">Fees & charges</p>
+              </div>
           </div>
         </CardContent>
         </div>
@@ -716,9 +752,9 @@ export function ExpenseList() {
                     </div>
                 <div>
                   <p className="text-muted-foreground text-xs">Type</p>
-                  <p className="text-foreground font-semibold text-xs px-2.5 py-1 rounded-md inline-block bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300">
+                  <span className={cn('inline-block px-2.5 py-1 rounded-md text-xs font-bold border', expenseTypeColors[expense.expenseType || 'recurrent'])}>
                     {(expense.expenseType || 'recurrent') === 'recurrent' ? 'Recurrent' : 'Capital'}
-                  </p>
+                  </span>
                 </div>
                     <div>
                       <p className="text-muted-foreground text-xs">Station</p>
@@ -735,12 +771,25 @@ export function ExpenseList() {
                             Bal: Ksh {expense.balance.toLocaleString()}
                           </p>
                         )}
+                        {expense.transactionCost && expense.transactionCost > 0 && (
+                          <p className="text-[10px] text-orange-600 dark:text-orange-400 mt-0.5 ml-0.5">
+                            Fee: Ksh {expense.transactionCost.toLocaleString()}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div>
                       <p className="text-muted-foreground text-xs">Date</p>
                       <p className="text-foreground font-medium">{expense.date}</p>
                     </div>
+                    {expense.sellerPin && (
+                      <div className="col-span-2">
+                        <p className="text-muted-foreground text-xs">Seller's PIN</p>
+                        <p className="text-foreground font-medium text-sm bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-md inline-block">
+                          {expense.sellerPin}
+                        </p>
+                      </div>
+                    )}
                   </div>
                   <div className="flex gap-2 pt-2">
                     {userPermissions.edit && (
@@ -786,6 +835,7 @@ export function ExpenseList() {
                   <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">Amount</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">Seller PIN</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground">Actions</th>
                 </tr>
               </thead>
@@ -804,7 +854,7 @@ export function ExpenseList() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-xs font-semibold px-2.5 py-1 rounded-md inline-block bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300">
+                      <span className={cn('inline-block px-2.5 py-1 rounded-md text-xs font-bold border', expenseTypeColors[expense.expenseType || 'recurrent'])}>
                         {(expense.expenseType || 'recurrent') === 'recurrent' ? 'Recurrent' : 'Capital'}
                       </span>
                     </td>
@@ -821,6 +871,11 @@ export function ExpenseList() {
                             Bal: Ksh {expense.balance.toLocaleString()}
                           </span>
                         )}
+                        {expense.transactionCost && expense.transactionCost > 0 && (
+                          <span className="text-xs text-orange-600 dark:text-orange-400 mt-0.5">
+                            Fee: Ksh {expense.transactionCost.toLocaleString()}
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -829,6 +884,15 @@ export function ExpenseList() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-muted-foreground">{expense.date}</td>
+                    <td className="px-6 py-4 text-sm text-foreground">
+                      {expense.sellerPin ? (
+                        <span className="bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-md font-mono text-xs">
+                          {expense.sellerPin}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground italic text-xs">—</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
                         {userPermissions.edit && (

@@ -41,6 +41,8 @@ export async function GET(
       date: expense.date instanceof Date ? expense.date.toISOString().split('T')[0] : expense.date,
       status: expense.status,
       expenseType: expense.expenseType || 'recurrent',
+      transactionCost: expense.transactionCost || 0,
+      sellerPin: expense.sellerPin || null,
       createdAt: expense.createdAt,
       updatedAt: expense.updatedAt,
     };
@@ -80,6 +82,8 @@ export async function PUT(
       date,
       status,
       expenseType,
+      transactionCost,
+      sellerPin,
     } = body;
 
     // Validate required fields (station is optional)
@@ -122,6 +126,8 @@ export async function PUT(
       date: new Date(date),
       status: status || 'partially-paid',
       expenseType: expenseType === 'capital' ? 'capital' : 'recurrent',
+      transactionCost: transactionCost !== undefined ? Number(transactionCost) : 0,
+      sellerPin: sellerPin ? sellerPin.trim() : null,
       updatedAt: new Date(),
     };
 

@@ -18,6 +18,8 @@ interface Expense {
   amount: number;
   date: string;
   status: 'approved' | 'pending' | 'rejected';
+  expenseType?: 'recurrent' | 'capital';
+  transactionCost?: number;
 }
 
 // Helper function to calculate monthly trend
@@ -123,6 +125,33 @@ const calculateYearComparison = (expenses: Expense[]) => {
   return last6Months;
 };
 
+// Helper function to calculate recurrent vs capital breakdown
+const calculateExpenseTypeBreakdown = (expenses: Expense[]) => {
+  const typeData: { recurrent: number; capital: number } = {
+    recurrent: 0,
+    capital: 0,
+  };
+  
+  expenses.forEach((expense) => {
+    const type = expense.expenseType || 'recurrent';
+    if (type === 'capital') {
+      typeData.capital += expense.amount;
+    } else {
+      typeData.recurrent += expense.amount;
+    }
+  });
+
+  return [
+    { name: 'Recurrent', value: typeData.recurrent },
+    { name: 'Capital', value: typeData.capital },
+  ];
+};
+
+// Helper function to calculate transaction costs
+const calculateTransactionCosts = (expenses: Expense[]) => {
+  return expenses.reduce((sum, exp) => sum + (exp.transactionCost || 0), 0);
+};
+
 export function ExpenseCharts() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
@@ -175,6 +204,8 @@ export function ExpenseCharts() {
   const categoryDistribution = calculateCategoryDistribution(expenses);
   const stationComparison = calculateStationComparison(expenses);
   const yearComparison = calculateYearComparison(expenses);
+  const expenseTypeBreakdown = calculateExpenseTypeBreakdown(expenses);
+  const totalTransactionCosts = calculateTransactionCosts(expenses);
 
   return (
     <div className="space-y-3 sm:space-y-4 w-full max-w-full overflow-x-hidden">
@@ -282,6 +313,25 @@ export function ExpenseCharts() {
                 ))}
           </LineChart>
         </ResponsiveContainer>
+      </ChartCard>
+
+      <ChartCard title="Recurrent vs Capital Expenses">
+        <ResponsiveContainer width="100%" height={200} className="sm:h-[300px]">
+          <BarChart data={expenseTypeBreakdown}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="name" style={{ fontSize: '12px' }} />
+            <YAxis style={{ fontSize: '12px' }} />
+            <Tooltip formatter={(value) => `Ksh ${value.toLocaleString()}`} />
+            <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]}>
+              {expenseTypeBreakdown.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.name === 'Recurrent' ? '#3b82f6' : '#f59e0b'} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+        <div className="mt-2 text-center text-xs text-muted-foreground">
+          Total Transaction Costs: Ksh {totalTransactionCosts.toLocaleString()}
+        </div>
       </ChartCard>
         </>
       )}
