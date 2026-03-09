@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
+
+export const dynamic = 'force-dynamic';
+
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+  Pragma: 'no-cache',
+  Expires: '0',
+} as const;
 import { hasPagePermission } from '@/lib/permissions';
 import { sendTicketCreationSMS, sendClientTicketSMS, sendTechnicianAssignmentSMS } from '@/lib/sms';
 
@@ -220,9 +228,7 @@ export async function GET(request: NextRequest) {
       },
       { 
         status: 200,
-        headers: {
-          'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=30', // Cache for 10s, serve stale for 30s
-        }
+        headers: NO_CACHE_HEADERS,
       }
     );
   } catch (error) {

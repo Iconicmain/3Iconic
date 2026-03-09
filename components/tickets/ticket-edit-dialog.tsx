@@ -63,7 +63,7 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
 
   const fetchTechnicians = async () => {
     try {
-      const response = await fetch('/api/technicians');
+      const response = await fetch('/api/technicians', { cache: 'no-store' });
       const data = await response.json();
       if (response.ok) {
         const technicianNames = data.technicians?.map((tech: { name: string }) => tech.name) || [];
@@ -76,7 +76,7 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
 
   const fetchCategories = async () => {
     try {
-      const response = await fetch('/api/categories');
+      const response = await fetch('/api/categories', { cache: 'no-store' });
       const data = await response.json();
       if (response.ok) {
         const categoryNames = data.categories?.map((cat: { name: string }) => cat.name) || [];
@@ -164,6 +164,7 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
 
       const response = await fetch(`/api/tickets/${ticket._id}`, {
         method: 'PATCH',
+        cache: 'no-store',
         headers: {
           'Content-Type': 'application/json',
         },

@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 
+export const dynamic = 'force-dynamic';
+
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+  Pragma: 'no-cache',
+  Expires: '0',
+} as const;
+
 export async function GET() {
   try {
     const client = await clientPromise;
@@ -23,7 +31,7 @@ export async function GET() {
       monthlyVolume,
       categoryDistribution,
       resolutionTime,
-    }, { status: 200 });
+    }, { status: 200, headers: NO_CACHE_HEADERS });
   } catch (error) {
     console.error('Error fetching ticket stats:', error);
     return NextResponse.json(

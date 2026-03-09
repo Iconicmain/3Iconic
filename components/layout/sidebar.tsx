@@ -110,6 +110,21 @@ const navigation = [
     description: 'Track station tasks',
     pageId: 'station-tasks'
   },
+  {
+    name: 'Station Inventory',
+    href: '/admin/inventory',
+    icon: Package,
+    description: 'Inventory & technician issues',
+    pageId: 'inventory'
+  },
+  {
+    name: 'Inventory Overview',
+    href: '/admin/inventory/aggregate',
+    icon: Warehouse,
+    description: 'All stations aggregate',
+    pageId: 'inventory-aggregate',
+    superAdminOnly: true
+  },
 ];
 
 export function Sidebar() {
@@ -178,7 +193,7 @@ export function Sidebar() {
   return (
     <>
       {/* Mobile Toggle */}
-      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-sidebar border-b border-sidebar-border flex items-center px-4 z-50">
+      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-gradient-to-r from-[#1a472a] to-[#0f3621] border-b border-[#2d6a3f] flex items-center px-4 z-50">
         <Button
           variant="ghost"
           size="icon"

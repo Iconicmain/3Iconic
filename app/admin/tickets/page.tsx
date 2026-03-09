@@ -1,4 +1,6 @@
 import { checkPagePermission } from '@/lib/permissions';
+
+export const dynamic = 'force-dynamic';
 import { Suspense } from 'react';
 import TicketsPageClient from './tickets-client';
 

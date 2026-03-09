@@ -90,7 +90,7 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
 
   const fetchCategories = async () => {
     try {
-      const response = await fetch('/api/categories');
+      const response = await fetch('/api/categories', { cache: 'no-store' });
       const data = await response.json();
       if (response.ok) {
         const fetchedCategories = data.categories?.map((cat: { name: string }) => cat.name) || [];
@@ -108,7 +108,7 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
 
   const fetchStations = async () => {
     try {
-      const response = await fetch('/api/stations');
+      const response = await fetch('/api/stations', { cache: 'no-store' });
       const data = await response.json();
       if (response.ok && data.stations) {
         // Fetch ALL stations from database
@@ -129,6 +129,7 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
     try {
       const response = await fetch('/api/categories/seed', {
         method: 'POST',
+        cache: 'no-store',
       });
       const data = await response.json();
       if (response.ok) {
@@ -154,14 +155,8 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
       if (stationFilter !== 'all') params.set('station', stationFilter);
       if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
 
-      // Determine if we should bypass cache (after mutations or when explicitly needed)
-      const shouldBypassCache = resetPage === true; // Bypass cache on explicit refresh
-      
       const response = await fetch(`/api/tickets?${params.toString()}`, {
-        // Bypass cache after mutations, use cache for normal loads
-        cache: shouldBypassCache ? 'no-store' : 'force-cache',
-        next: shouldBypassCache ? { revalidate: 0 } : { revalidate: 10 }, // Revalidate every 10 seconds
-        headers: shouldBypassCache ? { 'Cache-Control': 'no-cache' } : undefined,
+        cache: 'no-store',
       });
       
       const data = await response.json();
@@ -189,22 +184,9 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
         // Fetch all in parallel for maximum speed
         // Use cache for initial load, but ensure fresh data when needed
         const [ticketsRes, categoriesRes, stationsRes] = await Promise.allSettled([
-          fetch('/api/tickets?page=1&limit=50', { 
-            cache: 'force-cache', 
-            next: { revalidate: 10 },
-            // Add timestamp to detect stale cache
-            headers: { 'X-Request-Time': Date.now().toString() }
-          }),
-          fetch('/api/categories', {
-            // Categories rarely change, but ensure fresh on initial load
-            cache: 'force-cache',
-            next: { revalidate: 300 },
-          }),
-          fetch('/api/stations', {
-            // Stations rarely change, but ensure fresh on initial load
-            cache: 'force-cache',
-            next: { revalidate: 300 },
-          }),
+          fetch('/api/tickets?page=1&limit=50', { cache: 'no-store' }),
+          fetch('/api/categories', { cache: 'no-store' }),
+          fetch('/api/stations', { cache: 'no-store' }),
         ]);
 
         // Process tickets
@@ -224,7 +206,7 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
           setCategories(fetchedCategories);
           if (fetchedCategories.length === 0) {
             // Seed if needed (non-blocking)
-            fetch('/api/categories/seed', { method: 'POST' }).then(() => fetchCategories());
+            fetch('/api/categories/seed', { method: 'POST', cache: 'no-store' }).then(() => fetchCategories());
           }
         }
 
@@ -266,9 +248,9 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
 
   const fetchUserPermissions = async () => {
     try {
-      const response = await fetch('/api/users');
+      const response = await fetch('/api/users', { cache: 'no-store' });
       const data = await response.json();
-      const usersResponse = await fetch('/api/users/me');
+      const usersResponse = await fetch('/api/users/me', { cache: 'no-store' });
       const userData = await usersResponse.json();
       
       const currentUser = data.users?.find((u: any) => u.email === userData.email);
@@ -374,6 +356,7 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
     // Perform actual deletion in background (non-blocking, doesn't slow down UI)
     fetch(`/api/tickets/${ticket_id}`, {
       method: 'DELETE',
+      cache: 'no-store',
     })
       .then(async (response) => {
         const data = await response.json();
@@ -420,10 +403,7 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
       if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
 
       try {
-        const response = await fetch(`/api/tickets?${params.toString()}`, {
-          cache: 'force-cache',
-          next: { revalidate: 10 },
-        });
+        const response = await fetch(`/api/tickets?${params.toString()}`, { cache: 'no-store' });
         const data = await response.json();
         if (response.ok) {
           setTickets(data.tickets || []);
@@ -455,10 +435,7 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
         if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
 
         try {
-          const response = await fetch(`/api/tickets?${params.toString()}`, {
-            cache: 'force-cache',
-            next: { revalidate: 10 },
-          });
+          const response = await fetch(`/api/tickets?${params.toString()}`, { cache: 'no-store' });
           const data = await response.json();
           if (response.ok) {
             setTickets(data.tickets || []);
@@ -524,18 +501,9 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
             if (stationFilter !== 'all') refreshParams.set('station', stationFilter);
             if (debouncedSearch.trim()) refreshParams.set('search', debouncedSearch.trim());
             
-            // Always bypass cache after mutations
             const [ticketsRes, categoriesRes] = await Promise.all([
-              fetch(`/api/tickets?${refreshParams.toString()}`, { 
-                cache: 'no-store',
-                headers: {
-                  'Cache-Control': 'no-cache, no-store, must-revalidate',
-                  'Pragma': 'no-cache',
-                },
-              }),
-              fetch('/api/categories', {
-                cache: 'no-store', // Refresh categories too after ticket creation
-              }),
+              fetch(`/api/tickets?${refreshParams.toString()}`, { cache: 'no-store' }),
+              fetch('/api/categories', { cache: 'no-store' }),
             ]);
             
             const ticketsData = await ticketsRes.json();
@@ -572,13 +540,8 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
             if (stationFilter !== 'all') refreshParams.set('station', stationFilter);
             if (debouncedSearch.trim()) refreshParams.set('search', debouncedSearch.trim());
             
-            // Always bypass cache after mutations
             const refreshResponse = await fetch(`/api/tickets?${refreshParams.toString()}`, {
               cache: 'no-store',
-              headers: {
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache',
-              },
             });
             const refreshData = await refreshResponse.json();
             if (refreshResponse.ok) {

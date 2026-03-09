@@ -54,7 +54,7 @@ export function TicketForm({ open, onOpenChange, onSuccess }: TicketFormProps) {
   const fetchCategories = async () => {
     try {
       setFetchingCategories(true);
-      const response = await fetch('/api/categories');
+      const response = await fetch('/api/categories', { cache: 'no-store' });
       const data = await response.json();
       if (response.ok) {
         setCategories(data.categories?.map((cat: { name: string }) => cat.name) || []);
@@ -69,7 +69,7 @@ export function TicketForm({ open, onOpenChange, onSuccess }: TicketFormProps) {
   const fetchStations = async () => {
     try {
       setFetchingStations(true);
-      const response = await fetch('/api/stations');
+      const response = await fetch('/api/stations', { cache: 'no-store' });
       const data = await response.json();
       if (response.ok) {
         // Fetch ALL stations from database
@@ -87,7 +87,7 @@ export function TicketForm({ open, onOpenChange, onSuccess }: TicketFormProps) {
   const fetchTechnicians = async () => {
     try {
       setFetchingTechnicians(true);
-      const response = await fetch('/api/technicians');
+      const response = await fetch('/api/technicians', { cache: 'no-store' });
       const data = await response.json();
       console.log('[Ticket Form] Technicians API response:', { ok: response.ok, data });
       if (response.ok) {
@@ -149,6 +149,7 @@ export function TicketForm({ open, onOpenChange, onSuccess }: TicketFormProps) {
       
       const response = await fetch('/api/tickets', {
         method: 'POST',
+        cache: 'no-store',
         headers: {
           'Content-Type': 'application/json',
         },

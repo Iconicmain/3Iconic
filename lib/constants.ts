@@ -15,6 +15,8 @@ export const AVAILABLE_PAGES = [
   { id: 'equipment-requests', name: 'Request Equipment', path: '/admin/equipment-requests' },
   { id: 'manage-requests', name: 'Manage Requests', path: '/admin/manage-requests' },
   { id: 'station-tasks', name: 'Station Tasks', path: '/admin/station-tasks' },
+  { id: 'inventory', name: 'Station Inventory', path: '/admin/inventory' },
+  { id: 'inventory-aggregate', name: 'Inventory Overview', path: '/admin/inventory/aggregate' },
 ] as const;
 
 export const PERMISSION_TYPES = ['view', 'add', 'edit', 'delete'] as const;

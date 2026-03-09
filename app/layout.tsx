@@ -17,6 +17,8 @@ const spaceGrotesk = Space_Grotesk({
   display: 'swap',
 })
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Iconic Fibre | Fast. Reliable. Kenyan-built Internet.',
   description:

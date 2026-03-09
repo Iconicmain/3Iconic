@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
+
+export const dynamic = 'force-dynamic';
+
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+  Pragma: 'no-cache',
+  Expires: '0',
+} as const;
 import { ObjectId } from 'mongodb';
 import { hasPagePermission } from '@/lib/permissions';
 import { sendTicketResolvedSMS, sendTechnicianAssignmentSMS, sendCategoryChangeSMS } from '@/lib/sms';
@@ -24,7 +32,7 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ ticket }, { status: 200 });
+    return NextResponse.json({ ticket }, { status: 200, headers: NO_CACHE_HEADERS });
   } catch (error) {
     console.error('Error fetching ticket:', error);
     return NextResponse.json(
@@ -247,7 +255,7 @@ export async function PATCH(
 
     return NextResponse.json(
       { success: true, ticket: updatedTicket },
-      { status: 200 }
+      { status: 200, headers: NO_CACHE_HEADERS }
     );
   } catch (error) {
     console.error('Error updating ticket:', error);

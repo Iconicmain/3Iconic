@@ -59,10 +59,7 @@ export function TicketCharts({ refreshTrigger = 0 }: TicketChartsProps) {
       try {
         setLoading(true);
         // Use cache for faster subsequent loads
-        const response = await fetch('/api/tickets/stats', {
-          cache: 'force-cache',
-          next: { revalidate: 30 }, // Revalidate every 30 seconds
-        });
+        const response = await fetch('/api/tickets/stats', { cache: 'no-store' });
         const data = await response.json();
         
         if (response.ok) {
