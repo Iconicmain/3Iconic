@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
 import { Plus, Edit, Trash2, Briefcase, MapPin, Clock, X, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -59,6 +60,8 @@ interface Job {
   status?: 'open' | 'closed'
   applications?: number
   postedDate?: string
+  eligibilityCheckEnabled?: boolean
+  eligibilityQuestions?: string[]
 }
 
 const DEPARTMENTS = ['Operations', 'Engineering', 'Support', 'Sales']
@@ -79,6 +82,7 @@ export function JobsManagement() {
   const [newSkill, setNewSkill] = useState('')
   const [newMinimumReq, setNewMinimumReq] = useState('')
   const [newNiceToHave, setNewNiceToHave] = useState('')
+  const [newEligibilityQuestion, setNewEligibilityQuestion] = useState('')
   const [formData, setFormData] = useState<Partial<Job>>({
     title: '',
     department: 'Operations',
@@ -98,6 +102,8 @@ export function JobsManagement() {
     applicationEmail: '',
     safetyNote: '',
     status: 'open',
+    eligibilityCheckEnabled: false,
+    eligibilityQuestions: [],
   })
 
   useEffect(() => {
@@ -126,7 +132,15 @@ export function JobsManagement() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
+    if (formData.eligibilityCheckEnabled) {
+      const qs = (formData.eligibilityQuestions || []).map((q) => q.trim()).filter(Boolean)
+      if (qs.length === 0) {
+        toast.error('Add at least one eligibility question, or turn off the quick eligibility check.')
+        return
+      }
+    }
+
     try {
       const url = editingJob ? `/api/jobs/${editingJob.id}` : '/api/jobs'
       const method = editingJob ? 'PUT' : 'POST'
@@ -192,6 +206,8 @@ export function JobsManagement() {
       applicationEmail: '',
       safetyNote: '',
       status: 'open',
+      eligibilityCheckEnabled: false,
+      eligibilityQuestions: [],
     })
     setEditingJob(null)
     setNewRequirement('')
@@ -200,6 +216,7 @@ export function JobsManagement() {
     setNewSkill('')
     setNewMinimumReq('')
     setNewNiceToHave('')
+    setNewEligibilityQuestion('')
   }
 
   const openEditDialog = (job: Job) => {
@@ -223,6 +240,8 @@ export function JobsManagement() {
       applicationEmail: job.applicationEmail || '',
       safetyNote: job.safetyNote || '',
       status: job.status || 'open',
+      eligibilityCheckEnabled: job.eligibilityCheckEnabled === true,
+      eligibilityQuestions: [...(job.eligibilityQuestions || [])],
     })
     setIsDialogOpen(true)
   }
@@ -326,6 +345,22 @@ export function JobsManagement() {
     const updated = [...(formData.niceToHave || [])]
     updated.splice(index, 1)
     setFormData({ ...formData, niceToHave: updated })
+  }
+
+  const addEligibilityQuestion = () => {
+    if (newEligibilityQuestion.trim()) {
+      setFormData({
+        ...formData,
+        eligibilityQuestions: [...(formData.eligibilityQuestions || []), newEligibilityQuestion.trim()],
+      })
+      setNewEligibilityQuestion('')
+    }
+  }
+
+  const removeEligibilityQuestion = (index: number) => {
+    const updated = [...(formData.eligibilityQuestions || [])]
+    updated.splice(index, 1)
+    setFormData({ ...formData, eligibilityQuestions: updated })
   }
 
   const toggleJobStatus = async (job: Job) => {
@@ -771,6 +806,61 @@ export function JobsManagement() {
                   rows={2}
                   placeholder="Any safety considerations or requirements for this role..."
                 />
+              </div>
+
+              <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="eligibility-toggle" className="text-base">
+                      Quick eligibility check
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      If enabled, applicants must confirm each statement before the application form. Turn off for office or customer-care roles, or set your own questions for field and technical jobs.
+                    </p>
+                  </div>
+                  <Switch
+                    id="eligibility-toggle"
+                    checked={formData.eligibilityCheckEnabled === true}
+                    onCheckedChange={(checked) =>
+                      setFormData({
+                        ...formData,
+                        eligibilityCheckEnabled: checked,
+                      })
+                    }
+                  />
+                </div>
+                {formData.eligibilityCheckEnabled && (
+                  <div className="space-y-2 pt-2 border-t border-border/60">
+                    <Label>Eligibility statements</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={newEligibilityQuestion}
+                        onChange={(e) => setNewEligibilityQuestion(e.target.value)}
+                        onKeyDown={(e) =>
+                          e.key === 'Enter' && (e.preventDefault(), addEligibilityQuestion())
+                        }
+                        placeholder='e.g., "I am comfortable climbing poles"'
+                      />
+                      <Button type="button" onClick={addEligibilityQuestion} variant="outline">
+                        Add
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {formData.eligibilityQuestions?.map((q, index) => (
+                        <Badge key={index} variant="secondary" className="gap-1 max-w-full text-left font-normal">
+                          <span className="break-words">{q}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeEligibilityQuestion(index)}
+                            className="ml-1 shrink-0 hover:text-destructive"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <DialogFooter>

@@ -60,6 +60,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
     
     // Format job response - use custom id if it exists, otherwise use _id
+    const eligibilityQuestions = Array.isArray(job.eligibilityQuestions)
+      ? job.eligibilityQuestions.filter((q: unknown) => typeof q === 'string' && q.trim().length > 0)
+      : []
+
     const formattedJob = {
       id: job.id || job._id.toString(),
       title: job.title,
@@ -79,6 +83,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       skills: job.skills || [],
       applicationEmail: job.applicationEmail || '',
       safetyNote: job.safetyNote || '',
+      ...(typeof job.eligibilityCheckEnabled === 'boolean'
+        ? {
+            eligibilityCheckEnabled: job.eligibilityCheckEnabled,
+            eligibilityQuestions,
+          }
+        : {}),
       status: job.status || 'open',
       applications: job.applications || 0,
       postedDate: job.postedDate || job.createdAt?.toISOString() || new Date().toISOString(),
@@ -166,12 +176,19 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       'roleOverview', 'requirements', 'minimumRequirements', 'niceToHave',
       'benefits', 'salary', 'experience',
       'applicationDeadline', 'responsibilities', 'skills',
-      'applicationEmail', 'safetyNote', 'status'
+      'applicationEmail', 'safetyNote', 'status',
+      'eligibilityCheckEnabled', 'eligibilityQuestions'
     ]
     
     allowedFieldNames.forEach(field => {
       if (field in rest) {
-        updateFields[field] = rest[field]
+        if (field === 'eligibilityQuestions' && Array.isArray(rest.eligibilityQuestions)) {
+          updateFields.eligibilityQuestions = rest.eligibilityQuestions.filter(
+            (q: unknown) => typeof q === 'string' && q.trim().length > 0
+          )
+        } else {
+          updateFields[field] = rest[field]
+        }
       }
     })
     
@@ -219,6 +236,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     
     // Format response - use custom id if it exists, otherwise use _id
     // Safely handle all fields to prevent serialization errors
+    const updatedEligibilityQuestions = Array.isArray(updatedJob.eligibilityQuestions)
+      ? updatedJob.eligibilityQuestions.filter((q: unknown) => typeof q === 'string' && q.trim().length > 0)
+      : []
+
     const formattedJob = {
       id: updatedJob.id || updatedJob._id?.toString() || id,
       title: updatedJob.title || '',
@@ -238,6 +259,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       skills: Array.isArray(updatedJob.skills) ? updatedJob.skills : [],
       applicationEmail: updatedJob.applicationEmail || '',
       safetyNote: updatedJob.safetyNote || '',
+      ...(typeof updatedJob.eligibilityCheckEnabled === 'boolean'
+        ? {
+            eligibilityCheckEnabled: updatedJob.eligibilityCheckEnabled,
+            eligibilityQuestions: updatedEligibilityQuestions,
+          }
+        : {}),
       status: updatedJob.status || 'open',
       applications: typeof updatedJob.applications === 'number' ? updatedJob.applications : 0,
       postedDate: updatedJob.postedDate 

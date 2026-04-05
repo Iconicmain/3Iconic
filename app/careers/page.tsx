@@ -46,6 +46,9 @@ interface Job {
   responsibilities?: string[]
   safetyNote?: string
   status?: 'open' | 'closed'
+  /** When set from API/admin: true = use eligibilityQuestions; false = skip check. When omitted, legacy jobs use title/department heuristics. */
+  eligibilityCheckEnabled?: boolean
+  eligibilityQuestions?: string[]
 }
 
 export default function CareersPage() {
@@ -101,6 +104,15 @@ export default function CareersPage() {
     })
   }, [])
 
+  useEffect(() => {
+    if (!selectedJob) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [selectedJob])
+
   const departments = ['all', 'Operations', 'Engineering', 'Support', 'Sales']
   
   // Separate open and closed jobs
@@ -108,30 +120,35 @@ export default function CareersPage() {
   const openJobs = allFilteredJobs.filter((j) => j.status !== 'closed')
   const closedJobs = allFilteredJobs.filter((j) => j.status === 'closed')
 
-  // Get eligibility check questions based on job title/department
-  const getEligibilityQuestions = (job: Job) => {
+  const getEligibilityQuestionsHeuristic = (job: Job) => {
     const title = job.title.toLowerCase()
     const dept = job.department.toLowerCase()
-    
-    if (title.includes('field tech') || title.includes('technician') || title.includes('fibre tech') || dept === 'operations') {
+
+    const looksLikeCustomerCare =
+      /customer care|care representative|client care|call center|help\s*desk|service desk|reception/.test(title)
+    const looksLikeFieldRole =
+      /field\s*tech|fibre\s*tech|fiber\s*tech|\bftth\b|\bfttb\b|installer|splicer|pole|linesman|rigger/.test(title) ||
+      (/\btechnician\b/.test(title) && !looksLikeCustomerCare)
+
+    if (looksLikeCustomerCare || (dept === 'support' && !looksLikeFieldRole)) {
+      return [
+        { id: 'support', label: 'I have customer support experience' },
+        { id: 'communication', label: 'I am comfortable communicating with customers' },
+        { id: 'technical', label: 'I can troubleshoot technical issues' },
+      ]
+    }
+    if (looksLikeFieldRole) {
       return [
         { id: 'poles', label: 'I am comfortable climbing poles' },
         { id: 'fibre', label: 'I have worked with fibre before' },
         { id: 'field', label: 'I am willing to work in the field' },
       ]
     }
-    if (title.includes('network engineer') || title.includes('engineer') || dept === 'engineering') {
+    if (title.includes('network engineer') || (title.includes('engineer') && !looksLikeFieldRole) || dept === 'engineering') {
       return [
         { id: 'network', label: 'I have network engineering experience' },
         { id: 'xpon', label: 'I have XPON / MikroTik experience' },
         { id: 'infrastructure', label: 'I am comfortable working with network infrastructure' },
-      ]
-    }
-    if (title.includes('support') || dept === 'support') {
-      return [
-        { id: 'support', label: 'I have customer support experience' },
-        { id: 'communication', label: 'I am comfortable communicating with customers' },
-        { id: 'technical', label: 'I can troubleshoot technical issues' },
       ]
     }
     if (title.includes('sales') || dept === 'sales') {
@@ -141,12 +158,34 @@ export default function CareersPage() {
         { id: 'targets', label: 'I am comfortable meeting sales targets' },
       ]
     }
-    // Default questions
     return [
       { id: 'relevant', label: 'I have relevant experience for this role' },
       { id: 'committed', label: 'I am committed to this position' },
       { id: 'available', label: 'I am available to start' },
     ]
+  }
+
+  const getEligibilityQuestions = (job: Job) => {
+    if (typeof job.eligibilityCheckEnabled === 'boolean') {
+      if (!job.eligibilityCheckEnabled) return []
+      const custom = (job.eligibilityQuestions || [])
+        .map((q) => q.trim())
+        .filter(Boolean)
+      return custom.map((label, i) => ({ id: `q${i}`, label }))
+    }
+    return getEligibilityQuestionsHeuristic(job)
+  }
+
+  const startApplicationFlow = () => {
+    if (!selectedJob) return
+    const questions = getEligibilityQuestions(selectedJob)
+    if (questions.length > 0) {
+      setShowEligibilityCheck(true)
+      setShowApplicationForm(false)
+    } else {
+      setShowEligibilityCheck(false)
+      setShowApplicationForm(true)
+    }
   }
 
   const handleEligibilityCheck = () => {
@@ -486,161 +525,170 @@ export default function CareersPage() {
           </div>
         </section>
 
-        {/* Job Detail Modal - Premium Desktop Redesign */}
+        {/* Job detail + apply: responsive full-viewport to large desktop */}
           {selectedJob && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-end lg:items-center justify-center bg-black/70 backdrop-blur-md"
-            onClick={() => {
-              resetApplicationForm()
-              setSelectedJob(null)
-            }}
+              exit={{ opacity: 0 }}
+              role="presentation"
+              className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 backdrop-blur-[6px] sm:items-center sm:p-3 md:p-5 lg:p-8"
+              onClick={() => {
+                resetApplicationForm()
+                setSelectedJob(null)
+              }}
             >
               <motion.div
-              initial={{ opacity: 0, y: 100, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 100, scale: 0.95 }}
-              transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              onClick={(e) => e.stopPropagation()}
-              className="relative w-full h-[95vh] lg:h-auto lg:max-h-[92vh] lg:max-w-7xl lg:rounded-3xl overflow-hidden bg-background shadow-2xl flex flex-col"
-            >
-              {/* Premium Header - Sticky */}
-              <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-lg border-b-2 border-border/40">
-                <div className="relative overflow-hidden bg-gradient-to-br from-primary/12 via-primary/6 to-background p-4 sm:p-6 lg:p-10">
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_var(--primary)_0%,_transparent_70%)] opacity-15" />
-                  
-                  {/* Close Button */}
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 24 }}
+                transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="job-modal-title"
+                className="relative flex h-[100dvh] max-h-[100dvh] w-full min-h-0 flex-col overflow-hidden border border-border/30 bg-background shadow-2xl sm:h-auto sm:max-h-[min(92dvh,52rem)] sm:max-w-[min(100vw-1.5rem,42rem)] md:max-h-[min(92dvh,56rem)] md:max-w-[min(100vw-2rem,56rem)] lg:max-w-[min(100vw-2.5rem,72rem)] xl:max-w-[min(100vw-3rem,80rem)] 2xl:max-w-[88rem] sm:rounded-2xl lg:rounded-3xl rounded-t-2xl sm:rounded-b-2xl"
+              >
+              {/* Header */}
+              <header className="shrink-0 border-b border-border/40 bg-background/95 backdrop-blur-md">
+                <div className="relative overflow-hidden bg-gradient-to-br from-primary/[0.14] via-primary/[0.06] to-background px-4 pb-4 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-6 sm:pb-5 sm:pt-6 lg:px-10 lg:pb-8 lg:pt-10">
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_100%_0%,var(--primary)_0%,transparent_65%)] opacity-[0.12]" />
+
                   <button
+                    type="button"
                     onClick={() => {
                       resetApplicationForm()
                       setSelectedJob(null)
                     }}
-                    className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-background/90 backdrop-blur-sm text-muted-foreground transition-all hover:bg-background hover:text-foreground active:scale-95 lg:right-6 lg:top-6 lg:h-11 lg:w-11"
+                    className="absolute right-3 top-[max(0.5rem,env(safe-area-inset-top))] z-10 flex h-10 w-10 items-center justify-center rounded-full border border-border/40 bg-background/90 text-muted-foreground shadow-sm transition-all hover:bg-background hover:text-foreground active:scale-95 sm:right-4 sm:top-4 sm:h-11 sm:w-11 lg:right-6 lg:top-6"
+                    aria-label="Close"
                   >
-                    <X className="h-4 w-4 lg:h-5 lg:w-5" />
+                    <X className="h-5 w-5" />
                   </button>
 
-                  <div className="relative pr-10 lg:pr-16">
-                    <div className="max-w-6xl mx-auto">
-                      {/* Status Badge */}
-                      <div className="mb-4 flex items-center gap-2">
+                  <div className="relative pr-12 sm:pr-14 lg:pr-16">
+                    <div className="mx-auto max-w-5xl">
+                      <div className="mb-3 flex flex-wrap items-center gap-2 sm:mb-4">
                         {selectedJob.status === 'closed' ? (
-                          <Badge variant="destructive" className="gap-1.5 text-xs font-bold px-3 py-1.5 lg:text-sm lg:px-4">
-                            <X className="h-3 w-3 lg:h-3.5 lg:w-3.5" />
-                            CLOSED
+                          <Badge variant="destructive" className="gap-1.5 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-wide sm:text-xs sm:px-3">
+                            <X className="h-3 w-3" />
+                            Closed
                           </Badge>
                         ) : (
-                          <Badge className="bg-primary/25 text-primary border-2 border-primary/40 gap-1.5 text-xs font-bold px-3 py-1.5 lg:text-sm lg:px-4">
-                            <Briefcase className="h-3 w-3 lg:h-3.5 lg:w-3.5" />
-                            OPEN
+                          <Badge className="gap-1.5 border border-primary/35 bg-primary/15 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-wide text-primary sm:text-xs sm:px-3">
+                            <Briefcase className="h-3 w-3" />
+                            Open
                           </Badge>
                         )}
                       </div>
 
-                      {/* Job Title */}
-                      <h2 className="font-heading text-2xl font-bold leading-tight text-foreground mb-4 sm:text-3xl md:text-4xl lg:text-5xl lg:mb-5">
+                      <h2
+                        id="job-modal-title"
+                        className="font-heading text-xl font-bold leading-[1.2] tracking-tight text-foreground sm:text-2xl md:text-3xl lg:text-4xl xl:text-[2.75rem] xl:leading-[1.15]"
+                      >
                         {selectedJob.title}
                       </h2>
 
-                      {/* Quick Info Pills */}
-                      <div className="flex flex-wrap items-center gap-2 lg:gap-3">
-                        <Badge variant="secondary" className="gap-1.5 text-xs font-medium px-2.5 py-1 lg:text-sm lg:px-3 lg:py-1.5">
-                          <Briefcase className="h-3 w-3 lg:h-4 lg:w-4" />
+                      <div className="mt-3 flex flex-wrap gap-2 sm:mt-4 sm:gap-2.5">
+                        <Badge variant="secondary" className="gap-1.5 px-2.5 py-1 text-xs font-medium sm:text-sm">
+                          <Briefcase className="h-3.5 w-3.5 shrink-0" />
                           {selectedJob.department}
                         </Badge>
-                        <Badge variant="outline" className="gap-1.5 text-xs font-medium px-2.5 py-1 lg:text-sm lg:px-3 lg:py-1.5">
-                          <MapPin className="h-3 w-3 lg:h-4 lg:w-4" />
+                        <Badge variant="outline" className="gap-1.5 px-2.5 py-1 text-xs font-medium sm:text-sm">
+                          <MapPin className="h-3.5 w-3.5 shrink-0" />
                           {selectedJob.location}
                         </Badge>
-                        <Badge variant="secondary" className="gap-1.5 text-xs font-medium px-2.5 py-1 lg:text-sm lg:px-3 lg:py-1.5">
-                          <Clock className="h-3 w-3 lg:h-4 lg:w-4" />
+                        <Badge variant="secondary" className="gap-1.5 px-2.5 py-1 text-xs font-medium sm:text-sm">
+                          <Clock className="h-3.5 w-3.5 shrink-0" />
                           {selectedJob.type}
                         </Badge>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              </header>
 
-              {/* Scrollable Content */}
-              <div className="flex-1 overflow-y-auto bg-background">
+              {/* Scrollable body */}
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain bg-background [-webkit-overflow-scrolling:touch]">
                 {showEligibilityCheck ? (
-                  /* Quick Eligibility Check */
-                  <div className="p-6 sm:p-8 lg:p-12 flex items-center justify-center min-h-[400px]">
+                  <div className="flex min-h-[min(100%,28rem)] items-stretch justify-center px-4 py-6 sm:min-h-0 sm:px-6 sm:py-8 md:px-10 md:py-10 lg:px-12 lg:py-12">
                     <motion.div
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="w-full max-w-2xl"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex w-full max-w-xl flex-col sm:max-w-2xl lg:max-w-2xl"
                     >
-                      <div className="mb-6 text-center">
-                        <div className="mb-4 flex justify-center">
-                          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-                            <CheckCircle2 className="h-8 w-8 text-primary" />
+                      <div className="mb-6 text-center sm:mb-8">
+                        <div className="mb-3 flex justify-center sm:mb-4">
+                          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/20 sm:h-16 sm:w-16">
+                            <CheckCircle2 className="h-7 w-7 text-primary sm:h-8 sm:w-8" />
                           </div>
                         </div>
-                        <h3 className="font-heading text-2xl font-bold text-foreground mb-2 sm:text-3xl">
-                          Quick Eligibility Check
+                        <h3 className="font-heading text-xl font-bold text-foreground sm:text-2xl md:text-3xl">
+                          Quick eligibility check
                         </h3>
-                        <p className="text-sm text-muted-foreground sm:text-base">
-                          Please confirm the following to proceed with your application
+                        <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted-foreground sm:mt-3 sm:text-base">
+                          Confirm each item below so we know this role is a good fit before you continue.
                         </p>
                       </div>
 
-                      <div className="space-y-3 mb-8">
+                      <ul className="mb-6 space-y-2.5 sm:mb-8 sm:space-y-3">
                         {getEligibilityQuestions(selectedJob).map((question, index) => (
-                          <motion.div
+                          <motion.li
                             key={question.id}
-                            initial={{ opacity: 0, x: -10 }}
+                            initial={{ opacity: 0, x: -8 }}
                             animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: index * 0.1 }}
-                            className="flex items-center gap-4 rounded-xl border-2 border-border/50 bg-background p-5 hover:border-primary/50 hover:bg-primary/5 transition-all"
+                            transition={{ delay: index * 0.06 }}
                           >
-                            <Checkbox
-                              id={question.id}
-                              checked={eligibilityAnswers[question.id] || false}
-                              onCheckedChange={(checked) => setEligibilityAnswers({
-                                ...eligibilityAnswers,
-                                [question.id]: checked === true
-                              })}
-                              className="h-6 w-6 border-2 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                            />
                             <label
                               htmlFor={question.id}
-                              className="flex-1 text-base font-medium text-foreground cursor-pointer leading-6"
+                              className="flex min-h-[3.25rem] cursor-pointer items-start gap-3 rounded-xl border border-border/60 bg-muted/20 p-3.5 transition-colors hover:border-primary/40 hover:bg-primary/[0.06] has-[[data-state=checked]]:border-primary/50 has-[[data-state=checked]]:bg-primary/[0.08] sm:min-h-0 sm:gap-4 sm:p-4"
                             >
-                              {question.label}
+                              <Checkbox
+                                id={question.id}
+                                checked={eligibilityAnswers[question.id] || false}
+                                onCheckedChange={(checked) =>
+                                  setEligibilityAnswers({
+                                    ...eligibilityAnswers,
+                                    [question.id]: checked === true,
+                                  })
+                                }
+                                className="mt-0.5 h-5 w-5 shrink-0 border-2 data-[state=checked]:bg-primary data-[state=checked]:border-primary sm:h-6 sm:w-6"
+                              />
+                              <span className="text-sm font-medium leading-snug text-foreground sm:text-base sm:leading-relaxed">
+                                {question.label}
+                              </span>
                             </label>
-                          </motion.div>
+                          </motion.li>
                         ))}
-                      </div>
+                      </ul>
 
-                      <div className="flex gap-3">
+                      <div className="mt-auto flex flex-col-reverse gap-2.5 sm:flex-row sm:gap-3">
                         <Button
+                          type="button"
                           variant="outline"
                           onClick={() => setShowEligibilityCheck(false)}
-                          className="flex-1 font-semibold px-6 py-6 border-2"
+                          className="h-12 w-full shrink-0 border-2 font-semibold sm:h-11 sm:flex-1"
                         >
                           Back
                         </Button>
                         <Button
+                          type="button"
                           onClick={handleEligibilityCheck}
-                          className="flex-1 bg-gradient-to-r from-primary to-accent font-bold px-8 py-6 shadow-lg shadow-primary/20 hover:shadow-xl"
+                          className="h-12 w-full shrink-0 bg-gradient-to-r from-primary to-accent font-bold shadow-md shadow-primary/15 sm:h-11 sm:flex-1 sm:shadow-lg sm:shadow-primary/20"
                         >
-                          Continue to Application
-                          <ChevronRight className="ml-2 h-5 w-5" />
+                          Continue
+                          <ChevronRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
                         </Button>
                       </div>
                     </motion.div>
                   </div>
                 ) : !showApplicationForm ? (
-                  <div className="p-4 sm:p-6 md:p-8 lg:p-8 xl:p-12">
-                    <div className="max-w-7xl mx-auto">
-                      {/* Desktop: Two-Column Layout, Mobile: Single Column */}
-                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
-                        {/* Main Content - Left Column (Desktop) */}
-                        <div className="lg:col-span-8 space-y-6 lg:space-y-8">
+                  <div className="px-4 py-5 sm:px-5 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10 xl:px-12">
+                    <div className="mx-auto max-w-6xl 2xl:max-w-7xl">
+                      {/* Mobile: summary + benefits first; desktop: main | sidebar */}
+                      <div className="flex flex-col gap-8 lg:grid lg:grid-cols-12 lg:gap-10 xl:gap-12">
+                        {/* Main column */}
+                        <div className="order-2 space-y-6 sm:space-y-7 lg:order-1 lg:col-span-8 lg:space-y-8">
                           {/* Role Overview */}
                           {(selectedJob.roleOverview || selectedJob.description) && (
                             <motion.div
@@ -790,9 +838,8 @@ export default function CareersPage() {
                           )}
                         </div>
 
-                        {/* Sidebar - Right Column (Desktop) */}
-                        <div className="lg:col-span-4">
-                          <div className="lg:sticky lg:top-24 space-y-6 lg:space-y-8">
+                        <aside className="order-1 lg:order-2 lg:col-span-4">
+                          <div className="space-y-5 sm:space-y-6 lg:sticky lg:top-4 lg:space-y-8">
                             {/* What We Offer - Benefits */}
                             {selectedJob.benefits && selectedJob.benefits.length > 0 && (
                               <motion.div
@@ -826,40 +873,39 @@ export default function CareersPage() {
                               </motion.div>
                             )}
 
-                            {/* Quick Info Card */}
                             <motion.div
                               initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
+                              animate={{ opacity: 1, y: 0 }}
                               transition={{ delay: 0.6 }}
-                              className="rounded-xl border-2 border-border/60 bg-background p-5 lg:p-6 shadow-sm"
+                              className="rounded-xl border border-border/70 bg-muted/15 p-4 shadow-sm sm:p-5 lg:border-2 lg:p-6"
                             >
                               <h4 className="font-heading text-base font-bold uppercase tracking-wide text-foreground mb-5 lg:text-lg">
                                 Quick Info
                               </h4>
-                              <div className="space-y-4">
+                              <div className="space-y-3 sm:space-y-4">
                                 <div className="flex items-center gap-3">
-                                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                                     <MapPin className="h-5 w-5 text-primary" />
                                   </div>
-                                  <div>
+                                  <div className="min-w-0">
                                     <p className="text-xs text-muted-foreground uppercase tracking-wide">Location</p>
                                     <p className="text-sm font-semibold text-foreground lg:text-base">{selectedJob.location}</p>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                                     <Clock className="h-5 w-5 text-primary" />
                                   </div>
-                                  <div>
+                                  <div className="min-w-0">
                                     <p className="text-xs text-muted-foreground uppercase tracking-wide">Type</p>
                                     <p className="text-sm font-semibold text-foreground lg:text-base">{selectedJob.type}</p>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                                     <Briefcase className="h-5 w-5 text-primary" />
                                   </div>
-                    <div>
+                                  <div className="min-w-0">
                                     <p className="text-xs text-muted-foreground uppercase tracking-wide">Department</p>
                                     <p className="text-sm font-semibold text-foreground lg:text-base">{selectedJob.department}</p>
                                   </div>
@@ -867,71 +913,68 @@ export default function CareersPage() {
                               </div>
                             </motion.div>
                           </div>
-                        </div>
+                        </aside>
                       </div>
                     </div>
                   </div>
                 ) : applicationSubmitted ? (
-                  /* Confirmation Screen */
-                  <div className="p-8 sm:p-12 flex items-center justify-center min-h-[400px]">
+                  <div className="flex min-h-[50vh] items-center justify-center px-4 py-10 sm:min-h-0 sm:px-6 sm:py-12 md:py-16">
                     <motion.div
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="text-center max-w-md"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mx-auto w-full max-w-md text-center"
                     >
-                      <div className="mb-6 flex justify-center">
-                        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10">
-                          <CheckCircle2 className="h-10 w-10 text-primary" />
+                      <div className="mb-5 flex justify-center sm:mb-6">
+                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/20 sm:h-20 sm:w-20">
+                          <CheckCircle2 className="h-8 w-8 text-primary sm:h-10 sm:w-10" />
                         </div>
                       </div>
-                      <h3 className="font-heading text-2xl font-bold text-foreground mb-3 sm:text-3xl">
-                        Thank you for applying!
+                      <h3 className="font-heading text-xl font-bold text-foreground sm:text-2xl md:text-3xl">
+                        Thank you for applying
                       </h3>
-                      <p className="text-sm leading-6 text-foreground/80 sm:text-base">
-                        Our team will review your application within <strong>7–14 days</strong>.
-                        <br /><br />
-                        Shortlisted candidates will be contacted via phone or email.
+                      <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:mt-4 sm:text-base">
+                        Our team will review your application within <strong className="text-foreground">7–14 days</strong>.
+                        Shortlisted candidates will be contacted by phone or email.
                       </p>
                       <Button
+                        type="button"
                         onClick={() => {
                           resetApplicationForm()
                           setSelectedJob(null)
                         }}
-                        className="mt-6 font-semibold"
+                        className="mt-8 h-11 w-full max-w-xs font-semibold sm:mt-10"
                       >
                         Close
                       </Button>
                     </motion.div>
                   </div>
                 ) : (
-                  /* Application Form */
-                  <div className="p-4 sm:p-6 md:p-8">
-                    <div className="max-w-2xl mx-auto">
-                      {/* Header */}
-                      <div className="mb-6 text-center">
-                        <h3 className="font-heading text-2xl font-bold text-foreground mb-2 sm:text-3xl">
-                          Apply for {selectedJob.title}
+                  <div className="px-4 py-5 sm:px-6 sm:py-7 md:px-10 md:py-9 lg:px-12">
+                    <div className="mx-auto w-full max-w-lg md:max-w-xl lg:max-w-2xl">
+                      <div className="mb-6 text-center sm:mb-8">
+                        <p className="text-xs font-medium uppercase tracking-wider text-primary">Application</p>
+                        <h3 className="font-heading mt-1 text-xl font-bold leading-tight text-foreground sm:text-2xl md:text-3xl">
+                          {selectedJob.title}
                         </h3>
-                        <p className="text-sm text-muted-foreground">
-                          Complete the form below to submit your application
+                        <p className="mt-2 text-sm text-muted-foreground sm:text-base">
+                          Three quick steps — your progress is saved as you go.
                         </p>
                       </div>
 
-                      {/* Progress Indicator */}
-                      <div className="mb-8">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-semibold text-foreground">Step {applicationStep} of 3</span>
-                          <span className="text-xs font-semibold text-primary">{Math.round((applicationStep / 3) * 100)}% Complete</span>
+                      <div className="mb-6 sm:mb-8">
+                        <div className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold sm:text-sm">
+                          <span className="text-foreground">Step {applicationStep} of 3</span>
+                          <span className="tabular-nums text-primary">{Math.round((applicationStep / 3) * 100)}%</span>
                         </div>
-                        <div className="h-2.5 bg-muted rounded-full overflow-hidden">
+                        <div className="h-2 overflow-hidden rounded-full bg-muted">
                           <motion.div
-                            className="h-full bg-gradient-to-r from-primary to-accent"
+                            className="h-full rounded-full bg-gradient-to-r from-primary to-accent"
                             initial={{ width: 0 }}
                             animate={{ width: `${(applicationStep / 3) * 100}%` }}
-                            transition={{ duration: 0.3 }}
+                            transition={{ duration: 0.35, ease: 'easeOut' }}
                           />
+                        </div>
                       </div>
-                    </div>
 
                       {/* Step 1: Basic Info */}
                       {applicationStep === 1 && (
@@ -947,54 +990,66 @@ export default function CareersPage() {
                             <h3 className="font-heading text-xl font-bold text-foreground">Basic Information</h3>
                           </div>
                           
-                          <div className="space-y-5">
+                          <div className="space-y-4 sm:space-y-5">
                             <div>
-                              <Label htmlFor="fullName" className="text-sm font-semibold mb-2 block">Full Name *</Label>
+                              <Label htmlFor="fullName" className="mb-2 block text-sm font-semibold">
+                                Full name *
+                              </Label>
                               <Input
                                 id="fullName"
                                 value={applicationData.fullName}
                                 onChange={(e) => setApplicationData({ ...applicationData, fullName: e.target.value })}
-                                className="h-11"
+                                className="h-12 text-base sm:h-11"
                                 placeholder="Enter your full name"
+                                autoComplete="name"
                               />
                             </div>
 
                             <div>
-                              <Label htmlFor="phoneNumber" className="text-sm font-semibold mb-2 block">Phone Number *</Label>
+                              <Label htmlFor="phoneNumber" className="mb-2 block text-sm font-semibold">
+                                Phone number *
+                              </Label>
                               <Input
                                 id="phoneNumber"
                                 type="tel"
+                                inputMode="tel"
                                 value={applicationData.phoneNumber}
                                 onChange={(e) => setApplicationData({ ...applicationData, phoneNumber: e.target.value })}
-                                className="h-11"
-                                placeholder="e.g., 0712345678 or +254712345678"
+                                className="h-12 text-base sm:h-11"
+                                placeholder="e.g. 0712345678 or +254712345678"
+                                autoComplete="tel"
                               />
-                              <p className="text-xs text-muted-foreground mt-1.5">Important: We'll contact you via phone</p>
-                  </div>
+                              <p className="mt-1.5 text-xs text-muted-foreground">We may contact you by phone about your application.</p>
+                            </div>
 
-                    <div>
-                              <Label htmlFor="email" className="text-sm font-semibold mb-2 block">Email *</Label>
+                            <div>
+                              <Label htmlFor="email" className="mb-2 block text-sm font-semibold">
+                                Email *
+                              </Label>
                               <Input
                                 id="email"
                                 type="email"
                                 value={applicationData.email}
                                 onChange={(e) => setApplicationData({ ...applicationData, email: e.target.value })}
-                                className="h-11"
+                                className="h-12 text-base sm:h-11"
                                 placeholder="your.email@example.com"
+                                autoComplete="email"
                               />
-                    </div>
+                            </div>
 
-                    <div>
-                              <Label htmlFor="countyTown" className="text-sm font-semibold mb-2 block">County / Town *</Label>
+                            <div>
+                              <Label htmlFor="countyTown" className="mb-2 block text-sm font-semibold">
+                                County / town *
+                              </Label>
                               <Input
                                 id="countyTown"
                                 value={applicationData.countyTown}
                                 onChange={(e) => setApplicationData({ ...applicationData, countyTown: e.target.value })}
-                                className="h-11"
-                                placeholder="e.g., Nairobi, Mombasa, Nyeri"
+                                className="h-12 text-base sm:h-11"
+                                placeholder="e.g. Nairobi, Nakuru, Mombasa"
                               />
-                      </div>
-                    </div>
+                            </div>
+                          </div>
                         </motion.div>
                       )}
 
@@ -1019,7 +1074,7 @@ export default function CareersPage() {
                                 id="yearsExperience"
                                 value={applicationData.yearsExperience}
                                 onChange={(e) => setApplicationData({ ...applicationData, yearsExperience: e.target.value })}
-                                className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:h-11 sm:text-sm"
                               >
                                 <option value="">Select years of experience</option>
                                 <option value="0-1">0-1 years</option>
@@ -1053,14 +1108,14 @@ export default function CareersPage() {
                               <div>
                                 <label
                                   htmlFor="cvFile"
-                                  className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all bg-muted/30"
+                                  className="flex min-h-[10rem] w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/30 px-4 py-6 transition-all hover:border-primary/50 hover:bg-primary/5 sm:min-h-[9rem]"
                                 >
-                                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                                    <Upload className="h-10 w-10 mb-3 text-muted-foreground" />
-                                    <p className="mb-1 text-sm font-medium text-foreground">
-                                      <span className="text-primary">Click to upload</span> or drag and drop
+                                  <div className="flex flex-col items-center justify-center text-center">
+                                    <Upload className="mb-3 h-9 w-9 text-muted-foreground sm:h-10 sm:w-10" />
+                                    <p className="text-sm font-medium text-foreground">
+                                      <span className="text-primary">Tap to upload</span>
+                                      <span className="text-muted-foreground"> — PDF, max 5MB</span>
                                     </p>
-                                    <p className="text-xs text-muted-foreground">PDF only (Max 5MB)</p>
                                   </div>
                                   <input
                                     id="cvFile"
@@ -1082,23 +1137,23 @@ export default function CareersPage() {
                                   </div>
                                 )}
                               </div>
-                    </div>
+                            </div>
 
-                    <div>
+                            <div>
                               <Label htmlFor="certificatesFile" className="text-sm font-semibold mb-2 block">
                                 Certificates <span className="text-muted-foreground font-normal">(Optional)</span>
                               </Label>
                               <div>
                                 <label
                                   htmlFor="certificatesFile"
-                                  className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all bg-muted/30"
+                                  className="flex min-h-[10rem] w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/30 px-4 py-6 transition-all hover:border-primary/50 hover:bg-primary/5 sm:min-h-[9rem]"
                                 >
-                                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                                    <Upload className="h-10 w-10 mb-3 text-muted-foreground" />
-                                    <p className="mb-1 text-sm font-medium text-foreground">
-                                      <span className="text-primary">Click to upload</span> certificates
+                                  <div className="flex flex-col items-center justify-center text-center">
+                                    <Upload className="mb-3 h-9 w-9 text-muted-foreground sm:h-10 sm:w-10" />
+                                    <p className="text-sm font-medium text-foreground">
+                                      <span className="text-primary">Certificates</span>
+                                      <span className="text-muted-foreground"> — optional, PDF or image</span>
                                     </p>
-                                    <p className="text-xs text-muted-foreground">PDF, JPG, or PNG (Max 5MB)</p>
                                   </div>
                                   <input
                                     id="certificatesFile"
@@ -1125,9 +1180,9 @@ export default function CareersPage() {
                         </motion.div>
                       )}
 
-                      {/* Navigation Buttons */}
-                      <div className="flex justify-between gap-3 mt-8 pt-6 border-t-2 border-border/50">
+                      <div className="mt-8 flex flex-col-reverse gap-3 border-t border-border/60 pt-6 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                         <Button
+                          type="button"
                           variant="outline"
                           onClick={() => {
                             if (applicationStep > 1) {
@@ -1135,15 +1190,15 @@ export default function CareersPage() {
                             }
                           }}
                           disabled={applicationStep === 1}
-                          className="flex items-center gap-2 font-semibold px-6"
+                          className="h-12 w-full gap-2 font-semibold sm:h-11 sm:w-auto sm:px-6"
                         >
                           <ArrowLeft className="h-4 w-4" />
-                          Previous
+                          Back
                         </Button>
                         {applicationStep < 3 ? (
                           <Button
+                            type="button"
                             onClick={() => {
-                              // Basic validation
                               if (applicationStep === 1) {
                                 if (!applicationData.fullName || !applicationData.phoneNumber || !applicationData.email || !applicationData.countyTown) {
                                   toast.error('Please fill in all required fields')
@@ -1158,18 +1213,19 @@ export default function CareersPage() {
                               }
                               setApplicationStep(applicationStep + 1)
                             }}
-                            className="flex items-center gap-2 font-semibold px-6 bg-gradient-to-r from-primary to-accent"
+                            className="h-12 w-full gap-2 bg-gradient-to-r from-primary to-accent font-semibold sm:h-11 sm:w-auto sm:px-8"
                           >
                             Next
                             <ArrowRight className="h-4 w-4" />
                           </Button>
                         ) : (
                           <Button
+                            type="button"
                             onClick={handleApplicationSubmit}
                             disabled={!applicationData.cvFile}
-                            className="flex items-center gap-2 bg-gradient-to-r from-primary to-accent font-bold px-8 shadow-lg shadow-primary/20 hover:shadow-xl"
+                            className="h-12 w-full gap-2 bg-gradient-to-r from-primary to-accent font-bold shadow-md shadow-primary/20 sm:h-11 sm:w-auto sm:px-8 sm:shadow-lg"
                           >
-                            Submit Application
+                            Submit
                             <CheckCircle2 className="h-4 w-4" />
                           </Button>
                         )}
@@ -1177,58 +1233,51 @@ export default function CareersPage() {
                     </div>
                   </div>
                 )}
-                    </div>
+              </div>
 
-              {/* Sticky Footer with Easy Apply */}
-              <div className="sticky bottom-0 border-t-2 border-border/40 bg-background/95 backdrop-blur-lg shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
+              <footer className="shrink-0 border-t border-border/50 bg-background/95 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] backdrop-blur-md sm:pt-4">
                 {selectedJob.status === 'closed' ? (
-                  <div className="p-4 sm:p-6 lg:p-8">
-                    <div className="max-w-7xl mx-auto flex items-center justify-center gap-2 text-destructive">
-                      <X className="h-5 w-5" />
-                      <span className="text-sm font-medium sm:text-base lg:text-lg">This position is no longer accepting applications</span>
-                    </div>
+                  <div className="flex items-center justify-center gap-2 px-4 py-3 text-destructive sm:px-6 sm:py-4">
+                    <X className="h-5 w-5 shrink-0" />
+                    <span className="text-center text-sm font-medium sm:text-base">This position is no longer accepting applications</span>
                   </div>
                 ) : (
-                  <div className="p-4 sm:p-6 lg:p-8">
-                  <div className="max-w-7xl mx-auto flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      {/* Desktop: Show job title reminder */}
-                      {!showApplicationForm && !showEligibilityCheck && (
-                        <div className="hidden lg:block">
-                          <p className="text-sm text-muted-foreground">Applying for</p>
-                          <p className="text-base font-semibold text-foreground">{selectedJob.title}</p>
-                        </div>
-                      )}
-                      
-                      {/* Main Apply Button */}
-                      <div className="flex gap-3 sm:flex-row sm:ml-auto">
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            if (showApplicationForm || showEligibilityCheck) {
-                              resetApplicationForm()
-                            } else {
-                              setSelectedJob(null)
-                            }
-                          }}
-                          className="font-semibold px-6 py-6 border-2 lg:px-8"
-                        >
-                          {showApplicationForm || showEligibilityCheck ? 'Cancel' : 'Close'}
-                        </Button>
-                        {!showApplicationForm && !showEligibilityCheck && (
-                          <Button
-                            size="lg"
-                            onClick={() => setShowEligibilityCheck(true)}
-                            className="flex-1 bg-gradient-to-r from-primary to-accent font-bold text-sm shadow-lg shadow-primary/20 transition-all hover:shadow-xl hover:shadow-primary/30 active:scale-95 sm:flex-initial sm:px-8 lg:px-10 py-6"
-                          >
-                            Apply Now
-                            <ChevronRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
-                    </Button>
-                        )}
+                  <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
+                    {!showApplicationForm && !showEligibilityCheck && (
+                      <div className="min-w-0 sm:max-w-[55%] lg:max-w-md">
+                        <p className="text-xs text-muted-foreground">Applying for</p>
+                        <p className="truncate text-sm font-semibold text-foreground sm:text-base">{selectedJob.title}</p>
                       </div>
+                    )}
+                    <div className="flex w-full gap-2 sm:ml-auto sm:w-auto sm:gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          if (showApplicationForm || showEligibilityCheck) {
+                            resetApplicationForm()
+                          } else {
+                            setSelectedJob(null)
+                          }
+                        }}
+                        className="h-11 flex-1 border-2 font-semibold sm:h-12 sm:min-w-[6.5rem] sm:flex-initial sm:px-6"
+                      >
+                        {showApplicationForm || showEligibilityCheck ? 'Cancel' : 'Close'}
+                      </Button>
+                      {!showApplicationForm && !showEligibilityCheck && (
+                        <Button
+                          type="button"
+                          onClick={startApplicationFlow}
+                          className="h-11 flex-[1.2] bg-gradient-to-r from-primary to-accent font-bold shadow-md shadow-primary/20 sm:h-12 sm:min-w-[10rem] sm:flex-initial sm:px-8 lg:px-10"
+                        >
+                          Apply now
+                          <ChevronRight className="ml-2 h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )}
-                  </div>
+              </footer>
               </motion.div>
             </motion.div>
           )}

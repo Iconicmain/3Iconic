@@ -48,7 +48,11 @@ export async function GET(request: NextRequest) {
         if (typeof date === 'string') return date
         return new Date().toISOString()
       }
-      
+
+      const eligibilityQuestions = Array.isArray(job.eligibilityQuestions)
+        ? job.eligibilityQuestions.filter((q: unknown) => typeof q === 'string' && q.trim().length > 0)
+        : []
+
       return {
         id: job.id || job._id?.toString() || '',
         title: job.title || '',
@@ -68,6 +72,12 @@ export async function GET(request: NextRequest) {
         skills: job.skills || [],
         applicationEmail: job.applicationEmail || '',
         safetyNote: job.safetyNote || '',
+        ...(typeof job.eligibilityCheckEnabled === 'boolean'
+          ? {
+              eligibilityCheckEnabled: job.eligibilityCheckEnabled,
+              eligibilityQuestions,
+            }
+          : {}),
         status: job.status || 'open',
         applications: job.applications || 0,
         postedDate: formatDate(job.postedDate || job.createdAt),
@@ -116,6 +126,10 @@ export async function POST(request: NextRequest) {
       skills: body.skills || [],
       applicationEmail: body.applicationEmail || '',
       safetyNote: body.safetyNote || '',
+      eligibilityCheckEnabled: body.eligibilityCheckEnabled === true,
+      eligibilityQuestions: Array.isArray(body.eligibilityQuestions)
+        ? body.eligibilityQuestions.filter((q: unknown) => typeof q === 'string' && q.trim().length > 0)
+        : [],
       status: body.status || 'open',
       applications: 0,
       postedDate: new Date().toISOString(),
