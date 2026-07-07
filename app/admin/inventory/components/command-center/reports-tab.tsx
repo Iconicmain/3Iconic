@@ -11,9 +11,18 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Activity, BarChart3 } from 'lucide-react';
-import type { ActivityItem } from './sidebar-panels';
 
-interface StationComparison {
+export interface ActivityItem {
+  id: string;
+  action: string;
+  entityType: string;
+  userName?: string;
+  userId: string;
+  stationId?: string;
+  createdAt: string;
+}
+
+export interface StationComparison {
   id: string;
   stationName: string;
   totalStockItems: number;
@@ -40,6 +49,18 @@ const healthBadge: Record<string, 'default' | 'secondary' | 'destructive' | 'out
   'No Activity': 'outline',
 };
 
+const actionLabels: Record<string, string> = {
+  CREATE: 'Item added',
+  ADD_STOCK: 'Stock added',
+  ADJUST_STOCK: 'Stock adjusted',
+  ISSUE: 'Items issued',
+  RETURN: 'Return processed',
+  CABLE_ISSUE: 'Cable issued',
+  CABLE_RETURN: 'Cable returned',
+  BULK_ADD_ROUTERS: 'Routers added',
+  TRANSFER_STOCK: 'Stock transferred',
+};
+
 export function ReportsTab({
   stationComparison,
   activities,
@@ -47,14 +68,15 @@ export function ReportsTab({
   isAllStations,
 }: ReportsTabProps) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {isAllStations && (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 shrink-0" />
               Station Comparison
             </CardTitle>
+            <p className="text-xs text-muted-foreground">Click a station to open its detailed view</p>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -62,14 +84,13 @@ export function ReportsTab({
                 <TableHeader>
                   <TableRow>
                     <TableHead>Station</TableHead>
-                    <TableHead>Total Items</TableHead>
-                    <TableHead>Issued Today</TableHead>
-                    <TableHead>Returned Today</TableHead>
-                    <TableHead>Pending Returns</TableHead>
+                    <TableHead>Items</TableHead>
+                    <TableHead>Issued</TableHead>
+                    <TableHead>Returned</TableHead>
+                    <TableHead>Pending</TableHead>
                     <TableHead>Low Stock</TableHead>
-                    <TableHead>Cable Available</TableHead>
-                    <TableHead>Techs Today</TableHead>
-                    <TableHead>Health Status</TableHead>
+                    <TableHead>Cable</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -86,7 +107,6 @@ export function ReportsTab({
                       <TableCell>{s.pendingReturns}</TableCell>
                       <TableCell>{s.lowStockCount > 0 ? <Badge variant="destructive">{s.lowStockCount}</Badge> : '-'}</TableCell>
                       <TableCell>{s.totalCableRemaining}m</TableCell>
-                      <TableCell>{s.activeTechnicians}</TableCell>
                       <TableCell>
                         <Badge variant={healthBadge[s.healthStatus] || 'outline'}>{s.healthStatus}</Badge>
                       </TableCell>
@@ -95,45 +115,36 @@ export function ReportsTab({
                 </TableBody>
               </Table>
             </div>
-            <p className="text-xs text-muted-foreground mt-3">Click a station row to switch to that station&apos;s detailed view.</p>
           </CardContent>
         </Card>
       )}
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="h-5 w-5" />
-            Activity & Audit Log
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            <Activity className="h-5 w-5 shrink-0" />
+            Recent Activity
           </CardTitle>
         </CardHeader>
         <CardContent>
           {activities.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">No activity recorded</p>
+            <p className="text-sm text-muted-foreground py-6 text-center">No activity recorded yet</p>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Time</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead>Action</TableHead>
-                    <TableHead>Station</TableHead>
-                    <TableHead>Entity</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {activities.map((a) => (
-                    <TableRow key={a.id}>
-                      <TableCell className="text-sm">{new Date(a.createdAt).toLocaleString()}</TableCell>
-                      <TableCell>{a.userName || a.userId}</TableCell>
-                      <TableCell>{a.action}</TableCell>
-                      <TableCell>{a.stationId || '-'}</TableCell>
-                      <TableCell className="text-muted-foreground">{a.entityType}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            <div className="divide-y">
+              {activities.slice(0, 25).map((a) => (
+                <div key={a.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                  <div className="min-w-0">
+                    <p className="font-medium">{actionLabels[a.action] || a.action}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {a.userName || a.userId}
+                      {a.stationId ? ` · ${a.stationId}` : ''}
+                    </p>
+                  </div>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                    {new Date(a.createdAt).toLocaleString()}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>
@@ -141,5 +152,3 @@ export function ReportsTab({
     </div>
   );
 }
-
-export type { StationComparison };

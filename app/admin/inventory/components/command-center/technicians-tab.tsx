@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -50,7 +49,7 @@ export function TechniciansTab({ stationId, stations, refreshKey }: TechniciansT
     Promise.all([
       fetch(issuesUrl, { cache: 'no-store' }).then((r) => r.json()),
       fetch('/api/isp/technicians', { cache: 'no-store' }).then((r) => r.json()),
-      fetch('/api/isp/cable/usage', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ logs: [] })),
+      fetch(`/api/isp/cable/usage?stationId=${stationId}`, { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ logs: [] })),
     ])
       .then(([issuesRes, techRes, cableRes]) => {
         const names: Record<string, string> = {};
