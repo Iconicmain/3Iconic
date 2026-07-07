@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   Table,
   TableBody,
@@ -20,9 +19,18 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Plus, MoreHorizontal, Loader2, History, PackagePlus, BookMarked } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import { AddStockModal } from './add-stock-modal';
 import { CableRollDrawer } from './cable-roll-drawer';
 import { ItemCatalogSheet, type ItemTemplate } from './item-catalog-sheet';
+import {
+  stockStatusStyle,
+  unitBadgeClasses,
+  categoryBadgeClasses,
+  softBadgeClass,
+  rowHighlightForItem,
+  type StockStatus,
+} from './inventory-colors';
 
 interface Station {
   id: string;
@@ -72,10 +80,10 @@ function displayUnit(item: StockItem): string {
   return isMeterItem(item) ? 'm' : 'pcs';
 }
 
-function stockStatus(item: StockItem): { label: string; variant: 'destructive' | 'default' | 'secondary' } {
-  if (item.quantityAvailable <= 0) return { label: 'Out of Stock', variant: 'destructive' };
-  if (item.quantityAvailable <= item.minimumLevel) return { label: 'Low Stock', variant: 'default' };
-  return { label: 'Healthy', variant: 'secondary' };
+function stockStatus(item: StockItem): { label: string; status: StockStatus } {
+  if (item.quantityAvailable <= 0) return { label: 'Out of Stock', status: 'out' };
+  if (item.quantityAvailable <= item.minimumLevel) return { label: 'Low Stock', status: 'low' };
+  return { label: 'Healthy', status: 'healthy' };
 }
 
 function coverageLabel(item: StockItem, stations: Station[]): string {
@@ -219,40 +227,54 @@ export function StockTab({
                   {filtered.map((item) => {
                     const status = stockStatus(item);
                     const meter = isMeterItem(item);
+                    const unit = displayUnit(item) as 'pcs' | 'm';
                     return (
                       <TableRow
                         key={item.id}
-                        className={meter && !isAllStations ? 'cursor-pointer hover:bg-muted/50' : ''}
+                        className={cn(
+                          meter && !isAllStations ? 'cursor-pointer hover:bg-muted/50' : '',
+                          rowHighlightForItem(item.quantityAvailable, item.minimumLevel)
+                        )}
                         onClick={() => handleRowClick(item)}
                       >
                         <TableCell>
                           <p className="font-medium">{item.itemName}</p>
                           {item.itemCode && (
-                            <p className="text-xs text-muted-foreground">{item.itemCode}</p>
+                            <p className="text-xs text-muted-foreground font-mono">{item.itemCode}</p>
                           )}
                           {meter && item.rollSummary && (
-                            <p className="text-xs text-muted-foreground mt-0.5">
+                            <p className="text-xs text-cyan-700/80 dark:text-cyan-400/80 mt-0.5">
                               Rolls: {item.rollSummary.rollCount} · Active: {item.rollSummary.activeRolls} · Finished: {item.rollSummary.finishedRolls}
                             </p>
                           )}
                         </TableCell>
-                        <TableCell className="text-muted-foreground">{item.category || '-'}</TableCell>
-                        <TableCell>{displayUnit(item)}</TableCell>
-                        <TableCell className="font-medium">
+                        <TableCell>
+                          {item.category ? (
+                            <span className={softBadgeClass(categoryBadgeClasses(item.category))}>
+                              {item.category}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <span className={softBadgeClass(unitBadgeClasses(unit))}>{unit}</span>
+                        </TableCell>
+                        <TableCell className="font-semibold tabular-nums">
                           {meter
                             ? `${item.quantityAvailable.toLocaleString()}m`
                             : `${item.quantityAvailable} pcs`}
                         </TableCell>
-                        <TableCell className="hidden lg:table-cell text-muted-foreground">
+                        <TableCell className="hidden lg:table-cell text-muted-foreground tabular-nums">
                           {meter ? `${item.minimumLevel}m` : `${item.minimumLevel} pcs`}
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-muted-foreground text-sm">
                           {coverageLabel(item, stations)}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={status.variant === 'default' ? 'outline' : status.variant} className={status.label === 'Low Stock' ? 'bg-amber-500 text-white border-0' : ''}>
+                          <span className={softBadgeClass(stockStatusStyle(status.status))}>
                             {status.label}
-                          </Badge>
+                          </span>
                         </TableCell>
                         <TableCell className="hidden xl:table-cell text-muted-foreground text-sm">
                           {fmtDateTime(item.lastMovement as string)}

@@ -1,7 +1,6 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import {
   Table,
   TableBody,
@@ -11,6 +10,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Activity, BarChart3 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { activityStyle, softBadgeClass, stockStatusStyle } from './inventory-colors';
 
 export interface ActivityItem {
   id: string;
@@ -42,11 +43,11 @@ interface ReportsTabProps {
   isAllStations: boolean;
 }
 
-const healthBadge: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  Healthy: 'default',
-  'Low Stock': 'destructive',
-  'Needs Review': 'secondary',
-  'No Activity': 'outline',
+const healthStyle: Record<string, string> = {
+  Healthy: stockStatusStyle('healthy'),
+  'Low Stock': stockStatusStyle('low'),
+  'Needs Review': 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900',
+  'No Activity': 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-700',
 };
 
 const actionLabels: Record<string, string> = {
@@ -104,11 +105,13 @@ export function ReportsTab({
                       <TableCell>{s.totalStockItems}</TableCell>
                       <TableCell>{s.itemsIssuedToday}</TableCell>
                       <TableCell>{s.itemsReturnedToday}</TableCell>
-                      <TableCell>{s.pendingReturns}</TableCell>
-                      <TableCell>{s.lowStockCount > 0 ? <Badge variant="destructive">{s.lowStockCount}</Badge> : '-'}</TableCell>
-                      <TableCell>{s.totalCableRemaining}m</TableCell>
+                      <TableCell>{s.pendingReturns > 0 ? <span className={softBadgeClass('bg-orange-100 text-orange-800 border-orange-200')}>{s.pendingReturns}</span> : '-'}</TableCell>
+                      <TableCell>{s.lowStockCount > 0 ? <span className={softBadgeClass(stockStatusStyle('low'))}>{s.lowStockCount}</span> : '-'}</TableCell>
+                      <TableCell className="text-cyan-700 dark:text-cyan-400 tabular-nums">{s.totalCableRemaining.toLocaleString()}m</TableCell>
                       <TableCell>
-                        <Badge variant={healthBadge[s.healthStatus] || 'outline'}>{s.healthStatus}</Badge>
+                        <span className={softBadgeClass(healthStyle[s.healthStatus] || healthStyle['No Activity'])}>
+                          {s.healthStatus}
+                        </span>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -131,20 +134,31 @@ export function ReportsTab({
             <p className="text-sm text-muted-foreground py-6 text-center">No activity recorded yet</p>
           ) : (
             <div className="divide-y">
-              {activities.slice(0, 25).map((a) => (
-                <div key={a.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                  <div className="min-w-0">
-                    <p className="font-medium">{actionLabels[a.action] || a.action}</p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {a.userName || a.userId}
-                      {a.stationId ? ` · ${a.stationId}` : ''}
-                    </p>
+              {activities.slice(0, 25).map((a) => {
+                const style = activityStyle(a.action);
+                return (
+                  <div
+                    key={a.id}
+                    className={cn('flex items-center justify-between gap-3 py-2.5 px-2 text-sm rounded-lg my-0.5', style.bg)}
+                  >
+                    <div className="flex items-start gap-2 min-w-0">
+                      <span className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', style.dot)} />
+                      <div className="min-w-0">
+                        <p className={cn('font-medium', style.label)}>
+                          {actionLabels[a.action] || a.action}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {a.userName || a.userId}
+                          {a.stationId ? ` · ${a.stationId}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                      {new Date(a.createdAt).toLocaleString()}
+                    </span>
                   </div>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-                    {new Date(a.createdAt).toLocaleString()}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>

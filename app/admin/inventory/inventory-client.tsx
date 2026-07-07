@@ -23,6 +23,7 @@ import {
   ArrowUpCircle,
   Search,
   RefreshCw,
+  Cable,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { StockTab } from './components/command-center/stock-tab';
@@ -34,6 +35,12 @@ import { TransfersTab } from './components/command-center/transfers-tab';
 import { ReportsTab } from './components/command-center/reports-tab';
 import { TechniciansTab } from './components/command-center/technicians-tab';
 import type { ActivityItem, StationComparison } from './components/command-center/reports-tab';
+import {
+  kpiCardClasses,
+  kpiIconClasses,
+  tabTriggerClasses,
+  type KpiVariant,
+} from './components/command-center/inventory-colors';
 
 const ALL_STATIONS = 'all';
 
@@ -68,26 +75,20 @@ function StatCard({
   value,
   icon,
   loading,
-  warn,
+  variant = 'stock',
+  highlight = false,
 }: {
   title: string;
   value: string | number;
   icon: React.ReactNode;
   loading?: boolean;
-  warn?: boolean;
+  variant?: KpiVariant;
+  highlight?: boolean;
 }) {
   return (
-    <Card className={warn ? 'border-amber-300 dark:border-amber-800' : ''}>
+    <Card className={kpiCardClasses(variant, highlight)}>
       <CardContent className="p-3 flex items-center gap-2.5">
-        <div
-          className={`p-1.5 rounded-lg shrink-0 ${
-            warn
-              ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600'
-              : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600'
-          }`}
-        >
-          {icon}
-        </div>
+        <div className={kpiIconClasses(variant)}>{icon}</div>
         <div className="min-w-0">
           <p className="text-base font-bold leading-tight truncate">{loading ? '…' : value}</p>
           <p className="text-[11px] text-muted-foreground truncate">{title}</p>
@@ -206,12 +207,12 @@ export function InventoryStationPage({
 
           {/* KPI cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-4">
-            <StatCard title="Active Items" value={summary?.totalActiveItems ?? '-'} icon={<Package className="h-3.5 w-3.5" />} loading={loading} />
-            <StatCard title="Low Stock" value={summary?.lowStockItems ?? '-'} icon={<AlertTriangle className="h-3.5 w-3.5" />} loading={loading} warn={!!summary && summary.lowStockItems > 0} />
-            <StatCard title="Issued Today" value={summary?.issuedToday ?? '-'} icon={<ArrowUpCircle className="h-3.5 w-3.5" />} loading={loading} />
-            <StatCard title="Pending Returns" value={summary?.pendingReturns ?? '-'} icon={<ArrowDownCircle className="h-3.5 w-3.5" />} loading={loading} warn={!!summary && summary.pendingReturns > 0} />
-            <StatCard title="Cable (m)" value={summary ? `${summary.cableAvailable.toLocaleString()}m` : '-'} icon={<Package className="h-3.5 w-3.5" />} loading={loading} />
-            <StatCard title="Techs Today" value={summary?.techniciansActiveToday ?? '-'} icon={<Users className="h-3.5 w-3.5" />} loading={loading} />
+            <StatCard title="Active Items" value={summary?.totalActiveItems ?? '-'} icon={<Package className="h-3.5 w-3.5" />} loading={loading} variant="stock" />
+            <StatCard title="Low Stock" value={summary?.lowStockItems ?? '-'} icon={<AlertTriangle className="h-3.5 w-3.5" />} loading={loading} variant="warning" highlight={!!summary && summary.lowStockItems > 0} />
+            <StatCard title="Issued Today" value={summary?.issuedToday ?? '-'} icon={<ArrowUpCircle className="h-3.5 w-3.5" />} loading={loading} variant="issue" highlight={!!summary && summary.issuedToday > 0} />
+            <StatCard title="Pending Returns" value={summary?.pendingReturns ?? '-'} icon={<ArrowDownCircle className="h-3.5 w-3.5" />} loading={loading} variant="return" highlight={!!summary && summary.pendingReturns > 0} />
+            <StatCard title="Cable (m)" value={summary ? `${summary.cableAvailable.toLocaleString()}m` : '-'} icon={<Cable className="h-3.5 w-3.5" />} loading={loading} variant="cable" />
+            <StatCard title="Techs Today" value={summary?.techniciansActiveToday ?? '-'} icon={<Users className="h-3.5 w-3.5" />} loading={loading} variant="tech" />
           </div>
 
           {/* Main layout: tabs + sidebar */}
@@ -219,16 +220,16 @@ export function InventoryStationPage({
             <div className="min-w-0">
               <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <TabsList className="w-full sm:w-auto flex flex-wrap h-auto gap-1 p-1 mb-3 bg-white dark:bg-slate-900 border">
-                  <TabsTrigger value="stock" className="flex-1 sm:flex-initial px-3 text-sm">Stock</TabsTrigger>
-                  <TabsTrigger value="movement" className="flex-1 sm:flex-initial px-3 text-sm">Movement</TabsTrigger>
-                  <TabsTrigger value="returns" className="flex-1 sm:flex-initial px-3 text-sm">
+                  <TabsTrigger value="stock" className={`flex-1 sm:flex-initial px-3 text-sm ${tabTriggerClasses('stock')}`}>Stock</TabsTrigger>
+                  <TabsTrigger value="movement" className={`flex-1 sm:flex-initial px-3 text-sm ${tabTriggerClasses('movement')}`}>Movement</TabsTrigger>
+                  <TabsTrigger value="returns" className={`flex-1 sm:flex-initial px-3 text-sm ${tabTriggerClasses('returns')}`}>
                     Returns
                     {!!summary?.pendingReturns && (
                       <Badge variant="destructive" className="ml-1.5 h-4 px-1 text-[10px]">{summary.pendingReturns}</Badge>
                     )}
                   </TabsTrigger>
-                  <TabsTrigger value="transfers" className="flex-1 sm:flex-initial px-3 text-sm">Transfers</TabsTrigger>
-                  <TabsTrigger value="reports" className="flex-1 sm:flex-initial px-3 text-sm">Reports</TabsTrigger>
+                  <TabsTrigger value="transfers" className={`flex-1 sm:flex-initial px-3 text-sm ${tabTriggerClasses('transfers')}`}>Transfers</TabsTrigger>
+                  <TabsTrigger value="reports" className={`flex-1 sm:flex-initial px-3 text-sm ${tabTriggerClasses('reports')}`}>Reports</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="stock" className="space-y-3 mt-0">
@@ -265,7 +266,7 @@ export function InventoryStationPage({
                       variant={filterLowStock ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setFilterLowStock(!filterLowStock)}
-                      className="h-9"
+                      className={`h-9 ${filterLowStock ? 'bg-amber-600 hover:bg-amber-700 text-white border-amber-600' : 'border-amber-200 text-amber-800 hover:bg-amber-50 dark:border-amber-900 dark:text-amber-300 dark:hover:bg-amber-950/30'}`}
                     >
                       Low stock
                     </Button>
