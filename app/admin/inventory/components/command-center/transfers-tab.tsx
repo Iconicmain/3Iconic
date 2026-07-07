@@ -162,7 +162,9 @@ export function TransfersTab({ stations, stationId, refreshKey, onRefresh }: Tra
                 <TableBody>
                   {transfers.map((t) => (
                     <TableRow key={t.id}>
-                      <TableCell className="text-sm whitespace-nowrap">{new Date(t.date).toLocaleDateString()}</TableCell>
+                      <TableCell className="text-sm whitespace-nowrap">
+                        {new Date(t.date).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </TableCell>
                       <TableCell>{stations.find((s) => s.id === t.stationId || s.code === t.stationId)?.stationName || t.stationId}</TableCell>
                       <TableCell className="font-medium">{t.itemName}</TableCell>
                       <TableCell>{t.quantity}</TableCell>

@@ -47,6 +47,22 @@ interface InventoryItem {
   quantityAvailable: number;
   minimumLevel: number;
   isCable?: boolean;
+  stationId?: string;
+  stationIds?: string[];
+  updatedAt?: string;
+}
+
+function fmtDateTime(value?: string | null): string {
+  if (!value) return '-';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return '-';
+  return d.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 interface InventorySectionProps {
@@ -325,6 +341,16 @@ export function InventorySection({
       .catch(() => setTransactions([]));
   };
 
+  const coverageLabel = (item: InventoryItem) => {
+    const ids = item.stationIds?.length ? item.stationIds : item.stationId ? [item.stationId] : [];
+    if (ids.length === 0) return '-';
+    if (stations.length > 1 && ids.length >= stations.length) return 'All stations';
+    if (ids.length === 1) {
+      return stations.find((s) => s.id === ids[0])?.stationName || '1 station';
+    }
+    return `${ids.length} stations`;
+  };
+
   const getStatusBadge = (item: InventoryItem) => {
     if (item.quantityAvailable <= 0)
       return <Badge variant="destructive">Out of Stock</Badge>;
@@ -374,6 +400,7 @@ export function InventorySection({
                       <div className="min-w-0 flex-1">
                         <p className="font-medium truncate">{item.itemName}</p>
                         <p className="text-xs text-muted-foreground">{item.itemCode} · {item.category}</p>
+                        <p className="text-xs text-muted-foreground">{coverageLabel(item)} · updated {fmtDateTime(item.updatedAt)}</p>
                       </div>
                       {getStatusBadge(item)}
                     </div>
@@ -406,6 +433,8 @@ export function InventorySection({
                       <TableHead>Category</TableHead>
                       <TableHead>Available</TableHead>
                       <TableHead>Min</TableHead>
+                      <TableHead>Coverage</TableHead>
+                      <TableHead>Last Updated</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -425,6 +454,8 @@ export function InventorySection({
                           <span className="text-muted-foreground text-xs ml-1">{item.unitType}</span>
                         </TableCell>
                         <TableCell>{item.minimumLevel}</TableCell>
+                        <TableCell className="text-sm whitespace-nowrap">{coverageLabel(item)}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmtDateTime(item.updatedAt)}</TableCell>
                         <TableCell>{getStatusBadge(item)}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">

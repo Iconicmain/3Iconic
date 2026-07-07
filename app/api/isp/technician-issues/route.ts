@@ -8,6 +8,24 @@ import { getIspUserContext, canAccessStation } from '@/lib/isp/permissions';
 import { createAuditLog } from '@/lib/isp/audit';
 import { issueItemSchema } from '@/lib/isp/validation';
 import { ISP_COLLECTIONS, ISP_DB } from '@/lib/isp/models';
+import type { Db } from 'mongodb';
+
+async function attachTechnicianNames<T extends { technicianId?: unknown }>(
+  db: Db,
+  issues: T[]
+): Promise<(T & { technicianName?: string })[]> {
+  const techIds = [...new Set(issues.map((i) => String(i.technicianId || '')).filter(Boolean))];
+  if (techIds.length === 0) return issues;
+  const users = await db
+    .collection('users')
+    .find({ id: { $in: techIds } }, { projection: { id: 1, name: 1 } })
+    .toArray();
+  const nameMap = new Map(users.map((u: { id: string; name?: string }) => [u.id, u.name]));
+  return issues.map((i) => ({
+    ...i,
+    technicianName: nameMap.get(String(i.technicianId || '')) || undefined,
+  }));
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -59,7 +77,8 @@ export async function GET(request: NextRequest) {
           return { ...issue, items: itemsWithDetails };
         })
       );
-      return NextResponse.json({ issues: issuesWithItems }, { headers: NO_CACHE_HEADERS });
+      const enriched = await attachTechnicianNames(db, issuesWithItems);
+      return NextResponse.json({ issues: enriched }, { headers: NO_CACHE_HEADERS });
     }
 
     const stationId = await (await import('@/lib/isp/station-resolve')).resolveStationId(stationIdParam);
@@ -96,7 +115,8 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    return NextResponse.json({ issues: issuesWithItems }, { headers: NO_CACHE_HEADERS });
+    const enrichedIssues = await attachTechnicianNames(db, issuesWithItems);
+    return NextResponse.json({ issues: enrichedIssues }, { headers: NO_CACHE_HEADERS });
   } catch (error) {
     console.error('[ISP Technician Issues GET]', error);
     return NextResponse.json({ error: 'Failed to fetch issues' }, { status: 500 });

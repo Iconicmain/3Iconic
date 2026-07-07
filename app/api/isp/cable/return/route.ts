@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
           metersUsed: Math.max(0, newMetersUsed),
           wasteMeters: wasteMeters || 0,
           closingMeters: log.closingMeters + metersReturned,
+          returnedAt: new Date(),
           updatedAt: new Date(),
         },
       }

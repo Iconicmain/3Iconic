@@ -58,6 +58,19 @@ interface Technician {
   name: string;
 }
 
+function fmtCableDateTime(value?: string | null): string {
+  if (!value) return '-';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return '-';
+  return d.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 interface CableSectionProps {
   stationId: string;
   onRefresh: () => void;
@@ -314,19 +327,24 @@ export function CableSection({
                   <p className="text-sm font-medium mb-2">Pending cable returns</p>
                   <div className="md:hidden space-y-2">
                     {openLogs.map((l) => (
-                      <div key={l.id} className="rounded-lg border p-3 flex items-center justify-between gap-2">
-                        <span className="text-sm">{l.metersIssued - l.metersReturned}m out</span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedLog(l);
-                            setReturnMeters(String(l.metersIssued - l.metersReturned));
-                            setReturnOpen(true);
-                          }}
-                        >
-                          Return
-                        </Button>
+                      <div key={l.id} className="rounded-lg border p-3 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium">{l.metersIssued - l.metersReturned}m out</span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedLog(l);
+                              setReturnMeters(String(l.metersIssued - l.metersReturned));
+                              setReturnOpen(true);
+                            }}
+                          >
+                            Return
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {technicians.find((t) => t.id === l.technicianId)?.name || l.technicianId} · issued {fmtCableDateTime(l.createdAt)}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -334,18 +352,24 @@ export function CableSection({
                     <Table>
                       <TableHeader>
                         <TableRow>
+                          <TableHead>Technician</TableHead>
                           <TableHead>Issued</TableHead>
                           <TableHead>Returned</TableHead>
                           <TableHead>Out</TableHead>
+                          <TableHead>Issued At</TableHead>
                           <TableHead className="text-right">Action</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {openLogs.map((l) => (
                           <TableRow key={l.id}>
+                            <TableCell className="font-medium">
+                              {technicians.find((t) => t.id === l.technicianId)?.name || l.technicianId}
+                            </TableCell>
                             <TableCell>{l.metersIssued}m</TableCell>
                             <TableCell>{l.metersReturned}m</TableCell>
                             <TableCell>{l.metersIssued - l.metersReturned}m</TableCell>
+                            <TableCell className="text-sm whitespace-nowrap">{fmtCableDateTime(l.createdAt)}</TableCell>
                             <TableCell className="text-right">
                               <Button
                                 variant="ghost"

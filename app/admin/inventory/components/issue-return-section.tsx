@@ -53,15 +53,39 @@ interface IssueItem {
   quantityReturned: number;
   quantityUsed: number;
   unitType: string;
+  timeOut?: string | null;
+  returnTime?: string | null;
+  returnCondition?: string | null;
 }
 
 interface Issue {
   id: string;
   technicianId: string;
+  technicianName?: string;
   jobReference?: string;
   status: string;
   issueDate: string;
   items: IssueItem[];
+}
+
+function fmtDateTime(value?: string | null): string {
+  if (!value) return '-';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return '-';
+  return d.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function daysOut(from?: string | null): number {
+  if (!from) return 0;
+  const start = new Date(from).getTime();
+  if (isNaN(start)) return 0;
+  return Math.max(0, Math.floor((Date.now() - start) / (1000 * 60 * 60 * 24)));
 }
 
 interface IssueReturnSectionProps {
@@ -114,6 +138,15 @@ export function IssueReturnSection({
       .filter((i) => i.quantityReturned < i.quantityTaken)
       .map((item) => ({ issue, item }))
   );
+
+  const returnedItems = issues
+    .flatMap((issue) =>
+      issue.items
+        .filter((i) => i.quantityReturned > 0)
+        .map((item) => ({ issue, item }))
+    )
+    .sort((a, b) => new Date(b.item.returnTime || 0).getTime() - new Date(a.item.returnTime || 0).getTime())
+    .slice(0, 10);
 
   useEffect(() => {
     loadData();
@@ -257,21 +290,27 @@ export function IssueReturnSection({
               {pendingItems.length > 0 ? (
                 <>
                   <div className="md:hidden space-y-3">
-                    {pendingItems.map(({ issue, item }) => (
-                      <div key={item.id} className="rounded-lg border p-3 space-y-2">
-                        <p className="font-medium">{item.itemName || item.itemId}</p>
-                        <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
-                          <span>Taken: {item.quantityTaken} {item.unitType}</span>
-                          <span>Returned: {item.quantityReturned}</span>
-                          <span>Out: {item.quantityTaken - item.quantityReturned}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <Badge variant={item.quantityReturned > 0 ? 'secondary' : 'default'}>
-                            {item.quantityReturned >= item.quantityTaken ? 'Closed' : 'Pending'}
-                          </Badge>
+                    {pendingItems.map(({ issue, item }) => {
+                      const days = daysOut(item.timeOut || issue.issueDate);
+                      return (
+                        <div key={item.id} className="rounded-lg border p-3 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-medium">{item.itemName || item.itemId}</p>
+                              <p className="text-xs text-muted-foreground">{issue.technicianName || issue.technicianId}</p>
+                            </div>
+                            <Badge variant={days >= 3 ? 'destructive' : item.quantityReturned > 0 ? 'secondary' : 'default'}>
+                              {days >= 3 ? 'Overdue' : item.quantityReturned > 0 ? 'Partial' : 'Pending'}
+                            </Badge>
+                          </div>
+                          <div className="text-xs text-muted-foreground space-y-0.5">
+                            <p>Picked up: {fmtDateTime(item.timeOut || issue.issueDate)}</p>
+                            <p>Out: {item.quantityTaken - item.quantityReturned} {item.unitType} · {days} day{days === 1 ? '' : 's'} out</p>
+                          </div>
                           <Button
                             variant="outline"
                             size="sm"
+                            className="w-full"
                             onClick={() => {
                               setSelectedIssueItem({ issue, item });
                               setReturnQty(String(item.quantityTaken - item.quantityReturned));
@@ -281,48 +320,53 @@ export function IssueReturnSection({
                             Return
                           </Button>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                   <div className="hidden md:block overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
+                          <TableHead>Technician</TableHead>
                           <TableHead>Item</TableHead>
-                          <TableHead>Taken</TableHead>
-                          <TableHead>Returned</TableHead>
                           <TableHead>Out</TableHead>
+                          <TableHead>Picked Up</TableHead>
+                          <TableHead>Days Out</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead className="text-right">Action</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {pendingItems.map(({ issue, item }) => (
-                          <TableRow key={item.id}>
-                            <TableCell>{item.itemName || item.itemId}</TableCell>
-                            <TableCell>{item.quantityTaken} {item.unitType}</TableCell>
-                            <TableCell>{item.quantityReturned}</TableCell>
-                            <TableCell>{item.quantityTaken - item.quantityReturned}</TableCell>
-                            <TableCell>
-                              <Badge variant={item.quantityReturned > 0 ? 'secondary' : 'default'}>
-                                {item.quantityReturned >= item.quantityTaken ? 'Closed' : 'Pending'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedIssueItem({ issue, item });
-                                  setReturnQty(String(item.quantityTaken - item.quantityReturned));
-                                  setReturnOpen(true);
-                                }}
-                              >
-                                Return
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {pendingItems.map(({ issue, item }) => {
+                          const days = daysOut(item.timeOut || issue.issueDate);
+                          return (
+                            <TableRow key={item.id}>
+                              <TableCell className="font-medium">{issue.technicianName || issue.technicianId}</TableCell>
+                              <TableCell>{item.itemName || item.itemId}</TableCell>
+                              <TableCell>{item.quantityTaken - item.quantityReturned} {item.unitType}</TableCell>
+                              <TableCell className="text-sm whitespace-nowrap">{fmtDateTime(item.timeOut || issue.issueDate)}</TableCell>
+                              <TableCell>{days}</TableCell>
+                              <TableCell>
+                                <Badge variant={days >= 3 ? 'destructive' : item.quantityReturned > 0 ? 'secondary' : 'default'}>
+                                  {days >= 3 ? 'Overdue' : item.quantityReturned > 0 ? 'Partial' : 'Pending'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedIssueItem({ issue, item });
+                                    setReturnQty(String(item.quantityTaken - item.quantityReturned));
+                                    setReturnOpen(true);
+                                  }}
+                                >
+                                  Return
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </div>
@@ -331,6 +375,64 @@ export function IssueReturnSection({
                 <p className="text-sm text-muted-foreground py-4 text-center">
                   No pending returns. Issue items to technicians to get started.
                 </p>
+              )}
+
+              {returnedItems.length > 0 && (
+                <div className="pt-4 border-t">
+                  <p className="text-sm font-medium mb-3 flex items-center gap-2">
+                    <ArrowDownCircle className="h-4 w-4" />
+                    Recent Returns
+                  </p>
+                  <div className="hidden md:block overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Technician</TableHead>
+                          <TableHead>Item</TableHead>
+                          <TableHead>Returned</TableHead>
+                          <TableHead>Picked Up</TableHead>
+                          <TableHead>Dropped Off</TableHead>
+                          <TableHead>Condition</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {returnedItems.map(({ issue, item }) => (
+                          <TableRow key={`ret-${item.id}`}>
+                            <TableCell>{issue.technicianName || issue.technicianId}</TableCell>
+                            <TableCell>{item.itemName || item.itemId}</TableCell>
+                            <TableCell>{item.quantityReturned} {item.unitType}</TableCell>
+                            <TableCell className="text-sm whitespace-nowrap">{fmtDateTime(item.timeOut || issue.issueDate)}</TableCell>
+                            <TableCell className="text-sm whitespace-nowrap">{fmtDateTime(item.returnTime)}</TableCell>
+                            <TableCell>
+                              {item.returnCondition ? (
+                                <Badge variant={item.returnCondition === 'Damaged' || item.returnCondition === 'Lost' ? 'destructive' : 'secondary'}>
+                                  {item.returnCondition}
+                                </Badge>
+                              ) : '-'}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="md:hidden space-y-2">
+                    {returnedItems.map(({ issue, item }) => (
+                      <div key={`ret-m-${item.id}`} className="rounded-lg border p-3 text-sm space-y-1">
+                        <div className="flex justify-between gap-2">
+                          <p className="font-medium">{item.itemName || item.itemId}</p>
+                          {item.returnCondition && (
+                            <Badge variant={item.returnCondition === 'Damaged' || item.returnCondition === 'Lost' ? 'destructive' : 'secondary'}>
+                              {item.returnCondition}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">{issue.technicianName || issue.technicianId} · {item.quantityReturned} {item.unitType}</p>
+                        <p className="text-xs text-muted-foreground">Out: {fmtDateTime(item.timeOut || issue.issueDate)}</p>
+                        <p className="text-xs text-muted-foreground">In: {fmtDateTime(item.returnTime)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -435,11 +537,17 @@ export function IssueReturnSection({
           </DialogHeader>
           {selectedIssueItem && (
             <div className="space-y-4">
-              <p className="text-sm">
-                {selectedIssueItem.item.itemName || selectedIssueItem.item.itemId} — Max return:{' '}
-                {selectedIssueItem.item.quantityTaken - selectedIssueItem.item.quantityReturned}{' '}
-                {selectedIssueItem.item.unitType}
-              </p>
+              <div className="text-sm space-y-1">
+                <p>
+                  {selectedIssueItem.item.itemName || selectedIssueItem.item.itemId} — Max return:{' '}
+                  {selectedIssueItem.item.quantityTaken - selectedIssueItem.item.quantityReturned}{' '}
+                  {selectedIssueItem.item.unitType}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Picked up {fmtDateTime(selectedIssueItem.item.timeOut || selectedIssueItem.issue.issueDate)} by{' '}
+                  {selectedIssueItem.issue.technicianName || selectedIssueItem.issue.technicianId}. Drop-off time is recorded automatically when you save.
+                </p>
+              </div>
               <div>
                 <Label>Quantity Returned</Label>
                 <Input
