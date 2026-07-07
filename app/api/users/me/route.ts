@@ -45,6 +45,8 @@ export async function GET(request: NextRequest) {
             role: 1,
             approved: 1,
             pagePermissions: 1,
+            accountType: 1,
+            ispRole: 1,
           }
         }
       );
@@ -116,6 +118,7 @@ export async function GET(request: NextRequest) {
       role: user.role || 'user',
       email: user.email,
       name: user.name,
+      pagePermissions: user.pagePermissions || [],
     }, {
       headers: {
         'Cache-Control': 'private, s-maxage=60, stale-while-revalidate=120', // Cache for 60s, serve stale for 120s

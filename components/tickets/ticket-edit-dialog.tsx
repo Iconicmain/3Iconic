@@ -20,14 +20,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import {
   Loader2,
   Clock,
-  ChevronDown,
-  X,
   MapPin,
   User,
   FileText,
@@ -108,10 +104,8 @@ function SectionCard({
 }
 
 export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: TicketEditDialogProps) {
-  const [technicians, setTechnicians] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [technicianPopoverOpen, setTechnicianPopoverOpen] = useState(false);
   const [equipmentEnabled, setEquipmentEnabled] = useState(false);
   const [equipmentRows, setEquipmentRows] = useState<EquipmentUsageFormRow[]>([]);
   const [equipmentOptions, setEquipmentOptions] = useState<IssuedEquipmentOption[]>([]);
@@ -122,22 +116,9 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
 
   useEffect(() => {
     if (open) {
-      fetchTechnicians();
       fetchCategories();
     }
   }, [open]);
-
-  const fetchTechnicians = async () => {
-    try {
-      const response = await fetch('/api/technicians', { cache: 'no-store' });
-      const data = await response.json();
-      if (response.ok) {
-        setTechnicians(data.technicians?.map((tech: { name: string }) => tech.name) || []);
-      }
-    } catch (error) {
-      console.error('Error fetching technicians:', error);
-    }
-  };
 
   const fetchCategories = async () => {
     try {
@@ -210,20 +191,6 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
         updatePayload.category = formData.category;
       }
 
-      const existingTechnicians =
-        ticket.technicians && Array.isArray(ticket.technicians)
-          ? ticket.technicians
-          : ticket.technician
-            ? [ticket.technician]
-            : [];
-      const techniciansChanged =
-        JSON.stringify([...formData.technicians].sort()) !==
-        JSON.stringify([...existingTechnicians].sort());
-      if (techniciansChanged) {
-        updatePayload.technicians =
-          formData.technicians.length > 0 ? formData.technicians : undefined;
-      }
-
       const currentResolvedAt = ticket.resolvedAt
         ? new Date(ticket.resolvedAt).toISOString().slice(0, 16)
         : '';
@@ -273,25 +240,10 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleTechnicianToggle = (technicianName: string) => {
-    setFormData((prev) => {
-      const current = prev.technicians || [];
-      const isSelected = current.includes(technicianName);
-      return {
-        ...prev,
-        technicians: isSelected
-          ? current.filter((t) => t !== technicianName)
-          : [...current, technicianName],
-      };
-    });
-  };
-
-  const handleRemoveTechnician = (technicianName: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      technicians: prev.technicians.filter((t) => t !== technicianName),
-    }));
-  };
+  const assignedTechnicians =
+    formData.technicians.length > 0
+      ? formData.technicians
+      : ['Unassigned'];
 
   const setResolvedNow = () => {
     const now = new Date();
@@ -380,71 +332,18 @@ export function TicketEditDialog({ open, onOpenChange, ticket, onSuccess }: Tick
               </div>
 
               <div className="space-y-2">
-                <Label className="text-xs font-medium">Technicians</Label>
-                <Popover open={technicianPopoverOpen} onOpenChange={setTechnicianPopoverOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full justify-between h-9 text-sm font-normal"
-                      role="combobox"
+                <Label className="text-xs font-medium">Assigned technicians</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {assignedTechnicians.map((tech) => (
+                    <Badge
+                      key={tech}
+                      variant="secondary"
+                      className="px-2 py-0.5 text-xs font-normal"
                     >
-                      <span className="truncate text-left">
-                        {formData.technicians.length === 0
-                          ? 'Select technicians…'
-                          : formData.technicians.length === 1
-                            ? formData.technicians[0]
-                            : `${formData.technicians.length} selected`}
-                      </span>
-                      <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-                    <div className="max-h-[240px] overflow-y-auto p-2">
-                      {technicians.length === 0 ? (
-                        <p className="py-4 text-center text-xs text-muted-foreground">
-                          No technicians available
-                        </p>
-                      ) : (
-                        <div className="space-y-1">
-                          {technicians.map((tech) => {
-                            const isSelected = formData.technicians.includes(tech);
-                            return (
-                              <div
-                                key={tech}
-                                className="flex items-center gap-2 p-2 rounded-md hover:bg-accent cursor-pointer"
-                                onClick={() => handleTechnicianToggle(tech)}
-                              >
-                                <Checkbox checked={isSelected} />
-                                <span className="text-sm">{tech}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-                {formData.technicians.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {formData.technicians.map((tech) => (
-                      <Badge
-                        key={tech}
-                        variant="secondary"
-                        className="gap-1 pl-2 pr-1 py-0.5 text-xs font-normal"
-                      >
-                        {tech}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveTechnician(tech)}
-                          className="rounded-full hover:bg-muted p-0.5"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
+                      {tech}
+                    </Badge>
+                  ))}
+                </div>
               </div>
             </SectionCard>
 

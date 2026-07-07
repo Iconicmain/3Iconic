@@ -11,12 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Search, Filter, ChevronDown, Edit, Trash2, Loader2, Eye, Settings } from 'lucide-react';
+import { Plus, Search, Filter, ChevronDown, Edit, Trash2, Loader2, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TicketForm } from './ticket-form';
 import { TicketEditDialog } from './ticket-edit-dialog';
 import { TicketViewDialog } from './ticket-view-dialog';
-import { TechnicianManager } from './technician-manager';
 import { toast } from 'sonner';
 import { useDebounce } from '@/lib/hooks/use-debounce';
 
@@ -70,7 +69,6 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
   const [formOpen, setFormOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [technicianManagerOpen, setTechnicianManagerOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -248,18 +246,16 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
 
   const fetchUserPermissions = async () => {
     try {
-      const response = await fetch('/api/users', { cache: 'no-store' });
-      const data = await response.json();
-      const usersResponse = await fetch('/api/users/me', { cache: 'no-store' });
-      const userData = await usersResponse.json();
-      
-      const currentUser = data.users?.find((u: any) => u.email === userData.email);
-      if (currentUser) {
-        const ticketsPermission = currentUser.pagePermissions?.find((p: any) => p.pageId === 'tickets');
+      const response = await fetch('/api/users/me', { cache: 'no-store' });
+      const currentUser = await response.json();
+      if (response.ok) {
+        const ticketsPermission = currentUser.pagePermissions?.find(
+          (p: { pageId: string; permissions?: string[] }) => p.pageId === 'tickets'
+        );
         setUserPermissions({
-          add: currentUser.role === 'superadmin' || ticketsPermission?.permissions.includes('add') || false,
-          edit: currentUser.role === 'superadmin' || ticketsPermission?.permissions.includes('edit') || false,
-          delete: currentUser.role === 'superadmin' || ticketsPermission?.permissions.includes('delete') || false,
+          add: currentUser.role === 'superadmin' || ticketsPermission?.permissions?.includes('add') || false,
+          edit: currentUser.role === 'superadmin' || ticketsPermission?.permissions?.includes('edit') || false,
+          delete: currentUser.role === 'superadmin' || ticketsPermission?.permissions?.includes('delete') || false,
         });
       }
     } catch (error) {
@@ -467,15 +463,6 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">Manage all support tickets</p>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
-          <Button 
-            variant="outline"
-            className="gap-2 flex-1 sm:flex-initial shrink-0"
-            onClick={() => setTechnicianManagerOpen(true)}
-            size="sm"
-          >
-            <Settings className="w-4 h-4" />
-            <span className="hidden sm:inline">Technicians</span>
-          </Button>
           {userPermissions.add && (
           <Button 
             className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 flex-1 sm:flex-initial shrink-0"
@@ -564,13 +551,6 @@ export function TicketList({ onTicketUpdate, initialStationFilter, initialTicket
           onDelete={handleDelete}
           canEdit={userPermissions.edit}
           canDelete={userPermissions.delete}
-        />
-        <TechnicianManager
-          open={technicianManagerOpen}
-          onOpenChange={setTechnicianManagerOpen}
-          onTechnicianAdded={() => {
-            // Refresh technicians in edit dialog if needed
-          }}
         />
       </div>
 
