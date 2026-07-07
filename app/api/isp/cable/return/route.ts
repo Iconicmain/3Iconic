@@ -7,6 +7,7 @@ import { createAuditLog } from '@/lib/isp/audit';
 import { cableReturnSchema } from '@/lib/isp/validation';
 import { ISP_COLLECTIONS, ISP_DB } from '@/lib/isp/models';
 import { syncInventoryItemMeters } from '@/lib/isp/inventory-roll-stats';
+import { notifyCableReturn } from '@/lib/isp/equipment-sms';
 
 export async function POST(request: NextRequest) {
   try {
@@ -107,6 +108,18 @@ export async function POST(request: NextRequest) {
     });
 
     const updated = await logsCol.findOne({ id: parsed.data.usageLogId });
+
+    if (metersReturned > 0) {
+      notifyCableReturn({
+        technicianId: String(log.technicianId),
+        stationId: log.stationId,
+        rollCode: log.rollCode || roll?.rollCode || 'Cable roll',
+        cableType: log.cableType || roll?.cableType,
+        metersReturned,
+        processedByUserId: ctx.userId,
+      }).catch((err) => console.error('[ISP Cable Return SMS]', err));
+    }
+
     return NextResponse.json({ success: true, log: updated });
   } catch (error) {
     console.error('[ISP Cable Return]', error);

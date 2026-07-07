@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Search, Download, Filter, Edit, Trash2, ChevronDown, ChevronUp, Settings2, Calendar } from 'lucide-react';
+import { Plus, Search, Download, Filter, Edit, Trash2, ChevronDown, ChevronUp, Settings2, Calendar, Link2, Smartphone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ExpenseCategoryManager } from './expense-category-manager';
 import { ExpenseForm } from './expense-form';
@@ -44,15 +44,22 @@ interface Expense {
   amount: number;
   balance?: number; // Remaining balance for partially paid expenses
   date: string;
-  status: 'fully-paid' | 'partially-paid';
+  status: 'fully-paid' | 'partially-paid' | 'pending';
   expenseType?: 'recurrent' | 'capital';
   transactionCost?: number;
   sellerPin?: string | null;
 }
 
+const statusLabel = (status: Expense['status']) => {
+  if (status === 'fully-paid') return 'Fully Paid';
+  if (status === 'pending') return 'Pending';
+  return 'Partially Paid';
+};
+
 const statusColors = {
   'fully-paid': 'bg-green-600 text-white dark:bg-green-700',
   'partially-paid': 'bg-purple-500 text-white dark:bg-purple-600',
+  pending: 'bg-amber-500 text-white dark:bg-amber-600',
 };
 
 const expenseTypeColors = {
@@ -98,6 +105,8 @@ export function ExpenseList() {
     type: 'all',
   });
   const [mounted, setMounted] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [mobileSubmitUrl, setMobileSubmitUrl] = useState('');
 
   // Load from localStorage after mount to avoid hydration mismatch
   useEffect(() => {
@@ -145,6 +154,29 @@ export function ExpenseList() {
     fetchUserPermissions();
   }, []);
 
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    fetch('/api/expenses/submit-link')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.url) setMobileSubmitUrl(d.url);
+      })
+      .catch(() => {});
+  }, [isSuperAdmin]);
+
+  const copyMobileLink = async () => {
+    if (!mobileSubmitUrl) {
+      toast.error('Mobile link not ready');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(mobileSubmitUrl);
+      toast.success('Mobile expense link copied!');
+    } catch {
+      toast.error('Could not copy link');
+    }
+  };
+
   const fetchUserPermissions = async () => {
     try {
       const response = await fetch('/api/users');
@@ -154,6 +186,7 @@ export function ExpenseList() {
       
       const currentUser = data.users?.find((u: any) => u.email === userData.email);
       if (currentUser) {
+        setIsSuperAdmin(currentUser.role === 'superadmin');
         const expensesPermission = currentUser.pagePermissions?.find((p: any) => p.pageId === 'expenses');
         setUserPermissions({
           add: currentUser.role === 'superadmin' || expensesPermission?.permissions.includes('add') || false,
@@ -319,7 +352,7 @@ export function ExpenseList() {
         Number(exp.amount) || 0,
         Number(exp.transactionCost) || 0,
         exp.date,
-        exp.status === 'fully-paid' ? 'Fully Paid' : 'Partially Paid',
+        statusLabel(exp.status),
         exp.sellerPin || '',
       ].join(','))
     ];
@@ -411,6 +444,17 @@ export function ExpenseList() {
           <p className="text-sm text-muted-foreground mt-1">Track and manage expenses</p>
         </div>
         <div className="flex gap-2 flex-col sm:flex-row w-full sm:w-auto">
+          {isSuperAdmin && (
+            <Button
+              variant="outline"
+              className="gap-2 w-full sm:w-auto border-emerald-300 text-emerald-800 hover:bg-emerald-50"
+              onClick={copyMobileLink}
+            >
+              <Smartphone className="w-4 h-4" />
+              <Link2 className="w-3.5 h-3.5" />
+              Copy Mobile Link
+            </Button>
+          )}
           <Button 
             variant="outline" 
             className="gap-2 w-full sm:w-auto"
@@ -495,6 +539,7 @@ export function ExpenseList() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="fully-paid">Fully Paid</SelectItem>
                   <SelectItem value="partially-paid">Partially Paid</SelectItem>
                 </SelectContent>
@@ -576,6 +621,7 @@ export function ExpenseList() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="fully-paid">Fully Paid</SelectItem>
                   <SelectItem value="partially-paid">Partially Paid</SelectItem>
                 </SelectContent>
@@ -747,8 +793,8 @@ export function ExpenseList() {
                         {expense.description}
                       </p>
                     </div>
-                    <span className={cn('inline-block px-2.5 py-1 rounded-md text-xs font-bold whitespace-nowrap shadow-sm', statusColors[expense.status])} style={{ color: '#ffffff', backgroundColor: expense.status === 'fully-paid' ? '#16a34a' : '#a855f7' }}>
-                      {expense.status === 'fully-paid' ? 'Fully Paid' : 'Partially Paid'}
+                    <span className={cn('inline-block px-2.5 py-1 rounded-md text-xs font-bold whitespace-nowrap shadow-sm', statusColors[expense.status])}>
+                      {statusLabel(expense.status)}
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
@@ -887,8 +933,8 @@ export function ExpenseList() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={cn('inline-block px-2.5 py-1 rounded-md text-xs font-bold shadow-sm', statusColors[expense.status])} style={{ color: '#ffffff', backgroundColor: expense.status === 'fully-paid' ? '#16a34a' : '#a855f7' }}>
-                        {expense.status === 'fully-paid' ? 'Fully Paid' : 'Partially Paid'}
+                      <span className={cn('inline-block px-2.5 py-1 rounded-md text-xs font-bold shadow-sm', statusColors[expense.status])}>
+                        {statusLabel(expense.status)}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-muted-foreground">{expense.date}</td>

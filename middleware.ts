@@ -16,9 +16,10 @@ export async function middleware(request: NextRequest) {
   const isAdminRoute = request.nextUrl.pathname.startsWith('/admin');
   const isLoginPage = request.nextUrl.pathname === '/admin/login';
   const isWaitingPage = request.nextUrl.pathname === '/admin/waiting-approval';
+  const isExpensesMobilePage = request.nextUrl.pathname === '/admin/expenses-mobile';
 
   // If trying to access admin routes without session, redirect to login
-  if (isAdminRoute && !isLoginPage && !isWaitingPage && !session) {
+  if (isAdminRoute && !isLoginPage && !isWaitingPage && !isExpensesMobilePage && !session) {
     const loginUrl = new URL('/admin/login', request.url);
     // Preserve full URL including query parameters
     const fullCallbackUrl = request.nextUrl.pathname + request.nextUrl.search;

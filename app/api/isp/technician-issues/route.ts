@@ -9,6 +9,8 @@ import { createAuditLog } from '@/lib/isp/audit';
 import { issueItemSchema } from '@/lib/isp/validation';
 import { ISP_COLLECTIONS, ISP_DB } from '@/lib/isp/models';
 import { stationVisibilityFilter, normalizeIssuePayload } from '@/lib/isp/issue-types';
+import { notifyEquipmentIssue } from '@/lib/isp/equipment-sms';
+import { checkItemLowStockAfterUpdate } from '@/lib/isp/low-stock-alert';
 import type { Db } from 'mongodb';
 
 async function enrichIssueItems(
@@ -343,6 +345,10 @@ export async function POST(request: NextRequest) {
         createdBy: ctx.userId,
         createdAt: new Date(),
       });
+
+      checkItemLowStockAfterUpdate(it.itemId, balanceBefore, balanceAfter, deductStationId).catch(
+        (err) => console.error('[ISP Issue Low Stock SMS]', err)
+      );
     }
 
     const auditAction =
@@ -360,6 +366,28 @@ export async function POST(request: NextRequest) {
     const fullIssue = await issuesCol.findOne({ id: issue.id });
     const items = await issueItemsCol.find({ technicianIssueId: issue.id }).toArray();
     const itemsWithDetails = await enrichIssueItems(db, items as { itemId: string; routerUnitIds?: string[] }[], itemsCol);
+
+    const itemsSummary = itemsWithDetails
+      .map((i: { quantityTaken?: number; unitType?: string; itemName?: string; itemId?: string; serializedUnits?: { label?: string }[] }) => {
+        const qty = i.quantityTaken ?? 0;
+        const unit = i.unitType || 'pcs';
+        const name = i.itemName || i.itemId || 'Item';
+        const unitLabels =
+          i.serializedUnits?.length
+            ? ` [${i.serializedUnits.map((u) => u.label).filter(Boolean).join(', ')}]`
+            : '';
+        return `${qty} ${unit} ${name}${unitLabels}`;
+      })
+      .join('; ');
+
+    notifyEquipmentIssue({
+      technicianId: parsed.data.technicianId,
+      stationId: deductStationId,
+      itemsSummary,
+      issuedByUserId: ctx.userId,
+      jobReference: jobRef,
+      notes: parsed.data.notes || null,
+    }).catch((err) => console.error('[ISP Issue SMS]', err));
 
     return NextResponse.json({ issue: { ...fullIssue, items: itemsWithDetails } }, { status: 201 });
   } catch (error) {

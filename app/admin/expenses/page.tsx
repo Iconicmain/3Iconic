@@ -5,9 +5,8 @@ import { ExpenseList } from '@/components/expenses/expense-list';
 import { ExpenseCharts } from '@/components/expenses/expense-charts';
 
 export default async function ExpensesPage() {
-  // Server-side permission check - redirects if not authorized
   await checkPagePermission('/admin/expenses');
-  
+
   return (
     <div className="flex">
       <Sidebar />
@@ -23,4 +22,3 @@ export default async function ExpensesPage() {
     </div>
   );
 }
-

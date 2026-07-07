@@ -8,6 +8,7 @@ import { createAuditLog } from '@/lib/isp/audit';
 import { returnItemSchema } from '@/lib/isp/validation';
 import { ISP_COLLECTIONS, ISP_DB } from '@/lib/isp/models';
 import { allowedReturnStationIds } from '@/lib/isp/issue-types';
+import { notifyEquipmentReturn } from '@/lib/isp/equipment-sms';
 
 export async function POST(request: NextRequest) {
   try {
@@ -193,6 +194,20 @@ export async function POST(request: NextRequest) {
     });
 
     const updated = await issueItemsCol.findOne({ id: parsed.data.issueItemId });
+
+    const itemDoc = item as { itemName?: string } | null;
+    const itemsSummary = itemDoc?.itemName || issueItem.itemId;
+    notifyEquipmentReturn({
+      technicianId: String(issue.technicianId),
+      stationId: returnStationId,
+      itemsSummary,
+      quantityReturned: qtyReturned,
+      unitType: issueItem.unitType,
+      returnCondition: condition,
+      processedByUserId: ctx.userId,
+      notes: parsed.data.notes || null,
+    }).catch((err) => console.error('[ISP Return SMS]', err));
+
     return NextResponse.json({ success: true, issueItem: updated, status: finalStatus, returnStationId });
   } catch (error) {
     console.error('[ISP Return]', error);

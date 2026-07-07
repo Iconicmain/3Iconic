@@ -103,7 +103,7 @@ export async function sendSMS(options: SendSMSOptions): Promise<SMSResponse[]> {
 }
 
 /**
- * Send ticket creation notification to admins/technicians
+ * Send ticket creation notification to approved staff (super admin, admin, customer care, technician).
  */
 export async function sendTicketCreationSMS(
   ticketId: string, 
@@ -116,6 +116,17 @@ export async function sendTicketCreationSMS(
   problemDescription: string,
   baseUrl?: string
 ): Promise<void> {
+  const { getTicketNotificationRecipients } = await import('@/lib/tickets/ticket-notification-recipients');
+  const recipients = await getTicketNotificationRecipients();
+  const numbers = recipients.map((r) => r.phone);
+
+  if (numbers.length === 0) {
+    console.warn(
+      `[SMS] No approved staff phone numbers found for ticket ${ticketId} — skipping staff notification`
+    );
+    return;
+  }
+
   // Get base URL from environment or use default
   const appUrl = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
   const ticketLink = `${appUrl}/admin/tickets?ticket=${ticketId}`;
@@ -135,13 +146,12 @@ export async function sendTicketCreationSMS(
   
   const message = `New Ticket Created\n\nTicket ID: ${ticketId}\nClient: ${clientName}\nClient Phone: ${clientNumber}\nLocation: ${station}\nHouse/Barrack: ${houseNumber}\nCategory: ${category}\nReported: ${formattedDateTime}\nDescription: ${problemDescription}\n\nView & Update: ${ticketLink}`;
   
-  const numbers = TICKET_NUMBERS.split(',').map(num => num.trim());
-  
   console.log(`[SMS] Attempting to send ticket creation SMS for ticket ${ticketId}`);
-  console.log(`[SMS] Phone numbers:`, numbers);
+  console.log(
+    `[SMS] Recipients (${numbers.length}):`,
+    recipients.map((r) => `${r.name} (${r.accountType}, ${r.phone})`)
+  );
   console.log(`[SMS] Ticket link:`, ticketLink);
-  console.log(`[SMS] Zettatel Username:`, ZETTATEL_USERNAME);
-  console.log(`[SMS] Zettatel Sender ID:`, ZETTATEL_SENDER_ID);
   
   try {
     const result = await sendSMS({

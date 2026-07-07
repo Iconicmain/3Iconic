@@ -7,6 +7,7 @@ import { getIspUserContext, canAccessStation } from '@/lib/isp/permissions';
 import { createAuditLog } from '@/lib/isp/audit';
 import { adjustStockSchema } from '@/lib/isp/validation';
 import { ISP_COLLECTIONS, ISP_DB } from '@/lib/isp/models';
+import { checkItemLowStockAfterUpdate } from '@/lib/isp/low-stock-alert';
 
 export async function POST(request: NextRequest) {
   try {
@@ -71,6 +72,15 @@ export async function POST(request: NextRequest) {
       beforeData: { quantityAvailable: balanceBefore },
       afterData: { quantityAvailable: balanceAfter },
     });
+
+    if (parsed.data.quantity < 0) {
+      checkItemLowStockAfterUpdate(
+        parsed.data.itemId,
+        balanceBefore,
+        balanceAfter,
+        itemStations[0]
+      ).catch((err) => console.error('[ISP Adjust Low Stock SMS]', err));
+    }
 
     return NextResponse.json({ success: true, balanceAfter, transaction: tx });
   } catch (error) {

@@ -9,6 +9,7 @@ import { cableIssueSchema } from '@/lib/isp/validation';
 import { ISP_COLLECTIONS, ISP_DB } from '@/lib/isp/models';
 import { syncInventoryItemMeters } from '@/lib/isp/inventory-roll-stats';
 import { normalizeIssuePayload } from '@/lib/isp/issue-types';
+import { notifyCableIssue } from '@/lib/isp/equipment-sms';
 
 export async function POST(request: NextRequest) {
   try {
@@ -115,6 +116,16 @@ export async function POST(request: NextRequest) {
       entityId: log.id,
       afterData: log,
     });
+
+    notifyCableIssue({
+      technicianId: parsed.data.technicianId,
+      stationId: roll.stationId,
+      rollCode: roll.rollCode,
+      cableType: roll.cableType,
+      metersIssued: parsed.data.metersIssued,
+      issuedByUserId: ctx.userId,
+      jobReference: jobRef,
+    }).catch((err) => console.error('[ISP Cable Issue SMS]', err));
 
     return NextResponse.json({ success: true, log, closingMeters });
   } catch (error) {

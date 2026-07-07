@@ -7,6 +7,7 @@ import { transferStockSchema } from '@/lib/isp/validation';
 import { resolveStationId } from '@/lib/isp/station-resolve';
 import { itemBelongsToStation } from '@/lib/isp/station-query';
 import { ISP_COLLECTIONS, ISP_DB } from '@/lib/isp/models';
+import { checkItemLowStockAfterUpdate } from '@/lib/isp/low-stock-alert';
 
 export const dynamic = 'force-dynamic';
 
@@ -106,6 +107,10 @@ export async function POST(request: NextRequest) {
       createdAt: new Date(),
     };
     await txCol.insertOne(transferOutTx);
+
+    checkItemLowStockAfterUpdate(sourceItem.id, sourceBefore, sourceAfter, fromStationId).catch(
+      (err) => console.error('[ISP Transfer Low Stock SMS]', err)
+    );
 
     let destItem = (await itemsCol.findOne({
       itemCode: sourceItem.itemCode,

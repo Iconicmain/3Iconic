@@ -1,6 +1,7 @@
 import clientPromise from '@/lib/mongodb';
 import { generateUUID } from '@/lib/uuid';
 import { ISP_COLLECTIONS } from '@/lib/isp/models';
+import { notifyLowStockIfNeeded } from '@/lib/isp/low-stock-alert';
 
 type Db = ReturnType<Awaited<ReturnType<typeof clientPromise>>['db']>;
 
@@ -216,4 +217,17 @@ export async function syncInventoryItemMeters(
     createdBy: userId,
     createdAt: new Date(),
   });
+
+  if (deltaMeters < 0) {
+    notifyLowStockIfNeeded({
+      itemId: item.id,
+      itemName: item.itemName,
+      itemCode: item.itemCode,
+      stationId: roll.stationId,
+      balanceBefore,
+      balanceAfter,
+      minimumLevel: item.minimumLevel ?? 0,
+      unitType: item.unitType,
+    }).catch((err) => console.error('[ISP Cable Low Stock SMS]', err));
+  }
 }
