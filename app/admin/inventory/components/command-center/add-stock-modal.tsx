@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -30,6 +30,8 @@ import {
 import {
   Loader2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Package,
   Wifi,
   Cable,
@@ -37,6 +39,8 @@ import {
   Box,
   GitBranch,
   Sparkles,
+  Check,
+  ClipboardPaste,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { StockItem } from './stock-tab';
@@ -83,45 +87,48 @@ const TYPE_ICONS: Partial<Record<InventoryItemTypeId, typeof Package>> = {
   other: Package,
 };
 
-function FormSection({
-  step,
-  title,
-  description,
-  children,
-  className,
-}: {
-  step?: number;
-  title: string;
-  description?: string;
-  children: ReactNode;
-  className?: string;
-}) {
+const STEPS = [
+  { id: 1, label: 'Category' },
+  { id: 2, label: 'Details' },
+  { id: 3, label: 'Amount' },
+] as const;
+
+function StepIndicator({ current, total }: { current: number; total: number }) {
   return (
-    <section className={cn('rounded-xl border bg-card p-4 space-y-3', className)}>
-      <div className="flex items-start gap-3">
-        {step != null && (
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-semibold">
-            {step}
-          </span>
-        )}
-        <div className="min-w-0 flex-1 space-y-3">
-          <div>
-            <h3 className="text-sm font-semibold leading-none">{title}</h3>
-            {description && (
-              <p className="text-xs text-muted-foreground mt-1">{description}</p>
+    <div className="flex items-center gap-1">
+      {STEPS.slice(0, total).map((step, i) => {
+        const done = current > step.id;
+        const active = current === step.id;
+        return (
+          <div key={step.id} className="flex items-center gap-1 flex-1 last:flex-none">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span
+                className={cn(
+                  'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold transition-colors',
+                  done && 'bg-primary text-primary-foreground',
+                  active && 'bg-primary text-primary-foreground ring-2 ring-primary/25',
+                  !done && !active && 'bg-muted text-muted-foreground'
+                )}
+              >
+                {done ? <Check className="h-3 w-3" /> : step.id}
+              </span>
+              <span
+                className={cn(
+                  'text-xs font-medium truncate hidden sm:block',
+                  active ? 'text-foreground' : 'text-muted-foreground'
+                )}
+              >
+                {step.label}
+              </span>
+            </div>
+            {i < total - 1 && (
+              <div className={cn('h-px flex-1 mx-1', done ? 'bg-primary/40' : 'bg-border')} />
             )}
           </div>
-          {children}
-        </div>
-      </div>
-    </section>
+        );
+      })}
+    </div>
   );
-}
-
-function quantityLabel(tracking: 'serialized' | 'bulk' | 'roll'): string {
-  if (tracking === 'roll') return 'Number of rolls';
-  if (tracking === 'serialized') return 'How many units';
-  return 'Quantity (pcs)';
 }
 
 export function AddStockModal({
@@ -134,11 +141,14 @@ export function AddStockModal({
 }: AddStockModalProps) {
   const isExisting = !!existingItem;
 
+  const [step, setStep] = useState(1);
   const [itemTypeId, setItemTypeId] = useState<InventoryItemTypeId>('router');
   const [splitterPreset, setSplitterPreset] = useState('1x8');
   const [idType, setIdType] = useState<'serial' | 'mac'>('serial');
+  const [bulkPaste, setBulkPaste] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [serialRows, setSerialRows] = useState<string[]>(['']);
   const [form, setForm] = useState({
     itemName: '',
     itemCode: '',
@@ -158,6 +168,10 @@ export function AddStockModal({
   const isSplitter = itemTypeId === 'splitter';
   const splitterIsCustom = splitterPreset === 'custom';
 
+  const qtyNum = parseInt(form.quantity, 10) || 0;
+  const metersPerRoll = parseFloat(form.metersPerRoll) || 0;
+  const totalCableMeters = qtyNum * metersPerRoll;
+
   const applySplitterPreset = (presetId: string) => {
     setSplitterPreset(presetId);
     const preset = getSplitterPreset(presetId);
@@ -174,44 +188,65 @@ export function AddStockModal({
     }
   };
 
+  const useBulkByDefault = qtyNum > 12;
+  const effectiveBulkPaste = bulkPaste || useBulkByDefault;
+
   const parsedIds = useMemo(() => {
+    if (isSerialized && !effectiveBulkPaste) {
+      const rows = serialRows.slice(0, qtyNum).map((s) => s.trim()).filter(Boolean);
+      return idType === 'mac' ? rows.map(formatMacAddress).filter(Boolean) : rows;
+    }
     const lines = parseIdLines(form.unitIdsText);
     return idType === 'mac' ? lines.map(formatMacAddress).filter(Boolean) : lines;
-  }, [form.unitIdsText, idType]);
+  }, [isSerialized, effectiveBulkPaste, serialRows, qtyNum, form.unitIdsText, idType]);
 
-  const qtyNum = parseInt(form.quantity, 10) || 0;
-  const metersPerRoll = parseFloat(form.metersPerRoll) || 0;
-  const totalCableMeters = qtyNum * metersPerRoll;
+  const syncSerialRows = useCallback((count: number) => {
+    setSerialRows((prev) => {
+      const next = prev.slice(0, Math.max(count, 1));
+      while (next.length < count) next.push('');
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (isSerialized && !effectiveBulkPaste && qtyNum > 0) syncSerialRows(qtyNum);
+  }, [qtyNum, isSerialized, effectiveBulkPaste, syncSerialRows]);
 
   const totalSummary = useMemo(() => {
     if (isRoll && qtyNum > 0 && metersPerRoll > 0) {
-      return `${qtyNum} roll${qtyNum !== 1 ? 's' : ''} × ${metersPerRoll.toLocaleString()}m = ${totalCableMeters.toLocaleString()}m`;
+      return `${qtyNum} roll${qtyNum !== 1 ? 's' : ''} · ${totalCableMeters.toLocaleString()}m total`;
     }
-    if (isSerialized && qtyNum > 0) return `${qtyNum} ${typeConfig.label.toLowerCase()}${qtyNum !== 1 ? 's' : ''}`;
+    if (isSerialized && qtyNum > 0) {
+      return `${parsedIds.length}/${qtyNum} ${typeConfig.label.toLowerCase()}${qtyNum !== 1 ? 's' : ''} ready`;
+    }
     if (isBulk && qtyNum > 0) return `${qtyNum} pcs`;
     return null;
-  }, [isRoll, isSerialized, isBulk, qtyNum, metersPerRoll, totalCableMeters, typeConfig.label]);
+  }, [isRoll, isSerialized, isBulk, qtyNum, metersPerRoll, totalCableMeters, typeConfig.label, parsedIds.length]);
+
+  const idsComplete = !isSerialized || (parsedIds.length === qtyNum && qtyNum > 0);
 
   useEffect(() => {
     if (!open) return;
+    setStep(isExisting ? 3 : 1);
     setAdvancedOpen(false);
+    setBulkPaste(false);
     if (existingItem) {
       const inferred = inferItemTypeFromItem(existingItem);
       setItemTypeId(inferred);
       const cfg = getItemTypeConfig(inferred);
       if (inferred === 'splitter') setSplitterPreset(inferSplitterPresetId(existingItem.itemName));
-      setForm((f) => ({
-        ...f,
+      setForm({
         itemName: existingItem.itemName,
         itemCode: existingItem.itemCode || '',
         category: existingItem.category || cfg.category,
         minimumLevel: String(existingItem.minimumLevel || 0),
         quantity: '1',
+        notes: '',
         metersPerRoll: String(cfg.defaultMetersPerRoll || 1000),
         rollIdPrefix: (existingItem.itemCode || cfg.rollIdPrefix || 'DC').slice(0, 6).toUpperCase(),
         unitIdsText: '',
-        notes: '',
-      }));
+      });
+      setSerialRows(['']);
     } else {
       setItemTypeId('router');
       setSplitterPreset('1x8');
@@ -227,8 +262,9 @@ export function AddStockModal({
         rollIdPrefix: 'DC',
         unitIdsText: '',
       });
+      setSerialRows(['']);
     }
-  }, [open, existingItem]);
+  }, [open, existingItem, isExisting]);
 
   const handleItemTypeChange = (id: InventoryItemTypeId) => {
     setItemTypeId(id);
@@ -246,10 +282,6 @@ export function AddStockModal({
     }
   };
 
-  const handleUnitIdsTextChange = (text: string) => {
-    setForm({ ...form, unitIdsText: idType === 'mac' ? formatMacLinesText(text) : text });
-  };
-
   const applyTemplate = (templateId: string) => {
     if (!templateId || templateId === '_none') return;
     const tpl = templates.find((t) => t.id === templateId);
@@ -265,6 +297,7 @@ export function AddStockModal({
       category: tpl.category || cfg.category,
       minimumLevel: String(tpl.defaultMinimumLevel ?? 0),
     }));
+    setStep(2);
   };
 
   const handleNameChange = (name: string) => {
@@ -274,6 +307,59 @@ export function AddStockModal({
       itemCode: isExisting || f.itemCode ? f.itemCode : slugItemCode(name, typeConfig.codePrefix),
     }));
   };
+
+  const handleSerialRowChange = (index: number, value: string) => {
+    const val = idType === 'mac' ? formatMacAddress(value.replace(/[^a-fA-F0-9:]/g, '')) : value;
+    setSerialRows((prev) => {
+      const next = [...prev];
+      next[index] = val;
+      return next;
+    });
+  };
+
+  const handleBulkPasteText = (text: string) => {
+    const formatted = idType === 'mac' ? formatMacLinesText(text) : text;
+    setForm((f) => ({ ...f, unitIdsText: formatted }));
+    const lines = parseIdLines(formatted);
+    const count = lines.length;
+    if (count > 0) {
+      setForm((f) => ({ ...f, quantity: String(count) }));
+    }
+  };
+
+  const validateStep = (s: number): boolean => {
+    if (s === 1) return true;
+    if (s === 2) {
+      if (!form.itemName.trim()) {
+        toast.error('Enter an item name');
+        return false;
+      }
+      return true;
+    }
+    if (s === 3) {
+      if (!qtyNum || qtyNum < 1) {
+        toast.error('Enter a valid quantity');
+        return false;
+      }
+      if (isSerialized && !idsComplete) {
+        toast.error(`Enter all ${qtyNum} ${idType === 'serial' ? 'serials' : 'MACs'}`);
+        return false;
+      }
+      if (isRoll && (!metersPerRoll || metersPerRoll <= 0)) {
+        toast.error('Enter meters per roll');
+        return false;
+      }
+      return true;
+    }
+    return true;
+  };
+
+  const goNext = () => {
+    if (!validateStep(step)) return;
+    setStep((s) => Math.min(s + 1, 3));
+  };
+
+  const goBack = () => setStep((s) => Math.max(s - 1, 1));
 
   const addSerializedUnits = async (itemName: string, units: { serialNumber?: string; macAddress?: string }[]) => {
     const res = await fetch('/api/isp/routers/bulk', {
@@ -318,14 +404,11 @@ export function AddStockModal({
   };
 
   const handleSubmit = async () => {
-    if (!form.itemName.trim()) return toast.error('Item name is required');
-    const qty = parseInt(form.quantity, 10);
-    if (!qty || qty < 1) return toast.error('Enter a valid quantity (minimum 1)');
+    if (!validateStep(2) || !validateStep(3)) return;
 
     setSubmitting(true);
     try {
       if (isRoll) {
-        if (!metersPerRoll || metersPerRoll <= 0) throw new Error('Enter length per roll in meters');
         if (!form.rollIdPrefix.trim()) throw new Error('Roll ID prefix is required');
         const res = await fetch('/api/isp/inventory/add-cable-rolls', {
           method: 'POST',
@@ -335,7 +418,7 @@ export function AddStockModal({
             itemName: form.itemName.trim(),
             itemCode: form.itemCode || undefined,
             category: form.category,
-            rollCount: qty,
+            rollCount: qtyNum,
             metersPerRoll,
             rollIdPrefix: form.rollIdPrefix.trim(),
             minimumLevel: parseFloat(form.minimumLevel) || 0,
@@ -345,14 +428,8 @@ export function AddStockModal({
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to add cable');
-        toast.success(`Added ${totalSummary}`);
+        toast.success(`Added ${qtyNum} roll(s) · ${totalCableMeters.toLocaleString()}m`);
       } else if (isSerialized) {
-        if (parsedIds.length === 0) {
-          throw new Error(`Enter ${qty} ${idType === 'serial' ? 'serial number' : 'MAC address'}${qty !== 1 ? 's' : ''}`);
-        }
-        if (parsedIds.length !== qty) {
-          throw new Error(`Enter exactly ${qty} ${idType === 'serial' ? 'serials' : 'MACs'} to match quantity`);
-        }
         const units = parsedIds.map((val) =>
           idType === 'serial' ? { serialNumber: val } : { macAddress: formatMacAddress(val) }
         );
@@ -361,7 +438,7 @@ export function AddStockModal({
         toast.success(`Added ${added} ${typeConfig.label.toLowerCase()}(s)`);
       } else {
         if (existingItem?.id) {
-          await ensureInventoryItem(qty);
+          await ensureInventoryItem(qtyNum);
         } else {
           const itemCode = (form.itemCode || slugItemCode(form.itemName, typeConfig.codePrefix)).trim();
           if (!itemCode) throw new Error('Item code is required');
@@ -374,7 +451,7 @@ export function AddStockModal({
               itemCode,
               category: form.category,
               unitType: 'pcs',
-              quantityAvailable: qty,
+              quantityAvailable: qtyNum,
               minimumLevel: parseFloat(form.minimumLevel) || 0,
               notes: form.notes || undefined,
             }),
@@ -382,7 +459,7 @@ export function AddStockModal({
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Failed to create item');
         }
-        toast.success(`Added ${qty} pcs`);
+        toast.success(`Added ${qtyNum} pcs`);
       }
       onOpenChange(false);
       onSuccess();
@@ -393,86 +470,109 @@ export function AddStockModal({
     }
   };
 
-  const submitLabel = isExisting ? 'Add to stock' : 'Add to inventory';
   const TypeIcon = TYPE_ICONS[itemTypeId] || Package;
+  const showWizard = !isExisting;
+  const isLastStep = step === 3;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg p-0 gap-0 max-h-[92vh] flex flex-col overflow-hidden">
-        <DialogHeader className="px-5 pt-5 pb-3 border-b bg-muted/30 shrink-0">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+      <DialogContent className="sm:max-w-xl p-0 gap-0 max-h-[90vh] flex flex-col overflow-hidden">
+        {/* Header */}
+        <DialogHeader className="px-5 pt-5 pb-4 border-b shrink-0 space-y-3">
+          <div className="flex items-center gap-3 pr-6">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
               <TypeIcon className="h-5 w-5" />
             </div>
-            <div className="min-w-0">
-              <DialogTitle className="text-base">
-                {isExisting ? 'Add stock' : 'New inventory item'}
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="text-base font-semibold">
+                {isExisting ? `Add stock · ${existingItem?.itemName}` : 'Add to inventory'}
               </DialogTitle>
               <DialogDescription className="text-xs mt-0.5">
                 {isExisting
-                  ? `Adding more to ${existingItem?.itemName}`
-                  : 'Choose type, enter details, confirm quantity'}
+                  ? `${typeConfig.label} · enter quantity${isSerialized ? ' and serials' : ''}`
+                  : showWizard
+                    ? `Step ${step} of 3 — ${STEPS[step - 1]?.label}`
+                    : 'Enter stock details'}
               </DialogDescription>
             </div>
+            {!isExisting && (
+              <Badge variant="outline" className="shrink-0 text-[10px] hidden sm:flex">
+                {typeConfig.label}
+              </Badge>
+            )}
           </div>
+          {showWizard && <StepIndicator current={step} total={3} />}
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-          {!isExisting && templates.length > 0 && (
-            <div className="flex items-center gap-2 rounded-lg border border-dashed border-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20 px-3 py-2.5">
-              <Sparkles className="h-4 w-4 text-emerald-600 shrink-0" />
-              <Select onValueChange={applyTemplate}>
-                <SelectTrigger className="h-8 border-0 bg-transparent shadow-none focus:ring-0 px-0 flex-1">
-                  <SelectValue placeholder="Quick pick from saved catalog…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {INVENTORY_ITEM_TYPES.map((type) => {
-                    const group = templates.filter((t) => t.itemTypeId === type.id);
-                    if (!group.length) return null;
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {/* STEP 1 — Category */}
+          {step === 1 && !isExisting && (
+            <div className="space-y-4">
+              {templates.length > 0 && (
+                <div className="rounded-xl border border-dashed border-emerald-300/80 bg-emerald-50/60 dark:bg-emerald-950/20 p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="text-xs font-medium text-emerald-800 dark:text-emerald-300">From catalog</span>
+                  </div>
+                  <Select onValueChange={applyTemplate}>
+                    <SelectTrigger className="h-9 bg-background">
+                      <SelectValue placeholder="Pick a saved item…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {INVENTORY_ITEM_TYPES.map((type) => {
+                        const group = templates.filter((t) => t.itemTypeId === type.id);
+                        if (!group.length) return null;
+                        return (
+                          <SelectGroup key={type.id}>
+                            <SelectLabel>{type.label}</SelectLabel>
+                            {group.map((tpl) => (
+                              <SelectItem key={tpl.id} value={tpl.id}>{tpl.itemName}</SelectItem>
+                            ))}
+                          </SelectGroup>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Or choose a type</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {INVENTORY_ITEM_TYPES.map((t) => {
+                    const Icon = TYPE_ICONS[t.id] || Package;
+                    const selected = itemTypeId === t.id;
                     return (
-                      <SelectGroup key={type.id}>
-                        <SelectLabel>{type.label}</SelectLabel>
-                        {group.map((tpl) => (
-                          <SelectItem key={tpl.id} value={tpl.id}>
-                            {tpl.itemName}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => handleItemTypeChange(t.id)}
+                        className={cn(
+                          'relative flex flex-col items-center gap-1.5 rounded-xl border-2 px-2 py-3 transition-all',
+                          selected
+                            ? 'border-primary bg-primary/5 shadow-sm'
+                            : 'border-transparent bg-muted/40 hover:bg-muted/70'
+                        )}
+                      >
+                        {selected && (
+                          <span className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary">
+                            <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                          </span>
+                        )}
+                        <Icon className={cn('h-5 w-5', selected ? 'text-primary' : 'text-muted-foreground')} />
+                        <span className={cn('text-[11px] font-medium leading-tight', selected && 'text-primary')}>
+                          {t.label}
+                        </span>
+                      </button>
                     );
                   })}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {!isExisting && (
-            <FormSection step={1} title="What are you adding?" description="Tap a category">
-              <div className="grid grid-cols-3 gap-1.5">
-                {INVENTORY_ITEM_TYPES.map((t) => {
-                  const Icon = TYPE_ICONS[t.id] || Package;
-                  const selected = itemTypeId === t.id;
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => handleItemTypeChange(t.id)}
-                      className={cn(
-                        'flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-center transition-colors',
-                        selected
-                          ? 'border-primary bg-primary/5 text-primary ring-1 ring-primary/30'
-                          : 'border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground'
-                      )}
-                    >
-                      <Icon className="h-4 w-4" />
-                      <span className="text-[10px] sm:text-xs font-medium leading-tight">{t.label}</span>
-                    </button>
-                  );
-                })}
+                </div>
               </div>
 
               {isSplitter && (
-                <div className="pt-1">
-                  <Label className="text-xs text-muted-foreground mb-1.5 block">Splitter size</Label>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Splitter size</p>
                   <div className="flex flex-wrap gap-1.5">
                     {SPLITTER_PRESETS.map((p) => (
                       <Button
@@ -480,7 +580,7 @@ export function AddStockModal({
                         type="button"
                         size="sm"
                         variant={splitterPreset === p.id ? 'default' : 'outline'}
-                        className="h-7 text-xs px-2.5"
+                        className="h-8 text-xs rounded-full px-3"
                         onClick={() => applySplitterPreset(p.id)}
                       >
                         {p.label}
@@ -489,228 +589,309 @@ export function AddStockModal({
                   </div>
                 </div>
               )}
-            </FormSection>
+            </div>
           )}
 
-          <FormSection
-            step={isExisting ? undefined : 2}
-            title={isExisting ? existingItem?.itemName || 'Item' : 'Item details'}
-            description={
-              isSerialized
-                ? 'Equipment tracked by serial or MAC'
-                : isRoll
-                  ? 'Cable tracked by roll in meters'
-                  : 'Bulk item counted in pieces'
-            }
-          >
-            {!isExisting && (
-              <div className="grid sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5 sm:col-span-2">
-                  <Label className="text-xs">{isSerialized ? 'Model name' : 'Item name'}</Label>
-                  <Input
-                    value={form.itemName}
-                    onChange={(e) => handleNameChange(e.target.value)}
-                    disabled={isSplitter && !splitterIsCustom}
-                    placeholder={typeConfig.namePlaceholder}
-                    className="h-9"
-                  />
-                </div>
-                {!isSerialized && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Item code</Label>
-                    <Input
-                      value={form.itemCode}
-                      onChange={(e) => setForm({ ...form, itemCode: e.target.value.toUpperCase() })}
-                      disabled={isSplitter && !splitterIsCustom}
-                      placeholder={`${typeConfig.codePrefix}-001`}
-                      className="h-9 font-mono text-sm"
-                    />
-                  </div>
-                )}
-                {(isRoll || itemTypeId === 'other') && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Category</Label>
-                    <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Equipment">Equipment</SelectItem>
-                        <SelectItem value="Materials">Materials</SelectItem>
-                        <SelectItem value="Drop Cable">Drop Cable</SelectItem>
-                        <SelectItem value="Fiber Cable">Fiber Cable</SelectItem>
-                        <SelectItem value="Accessories">Accessories</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {isExisting && (
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary">{typeConfig.label}</Badge>
-                {form.itemCode && <span className="text-xs font-mono text-muted-foreground">{form.itemCode}</span>}
-              </div>
-            )}
-          </FormSection>
-
-          <FormSection
-            step={isExisting ? undefined : 3}
-            title="How much?"
-            description={
-              isRoll
-                ? 'Rolls × meters per roll'
-                : isSerialized
-                  ? 'Count must match serial/MAC list'
-                  : 'Total pieces to add'
-            }
-          >
-            <div className={cn('gap-3', isRoll ? 'grid sm:grid-cols-3' : 'grid sm:grid-cols-2')}>
+          {/* STEP 2 — Details */}
+          {step === 2 && !isExisting && (
+            <div className="space-y-4">
               <div className="space-y-1.5">
-                <Label className="text-xs">{quantityLabel(typeConfig.tracking)}</Label>
+                <Label className="text-xs font-medium">
+                  {isSerialized ? 'Model / product name' : 'Item name'}
+                </Label>
                 <Input
-                  type="number"
-                  min={1}
-                  value={form.quantity}
-                  onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-                  className="h-9 text-base font-medium"
+                  value={form.itemName}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  disabled={isSplitter && !splitterIsCustom}
+                  placeholder={typeConfig.namePlaceholder}
+                  className="h-10"
+                  autoFocus
                 />
               </div>
-              {isRoll && (
-                <>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Meters per roll</Label>
+
+              {!isSerialized && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Item code</Label>
+                  <Input
+                    value={form.itemCode}
+                    onChange={(e) => setForm({ ...form, itemCode: e.target.value.toUpperCase() })}
+                    disabled={isSplitter && !splitterIsCustom}
+                    placeholder={`${typeConfig.codePrefix}-001`}
+                    className="h-10 font-mono"
+                  />
+                </div>
+              )}
+
+              {(isRoll || itemTypeId === 'other') && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Category</Label>
+                  <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
+                    <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {['Equipment', 'Materials', 'Drop Cable', 'Fiber Cable', 'Accessories', 'Other'].map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div className="rounded-lg bg-muted/50 px-3 py-2.5 flex items-center gap-2">
+                <TypeIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+                <p className="text-xs text-muted-foreground">
+                  {isSerialized && 'Each unit gets a unique serial or MAC'}
+                  {isRoll && 'Tracked as individual rolls with meter lengths'}
+                  {isBulk && 'Counted in pieces — no serial tracking'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3 — Amount (also used for existing-item flow) */}
+          {step === 3 && (
+            <div className="space-y-4">
+              {isExisting && (
+                <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
+                  <Badge variant="secondary">{typeConfig.label}</Badge>
+                  <span className="text-sm font-medium truncate">{form.itemName}</span>
+                </div>
+              )}
+
+              {/* Quantity row */}
+              <div className={cn('gap-3', isRoll ? 'grid grid-cols-3' : 'grid grid-cols-2')}>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">
+                    {isRoll ? 'Rolls' : isSerialized ? 'Units' : 'Quantity'}
+                  </Label>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10 shrink-0"
+                      disabled={qtyNum <= 1}
+                      onClick={() => setForm((f) => ({ ...f, quantity: String(Math.max(1, qtyNum - 1)) }))}
+                    >
+                      −
+                    </Button>
                     <Input
                       type="number"
                       min={1}
-                      value={form.metersPerRoll}
-                      onChange={(e) => setForm({ ...form, metersPerRoll: e.target.value })}
-                      placeholder="1000"
+                      value={form.quantity}
+                      onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                      className="h-10 text-center text-lg font-semibold"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10 shrink-0"
+                      onClick={() => setForm((f) => ({ ...f, quantity: String(qtyNum + 1) }))}
+                    >
+                      +
+                    </Button>
+                  </div>
+                </div>
+
+                {isRoll && (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Meters/roll</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={form.metersPerRoll}
+                        onChange={(e) => setForm({ ...form, metersPerRoll: e.target.value })}
+                        className="h-10"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Prefix</Label>
+                      <Input
+                        value={form.rollIdPrefix}
+                        onChange={(e) => setForm({ ...form, rollIdPrefix: e.target.value.toUpperCase() })}
+                        className="h-10 font-mono"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {isRoll && qtyNum > 0 && form.rollIdPrefix && (
+                <p className="text-[11px] text-muted-foreground font-mono text-center">
+                  {form.rollIdPrefix}-001 → {form.rollIdPrefix}-{String(qtyNum).padStart(3, '0')}
+                </p>
+              )}
+
+              {/* Serialized IDs */}
+              {isSerialized && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex rounded-lg border p-0.5 bg-muted/30">
+                      <button
+                        type="button"
+                        onClick={() => setIdType('serial')}
+                        className={cn(
+                          'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                          idType === 'serial' ? 'bg-background shadow-sm' : 'text-muted-foreground'
+                        )}
+                      >
+                        Serial #
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIdType('mac')}
+                        className={cn(
+                          'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                          idType === 'mac' ? 'bg-background shadow-sm' : 'text-muted-foreground'
+                        )}
+                      >
+                        MAC
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={cn(
+                          'text-xs font-semibold tabular-nums',
+                          idsComplete ? 'text-emerald-600' : 'text-muted-foreground'
+                        )}
+                      >
+                        {parsedIds.length}/{qtyNum}
+                      </span>
+                      {!useBulkByDefault && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs gap-1"
+                          onClick={() => setBulkPaste((b) => !b)}
+                        >
+                          <ClipboardPaste className="h-3 w-3" />
+                          {bulkPaste ? 'One by one' : 'Paste list'}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {effectiveBulkPaste ? (
+                    <Textarea
+                      value={form.unitIdsText}
+                      onChange={(e) => handleBulkPasteText(e.target.value)}
+                      rows={Math.min(Math.max(qtyNum, 5), 12)}
+                      placeholder={
+                        idType === 'serial'
+                          ? 'Paste one serial per line…'
+                          : 'Paste MACs — colons added automatically'
+                      }
+                      className="font-mono text-xs resize-none"
+                      autoFocus
+                    />
+                  ) : (
+                    <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                      {Array.from({ length: qtyNum }, (_, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <span className="text-[10px] text-muted-foreground w-5 text-right tabular-nums shrink-0">
+                            {i + 1}
+                          </span>
+                          <Input
+                            value={serialRows[i] || ''}
+                            onChange={(e) => handleSerialRowChange(i, e.target.value)}
+                            placeholder={idType === 'serial' ? `Serial ${i + 1}` : 'AA:BB:CC:DD:EE:01'}
+                            className="h-9 font-mono text-xs"
+                          />
+                          {serialRows[i]?.trim() && (
+                            <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Advanced */}
+              <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground hover:bg-muted/40"
+                  >
+                    Low stock alert & notes
+                    <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', advancedOpen && 'rotate-180')} />
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-3 space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Minimum level {isRoll ? '(m)' : '(pcs)'}</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={form.minimumLevel}
+                      onChange={(e) => setForm({ ...form, minimumLevel: e.target.value })}
                       className="h-9"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Roll prefix</Label>
-                    <Input
-                      value={form.rollIdPrefix}
-                      onChange={(e) => setForm({ ...form, rollIdPrefix: e.target.value.toUpperCase() })}
-                      placeholder="DC"
-                      className="h-9 font-mono"
+                    <Label className="text-xs">Notes</Label>
+                    <Textarea
+                      value={form.notes}
+                      onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                      rows={2}
+                      placeholder="Supplier, batch…"
+                      className="text-sm resize-none"
                     />
                   </div>
-                </>
-              )}
+                </CollapsibleContent>
+              </Collapsible>
             </div>
-
-            {isSerialized && (
-              <div className="space-y-3 pt-1 border-t">
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={idType === 'serial' ? 'default' : 'outline'}
-                    className="flex-1 h-8"
-                    onClick={() => setIdType('serial')}
-                  >
-                    Serial #
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={idType === 'mac' ? 'default' : 'outline'}
-                    className="flex-1 h-8"
-                    onClick={() => setIdType('mac')}
-                  >
-                    MAC address
-                  </Button>
-                </div>
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">
-                      {idType === 'serial' ? 'Serial numbers' : 'MAC addresses'} — one per line
-                    </Label>
-                    <span
-                      className={cn(
-                        'text-xs font-medium',
-                        parsedIds.length === qtyNum && qtyNum > 0 ? 'text-emerald-600' : 'text-muted-foreground'
-                      )}
-                    >
-                      {parsedIds.length}/{qtyNum || '?'}
-                    </span>
-                  </div>
-                  <Textarea
-                    value={form.unitIdsText}
-                    onChange={(e) => handleUnitIdsTextChange(e.target.value)}
-                    rows={Math.min(Math.max(qtyNum, 4), 10)}
-                    placeholder={
-                      idType === 'serial'
-                        ? 'SN001\nSN002\nSN003'
-                        : 'AABBCCDDEE01\n(colons added automatically)'
-                    }
-                    className="font-mono text-xs resize-none"
-                  />
-                </div>
-              </div>
-            )}
-          </FormSection>
-
-          <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
-            <CollapsibleTrigger asChild>
-              <button
-                type="button"
-                className="flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
-              >
-                <span>Low stock alert & notes</span>
-                <ChevronDown className={cn('h-4 w-4 transition-transform', advancedOpen && 'rotate-180')} />
-              </button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="pt-3 space-y-3">
-              <div className="grid sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Minimum level {isRoll ? '(m)' : '(pcs)'}</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={form.minimumLevel}
-                    onChange={(e) => setForm({ ...form, minimumLevel: e.target.value })}
-                    className="h-9"
-                  />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Notes</Label>
-                <Textarea
-                  value={form.notes}
-                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                  rows={2}
-                  placeholder="Supplier, batch, location…"
-                  className="text-sm resize-none"
-                />
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
+          )}
         </div>
 
+        {/* Footer */}
         <div className="shrink-0 border-t bg-muted/20 px-5 py-3 space-y-3">
-          {totalSummary && (
-            <div className="flex items-center justify-between rounded-lg bg-primary/5 border border-primary/20 px-3 py-2">
-              <span className="text-xs text-muted-foreground">Total</span>
-              <span className="text-sm font-semibold text-primary">{totalSummary}</span>
+          {totalSummary && step === 3 && (
+            <div
+              className={cn(
+                'flex items-center justify-between rounded-lg px-3 py-2 text-sm',
+                idsComplete || !isSerialized
+                  ? 'bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/60'
+                  : 'bg-muted border'
+              )}
+            >
+              <span className="text-xs text-muted-foreground">Summary</span>
+              <span className={cn('font-semibold', idsComplete || !isSerialized ? 'text-emerald-700 dark:text-emerald-400' : '')}>
+                {totalSummary}
+              </span>
             </div>
           )}
-          {isRoll && qtyNum > 0 && form.rollIdPrefix && (
-            <p className="text-[11px] text-muted-foreground text-center font-mono">
-              Rolls: {form.rollIdPrefix}-001 … {form.rollIdPrefix}-{String(qtyNum).padStart(3, '0')}
-            </p>
-          )}
+
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)} disabled={submitting}>
-              Cancel
-            </Button>
-            <Button className="flex-1" onClick={handleSubmit} disabled={submitting}>
-              {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {submitLabel}
-            </Button>
+            {showWizard && step > 1 ? (
+              <Button variant="outline" className="gap-1" onClick={goBack} disabled={submitting}>
+                <ChevronLeft className="h-4 w-4" />
+                Back
+              </Button>
+            ) : (
+              <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)} disabled={submitting}>
+                Cancel
+              </Button>
+            )}
+
+            {isLastStep ? (
+              <Button
+                className="flex-1"
+                onClick={handleSubmit}
+                disabled={submitting || (isSerialized && !idsComplete)}
+              >
+                {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {isExisting ? 'Add to stock' : 'Add to inventory'}
+              </Button>
+            ) : (
+              <Button className="flex-1 gap-1" onClick={goNext}>
+                Continue
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
       </DialogContent>
