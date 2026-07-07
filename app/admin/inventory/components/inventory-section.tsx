@@ -31,6 +31,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, Package, History, Wifi } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatMacAddress, formatMacLinesText } from './command-center/inventory-item-types';
 
 interface Station {
   id: string;
@@ -279,7 +280,9 @@ export function InventorySection({
     const lines = routerForm.unitsText.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
     const units = lines.map((line) => {
       const val = line.trim();
-      return routerForm.idType === 'serial' ? { serialNumber: val } : { macAddress: val };
+      return routerForm.idType === 'serial'
+        ? { serialNumber: val }
+        : { macAddress: formatMacAddress(val) };
     });
     if (units.length === 0) {
       toast.error('Enter at least one serial number or MAC address (one per line)');
@@ -748,12 +751,21 @@ export function InventorySection({
             <div>
               <Label>{routerForm.idType === 'serial' ? 'Serial Numbers' : 'MAC Addresses'} (one per line)</Label>
               <textarea
-                className="flex min-h-[120px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex min-h-[120px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 font-mono"
                 value={routerForm.unitsText}
-                onChange={(e) => setRouterForm((p) => ({ ...p, unitsText: e.target.value }))}
+                onChange={(e) =>
+                  setRouterForm((p) => ({
+                    ...p,
+                    unitsText: p.idType === 'mac' ? formatMacLinesText(e.target.value) : e.target.value,
+                  }))
+                }
                 placeholder={routerForm.idType === 'serial' ? 'SN001\nSN002\nSN003' : 'AA:BB:CC:DD:EE:FF\n11:22:33:44:55:66'}
               />
-              <p className="text-xs text-muted-foreground mt-1">Comma or newline separated</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {routerForm.idType === 'mac'
+                  ? 'One MAC per line — colons (:) are added automatically, e.g. AABBCCDDEE01 → AA:BB:CC:DD:EE:01'
+                  : 'Comma or newline separated'}
+              </p>
             </div>
           </div>
           <DialogFooter>

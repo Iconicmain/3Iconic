@@ -28,8 +28,14 @@ import {
   inferItemTypeFromItem,
   slugItemCode,
   parseIdLines,
+  formatMacAddress,
+  formatMacLinesText,
+  SPLITTER_PRESETS,
+  getSplitterPreset,
+  inferSplitterPresetId,
   type InventoryItemTypeId,
 } from './inventory-item-types';
+import { cn } from '@/lib/utils';
 
 interface Station {
   id: string;
@@ -61,6 +67,7 @@ export function AddStockModal({
   const isExisting = !!existingItem;
 
   const [itemTypeId, setItemTypeId] = useState<InventoryItemTypeId>('router');
+  const [splitterPreset, setSplitterPreset] = useState('1x8');
   const [idType, setIdType] = useState<'serial' | 'mac'>('serial');
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
@@ -79,8 +86,29 @@ export function AddStockModal({
   const isSerialized = typeConfig.tracking === 'serialized';
   const isRoll = typeConfig.tracking === 'roll';
   const isBulk = typeConfig.tracking === 'bulk';
+  const isSplitter = itemTypeId === 'splitter';
+  const splitterIsCustom = splitterPreset === 'custom';
 
-  const parsedIds = useMemo(() => parseIdLines(form.unitIdsText), [form.unitIdsText]);
+  const applySplitterPreset = (presetId: string) => {
+    setSplitterPreset(presetId);
+    const preset = getSplitterPreset(presetId);
+    if (!preset) return;
+    if (presetId === 'custom') {
+      setForm((f) => ({ ...f, itemName: '', itemCode: '', category: 'Materials' }));
+    } else {
+      setForm((f) => ({
+        ...f,
+        itemName: preset.itemName,
+        itemCode: preset.itemCode,
+        category: 'Materials',
+      }));
+    }
+  };
+
+  const parsedIds = useMemo(() => {
+    const lines = parseIdLines(form.unitIdsText);
+    return idType === 'mac' ? lines.map(formatMacAddress).filter(Boolean) : lines;
+  }, [form.unitIdsText, idType]);
   const qtyNum = parseInt(form.quantity, 10) || 0;
   const metersPerRoll = parseFloat(form.metersPerRoll) || 0;
   const totalCableMeters = qtyNum * metersPerRoll;
@@ -104,6 +132,9 @@ export function AddStockModal({
       const inferred = inferItemTypeFromItem(existingItem);
       setItemTypeId(inferred);
       const cfg = getItemTypeConfig(inferred);
+      if (inferred === 'splitter') {
+        setSplitterPreset(inferSplitterPresetId(existingItem.itemName));
+      }
       setForm((f) => ({
         ...f,
         itemName: existingItem.itemName,
@@ -117,6 +148,7 @@ export function AddStockModal({
       }));
     } else {
       setItemTypeId('router');
+      setSplitterPreset('1x8');
       setIdType('serial');
       setForm({
         itemName: '',
@@ -135,13 +167,24 @@ export function AddStockModal({
   const handleItemTypeChange = (id: InventoryItemTypeId) => {
     setItemTypeId(id);
     const cfg = getItemTypeConfig(id);
-    setForm((f) => ({
-      ...f,
-      category: cfg.category,
-      rollIdPrefix: cfg.rollIdPrefix || f.rollIdPrefix,
-      metersPerRoll: String(cfg.defaultMetersPerRoll || f.metersPerRoll),
-      itemCode: f.itemName ? slugItemCode(f.itemName, cfg.codePrefix) : '',
-    }));
+    if (id === 'splitter') {
+      applySplitterPreset('1x8');
+    } else {
+      setForm((f) => ({
+        ...f,
+        category: cfg.category,
+        rollIdPrefix: cfg.rollIdPrefix || f.rollIdPrefix,
+        metersPerRoll: String(cfg.defaultMetersPerRoll || f.metersPerRoll),
+        itemCode: f.itemName ? slugItemCode(f.itemName, cfg.codePrefix) : '',
+      }));
+    }
+  };
+
+  const handleUnitIdsTextChange = (text: string) => {
+    setForm({
+      ...form,
+      unitIdsText: idType === 'mac' ? formatMacLinesText(text) : text,
+    });
   };
 
   const handleNameChange = (name: string) => {
@@ -238,7 +281,7 @@ export function AddStockModal({
           throw new Error(`Quantity is ${qty} but you entered ${parsedIds.length} ${idType === 'serial' ? 'serial' : 'MAC'} value${parsedIds.length !== 1 ? 's' : ''}. They must match.`);
         }
         const units = parsedIds.map((val) =>
-          idType === 'serial' ? { serialNumber: val } : { macAddress: val }
+          idType === 'serial' ? { serialNumber: val } : { macAddress: formatMacAddress(val) }
         );
         const added = await addSerializedUnits(form.itemName.trim(), units);
         await ensureInventoryItem(added);
@@ -310,12 +353,35 @@ export function AddStockModal({
             </div>
           )}
 
+          {!isExisting && isSplitter && (
+            <div className="space-y-2">
+              <Label>Splitter size</Label>
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                {SPLITTER_PRESETS.map((p) => (
+                  <Button
+                    key={p.id}
+                    type="button"
+                    size="sm"
+                    variant={splitterPreset === p.id ? 'default' : 'outline'}
+                    className={cn('h-9 text-xs sm:text-sm', p.id === 'custom' && 'col-span-3 sm:col-span-1')}
+                    onClick={() => applySplitterPreset(p.id)}
+                  >
+                    {p.label}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Tap a size — name and code fill in automatically. Use <strong>Other</strong> for custom ratios.
+              </p>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label>{isSerialized ? 'Model / item name' : 'Item name'}</Label>
             <Input
               value={form.itemName}
               onChange={(e) => handleNameChange(e.target.value)}
-              disabled={isExisting}
+              disabled={isExisting || (isSplitter && !splitterIsCustom)}
               placeholder={typeConfig.namePlaceholder}
             />
           </div>
@@ -326,6 +392,7 @@ export function AddStockModal({
               <Input
                 value={form.itemCode}
                 onChange={(e) => setForm({ ...form, itemCode: e.target.value.toUpperCase() })}
+                disabled={isSplitter && !splitterIsCustom}
                 placeholder={`e.g. ${typeConfig.codePrefix}-001`}
               />
             </div>
@@ -397,7 +464,16 @@ export function AddStockModal({
             <>
               <div className="space-y-2">
                 <Label>Add by</Label>
-                <Select value={idType} onValueChange={(v) => setIdType(v as 'serial' | 'mac')}>
+                <Select
+                  value={idType}
+                  onValueChange={(v) => {
+                    const next = v as 'serial' | 'mac';
+                    setIdType(next);
+                    if (next === 'mac' && form.unitIdsText) {
+                      setForm((f) => ({ ...f, unitIdsText: formatMacLinesText(f.unitIdsText) }));
+                    }
+                  }}
+                >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="serial">Serial Number</SelectItem>
@@ -411,7 +487,7 @@ export function AddStockModal({
                 </Label>
                 <Textarea
                   value={form.unitIdsText}
-                  onChange={(e) => setForm({ ...form, unitIdsText: e.target.value })}
+                  onChange={(e) => handleUnitIdsTextChange(e.target.value)}
                   rows={Math.min(Math.max(qtyNum, 3), 12)}
                   placeholder={
                     qtyNum > 0
@@ -424,6 +500,11 @@ export function AddStockModal({
                   }
                   className="font-mono text-sm"
                 />
+                {idType === 'mac' && (
+                  <p className="text-xs text-muted-foreground">
+                    Type or paste without colons — <strong>AA:BB:CC:DD:EE:01</strong> is added automatically
+                  </p>
+                )}
                 <p className={`text-xs ${parsedIds.length === qtyNum && qtyNum > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>
                   {parsedIds.length} of {qtyNum || '?'} entered
                   {qtyNum > 0 && parsedIds.length !== qtyNum && ' — must match quantity'}

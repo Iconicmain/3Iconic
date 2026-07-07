@@ -86,7 +86,7 @@ export const INVENTORY_ITEM_TYPES: InventoryItemTypeConfig[] = [
     category: 'Materials',
     unitType: 'pcs',
     tracking: 'bulk',
-    namePlaceholder: 'e.g. 1x8 PLC Splitter',
+    namePlaceholder: 'Pick a size below or enter custom',
     codePrefix: 'SPL',
   },
   {
@@ -108,6 +108,37 @@ export const INVENTORY_ITEM_TYPES: InventoryItemTypeConfig[] = [
     codePrefix: 'ITEM',
   },
 ];
+
+export interface SplitterPreset {
+  id: string;
+  label: string;
+  itemName: string;
+  itemCode: string;
+}
+
+/** Common fiber splitter ratios — tap to auto-fill name & code */
+export const SPLITTER_PRESETS: SplitterPreset[] = [
+  { id: '1x2', label: '1 × 2', itemName: '1×2 Splitter', itemCode: 'SPL-1X2' },
+  { id: '1x4', label: '1 × 4', itemName: '1×4 Splitter', itemCode: 'SPL-1X4' },
+  { id: '1x8', label: '1 × 8', itemName: '1×8 Splitter', itemCode: 'SPL-1X8' },
+  { id: '1x16', label: '1 × 16', itemName: '1×16 Splitter', itemCode: 'SPL-1X16' },
+  { id: '1x32', label: '1 × 32', itemName: '1×32 Splitter', itemCode: 'SPL-1X32' },
+  { id: 'custom', label: 'Other', itemName: '', itemCode: '' },
+];
+
+export function inferSplitterPresetId(itemName?: string): string {
+  if (!itemName) return '1x8';
+  const n = itemName.toLowerCase().replace(/\s+/g, '');
+  for (const p of SPLITTER_PRESETS) {
+    if (p.id === 'custom') continue;
+    if (n.includes(p.id)) return p.id;
+  }
+  return 'custom';
+}
+
+export function getSplitterPreset(id: string): SplitterPreset | undefined {
+  return SPLITTER_PRESETS.find((p) => p.id === id);
+}
 
 export function getItemTypeConfig(id: InventoryItemTypeId): InventoryItemTypeConfig {
   return INVENTORY_ITEM_TYPES.find((t) => t.id === id) || INVENTORY_ITEM_TYPES[INVENTORY_ITEM_TYPES.length - 1];
@@ -142,4 +173,27 @@ export function parseIdLines(text: string): string[] {
     .split(/[\n,;]+/)
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+/** Formats hex input into standard MAC form, e.g. AABBCCDDEE01 → AA:BB:CC:DD:EE:01 */
+export function formatMacAddress(input: string): string {
+  const hex = input.replace(/[^0-9A-Fa-f]/g, '').toUpperCase().slice(0, 12);
+  if (!hex) return '';
+  const parts: string[] = [];
+  for (let i = 0; i < hex.length; i += 2) {
+    parts.push(hex.slice(i, i + 2));
+  }
+  return parts.join(':');
+}
+
+/** Formats each line of a textarea as a MAC address (preserves line breaks). */
+export function formatMacLinesText(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return '';
+      return formatMacAddress(trimmed);
+    })
+    .join('\n');
 }
