@@ -1,0 +1,114 @@
+import { NextRequest, NextResponse } from 'next/server';
+import clientPromise from '@/lib/mongodb';
+import { hasPagePermission } from '@/lib/permissions';
+
+export async function GET(request: NextRequest) {
+  try {
+    const client = await clientPromise;
+    const db = client.db('tixmgmt');
+    const expensesCollection = db.collection('expenses');
+
+    const expenses = await expensesCollection
+      .find({})
+      .sort({ date: -1 })
+      .toArray();
+
+    // Convert _id to string and date to ISO string for JSON serialization
+    const expensesWithStringIds = expenses.map((exp) => ({
+      id: exp.id || exp._id.toString(),
+      description: exp.description || '',
+      category: exp.category || '',
+      station: exp.station || null,
+      amount: Number(exp.amount) || 0,
+      balance: exp.balance !== undefined && exp.balance !== null ? Number(exp.balance) : undefined,
+      date: exp.date instanceof Date ? exp.date.toISOString().split('T')[0] : (exp.date || new Date().toISOString().split('T')[0]),
+      status: exp.status || 'partially-paid',
+      expenseType: exp.expenseType || 'recurrent',
+      transactionCost: Number(exp.transactionCost) || 0,
+      sellerPin: exp.sellerPin || null,
+      createdAt: exp.createdAt,
+      updatedAt: exp.updatedAt,
+    }));
+
+    return NextResponse.json({ expenses: expensesWithStringIds }, { status: 200 });
+  } catch (error) {
+    console.error('Error fetching expenses:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch expenses' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    // Check if user has add permission for expenses page
+    const hasAddPermission = await hasPagePermission('/admin/expenses', 'add');
+    if (!hasAddPermission) {
+      return NextResponse.json(
+        { error: 'You do not have permission to create expenses' },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json();
+    const {
+      description,
+      category,
+      station,
+      amount,
+      balance,
+      date,
+      status,
+      expenseType,
+      transactionCost,
+      sellerPin,
+    } = body;
+
+    // Validate required fields (station is optional)
+    if (!description || !category || !amount || !date) {
+      return NextResponse.json(
+        { error: 'Description, category, amount, and date are required' },
+        { status: 400 }
+      );
+    }
+
+    const client = await clientPromise;
+    const db = client.db('tixmgmt');
+    const expensesCollection = db.collection('expenses');
+
+    // Generate expense ID
+    const count = await expensesCollection.countDocuments();
+    const expenseId = `EXP-${String(count + 1).padStart(3, '0')}`;
+
+    const expense = {
+      id: expenseId,
+      description: description.trim(),
+      category: category.trim(),
+      station: station ? station.trim() : null,
+      amount: Number(amount),
+      balance: balance !== undefined ? Number(balance) : undefined,
+      date: new Date(date),
+      status: status || 'partially-paid',
+      expenseType: expenseType === 'capital' ? 'capital' : 'recurrent',
+      transactionCost: transactionCost !== undefined ? Number(transactionCost) : 0,
+      sellerPin: sellerPin ? sellerPin.trim() : null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const result = await expensesCollection.insertOne(expense);
+
+    return NextResponse.json(
+      { success: true, expense: { ...expense, _id: result.insertedId } },
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error('Error creating expense:', error);
+    return NextResponse.json(
+      { error: 'Failed to create expense' },
+      { status: 500 }
+    );
+  }
+}
+

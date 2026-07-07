@@ -1,0 +1,152 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* ISP Premium Color System */
+  --background: #F7FAF8;
+  --foreground: #071411;
+  --card: #ffffff;
+  --card-foreground: #071411;
+  --popover: #ffffff;
+  --popover-foreground: #071411;
+  --primary: #0B6B3A;
+  --primary-foreground: #ffffff;
+  --secondary: #F7FAF8;
+  --secondary-foreground: #071411;
+  --muted: #E8F5ED;
+  --muted-foreground: #475569;
+  --accent: #22C55E;
+  --accent-foreground: #071411;
+  --accent-soft: #86EFAC;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #E1EBE5;
+  --input: #E8F5ED;
+  --ring: #22C55E;
+  --chart-1: #0B6B3A;
+  --chart-2: #22C55E;
+  --chart-3: #86EFAC;
+  --chart-4: #064e3b;
+  --chart-5: #94a3b8;
+  --radius: 1rem;
+  --sidebar: #071411;
+  --sidebar-foreground: #F7FAF8;
+  --sidebar-primary: #22C55E;
+  --sidebar-primary-foreground: #071411;
+  --sidebar-accent: #0B6B3A;
+  --sidebar-accent-foreground: #F7FAF8;
+  --sidebar-border: #0f172a;
+  --sidebar-ring: #22C55E;
+  --header: rgba(255, 255, 255, 0.8);
+  --header-foreground: #071411;
+}
+
+.dark {
+  --background: #0b1220;
+  --foreground: #f8fafc;
+  --card: #0f172a;
+  --card-foreground: #f8fafc;
+  --popover: #0f172a;
+  --popover-foreground: #f8fafc;
+  --primary: #34d399;
+  --primary-foreground: #0b1220;
+  --secondary: #111827;
+  --secondary-foreground: #f8fafc;
+  --muted: #1f2937;
+  --muted-foreground: #cbd5f5;
+  --accent: #34d399;
+  --accent-foreground: #0b1220;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #1f2937;
+  --input: #1f2937;
+  --ring: #34d399;
+  --chart-1: #34d399;
+  --chart-2: #0f9d58;
+  --chart-3: #94a3b8;
+  --chart-4: #1f2937;
+  --chart-5: #64748b;
+  --sidebar: #0b1220;
+  --sidebar-foreground: #f8fafc;
+  --sidebar-primary: #34d399;
+  --sidebar-primary-foreground: #0b1220;
+  --sidebar-accent: #0f172a;
+  --sidebar-accent-foreground: #f8fafc;
+  --sidebar-border: #111827;
+  --sidebar-ring: #34d399;
+  --header: #0b1220;
+  --header-foreground: #f8fafc;
+}
+
+@theme inline {
+  --font-sans: var(--font-inter);
+  --font-heading: var(--font-heading);
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  /* Header tokens */
+  --color-header: var(--header);
+  --color-header-foreground: var(--header-foreground);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  .font-heading {
+    font-family: var(--font-heading), var(--font-sans), sans-serif;
+  }
+  
+  /* Mobile touch optimization */
+  @media (max-width: 640px) {
+    html {
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+    }
+    
+    /* Prevent text size adjustment on orientation change */
+    body {
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+    }
+  }
+}

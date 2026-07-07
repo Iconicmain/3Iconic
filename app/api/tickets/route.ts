@@ -1,0 +1,242 @@
+import { NextRequest, NextResponse } from 'next/server';
+import clientPromise from '@/lib/mongodb';
+
+export const dynamic = 'force-dynamic';
+
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+  Pragma: 'no-cache',
+  Expires: '0',
+} as const;
+import { hasPagePermission } from '@/lib/permissions';
+import { sendTicketCreationSMS, sendClientTicketSMS, sendTechnicianAssignmentSMS } from '@/lib/sms';
+
+export async function POST(request: NextRequest) {
+  try {
+    // Check if user has add permission for tickets page
+    const hasAddPermission = await hasPagePermission('/admin/tickets', 'add');
+    if (!hasAddPermission) {
+      return NextResponse.json(
+        { error: 'You do not have permission to create tickets' },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json();
+    const {
+      clientName,
+      clientNumber,
+      station,
+      houseNumber,
+      category,
+      dateTimeReported,
+      problemDescription,
+      technicians,
+    } = body;
+
+    // Validate required fields
+    if (!clientName || !clientNumber || !station || !houseNumber || !category || !dateTimeReported || !problemDescription) {
+      return NextResponse.json(
+        { error: 'All fields are required' },
+        { status: 400 }
+      );
+    }
+
+    const client = await clientPromise;
+    const db = client.db('tixmgmt');
+    const ticketsCollection = db.collection('tickets');
+
+    // Generate ticket ID
+    const count = await ticketsCollection.countDocuments();
+    const ticketId = `TKT-${String(count + 1).padStart(3, '0')}`;
+
+    const ticket = {
+      ticketId,
+      clientName,
+      clientNumber,
+      station,
+      houseNumber,
+      category,
+      dateTimeReported: new Date(dateTimeReported),
+      problemDescription,
+      status: 'open',
+      technicians: Array.isArray(technicians) && technicians.length > 0 ? technicians : undefined,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const result = await ticketsCollection.insertOne(ticket);
+
+    console.log(`[Ticket Created] Ticket ${ticketId} created successfully. Triggering SMS...`);
+
+    // Get base URL for ticket link
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
+                    (request.headers.get('origin') || 'http://localhost:3000');
+
+    // Send SMS notification to admin/technicians (don't wait for it to complete)
+    sendTicketCreationSMS(
+      ticketId,
+      clientName,
+      clientNumber,
+      station,
+      houseNumber,
+      category,
+      new Date(dateTimeReported),
+      problemDescription,
+      baseUrl
+    ).catch((error) => {
+      console.error('[Ticket API] Failed to send ticket creation SMS to admins:', error);
+      // Don't throw - SMS failure shouldn't prevent ticket creation
+    });
+
+    // Send SMS notification to client (don't wait for it to complete)
+    // First, fetch technician phone numbers if technicians are assigned
+    let techniciansWithPhones: Array<{ name: string; phone: string }> = [];
+    if (Array.isArray(technicians) && technicians.length > 0) {
+      const techniciansCollection = db.collection('technicians');
+      for (const technicianName of technicians) {
+        const technicianDoc = await techniciansCollection.findOne({ name: technicianName });
+        if (technicianDoc && technicianDoc.phone) {
+          techniciansWithPhones.push({
+            name: technicianName,
+            phone: technicianDoc.phone
+          });
+        }
+      }
+    }
+    
+    sendClientTicketSMS(
+      ticketId,
+      clientName,
+      clientNumber,
+      station,
+      category,
+      techniciansWithPhones.length > 0 ? techniciansWithPhones : undefined
+    ).catch((error) => {
+      console.error('[Ticket API] Failed to send SMS to client:', error);
+      // Don't throw - SMS failure shouldn't prevent ticket creation
+    });
+
+    // Send SMS to assigned technicians if any
+    if (Array.isArray(technicians) && technicians.length > 0) {
+      const techniciansCollection = db.collection('technicians');
+      
+      for (const technicianName of technicians) {
+        const technicianDoc = await techniciansCollection.findOne({ name: technicianName });
+        const technicianPhone = technicianDoc?.phone || technicianDoc?.phoneNumber;
+
+        if (technicianPhone) {
+          console.log(`[Ticket Creation] ✅ Sending SMS to technician ${technicianName} at ${technicianPhone}`);
+          sendTechnicianAssignmentSMS(
+            technicianPhone,
+            ticketId,
+            category,
+            clientName,
+            station,
+            clientNumber,
+            problemDescription,
+            baseUrl
+          ).catch((error) => {
+            console.error(`[Ticket API] Failed to send assignment SMS to technician ${technicianName}:`, error);
+          });
+        } else {
+          console.log(`[Ticket Creation] ⚠️ No phone number found for technician ${technicianName}, SMS not sent`);
+        }
+      }
+    }
+
+    return NextResponse.json(
+      { success: true, ticket: { ...ticket, _id: result.insertedId } },
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error('Error creating ticket:', error);
+    return NextResponse.json(
+      { error: 'Failed to create ticket' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '50'); // Default 50, can be increased
+    const skip = (page - 1) * limit;
+    
+    // Optional filters from query params
+    const status = searchParams.get('status');
+    const station = searchParams.get('station');
+    const category = searchParams.get('category');
+    const search = searchParams.get('search');
+
+    const client = await clientPromise;
+    const db = client.db('tixmgmt');
+    const ticketsCollection = db.collection('tickets');
+
+    // Build query filter
+    const filter: any = {};
+    if (status && status !== 'all') filter.status = status;
+    if (station && station !== 'all') filter.station = station;
+    if (category && category !== 'all') filter.category = category;
+    if (search) {
+      filter.$or = [
+        { ticketId: { $regex: search, $options: 'i' } },
+        { clientName: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    // Optimize query: Use projection to only fetch needed fields for list view
+    // Note: problemDescription and resolutionNotes are excluded to reduce payload size
+    const projection = {
+      ticketId: 1,
+      clientName: 1,
+      clientNumber: 1,
+      station: 1,
+      houseNumber: 1,
+      category: 1,
+      status: 1,
+      dateTimeReported: 1,
+      technician: 1,
+      technicians: 1,
+      createdAt: 1,
+      resolvedAt: 1,
+      _id: 1,
+    };
+
+    // Execute queries in parallel for better performance
+    const [tickets, totalCount] = await Promise.all([
+      ticketsCollection
+        .find(filter, { projection })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .toArray(),
+      ticketsCollection.countDocuments(filter),
+    ]);
+
+    return NextResponse.json(
+      { 
+        tickets,
+        pagination: {
+          page,
+          limit,
+          total: totalCount,
+          totalPages: Math.ceil(totalCount / limit),
+        }
+      },
+      { 
+        status: 200,
+        headers: NO_CACHE_HEADERS,
+      }
+    );
+  } catch (error) {
+    console.error('Error fetching tickets:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch tickets' },
+      { status: 500 }
+    );
+  }
+}
+

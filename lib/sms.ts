@@ -1,0 +1,445 @@
+/**
+ * SMS Service using Zettatel API
+ */
+
+interface SMSResponse {
+  status: string;
+  mobile: string;
+  invalidMobile: string;
+  transactionId: string;
+  statusCode: string;
+  reason: string;
+}
+
+interface SendSMSOptions {
+  mobile: string | string[];
+  msg: string;
+  senderid?: string;
+}
+
+const ZETTATEL_API_URL = 'https://portal.zettatel.com/SMSApi/send';
+const ZETTATEL_USERNAME = process.env.ZETTATEL_USERNAME || 'IconFibre';
+const ZETTATEL_PASSWORD = process.env.ZETTATEL_PASSWORD || 'r5s8YbWq';
+const ZETTATEL_SENDER_ID = process.env.ZETTATEL_SENDER_ID || 'ICONFIBRE';
+const TICKET_NUMBERS = process.env.TICKET_NUMBERS || '+254796030992,+254746089137';
+// Note: CAT_NUMBERS is read at runtime in the function to ensure it's always up to date
+const CAT_NUMBERS_DEFAULT = process.env.CAT_NUMBERS || '';
+
+/**
+ * Send SMS using Zettatel API
+ */
+export async function sendSMS(options: SendSMSOptions): Promise<SMSResponse[]> {
+  const { mobile, msg, senderid = ZETTATEL_SENDER_ID } = options;
+  
+  // Convert mobile to array if it's a string
+  const mobileNumbers = Array.isArray(mobile) ? mobile : [mobile];
+  
+  // Format phone numbers: remove + and spaces, keep country code
+  const formattedNumbers = mobileNumbers.map(num => {
+    // Remove + and spaces
+    let formatted = num.trim().replace(/\+/g, '').replace(/\s/g, '');
+    return formatted;
+  });
+  
+  // Join multiple numbers with comma
+  const mobileParam = formattedNumbers.join(',');
+  
+  console.log('Sending SMS to:', mobileParam);
+  console.log('Message:', msg);
+  console.log('Sender ID:', senderid);
+  
+  // Prepare form data
+  const formData = new URLSearchParams({
+    userid: ZETTATEL_USERNAME,
+    password: ZETTATEL_PASSWORD,
+    sendMethod: 'quick',
+    mobile: mobileParam,
+    msg: msg,
+    senderid: senderid,
+    msgType: 'text',
+    duplicatecheck: 'true',
+    output: 'json',
+  });
+
+  try {
+    console.log('Calling Zettatel API:', ZETTATEL_API_URL);
+    const response = await fetch(ZETTATEL_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'cache-control': 'no-cache',
+      },
+      body: formData.toString(),
+    });
+
+    const responseText = await response.text();
+    console.log('Zettatel API Response Status:', response.status);
+    console.log('Zettatel API Response:', responseText);
+
+    if (!response.ok) {
+      throw new Error(`SMS API returned status ${response.status}: ${responseText}`);
+    }
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse JSON response:', parseError);
+      throw new Error(`Invalid JSON response: ${responseText}`);
+    }
+    
+    // Handle both single and batch responses
+    if (Array.isArray(data)) {
+      console.log('SMS sent successfully to multiple numbers');
+      return data;
+    } else {
+      console.log('SMS sent successfully:', data);
+      return [data];
+    }
+  } catch (error) {
+    console.error('Error sending SMS:', error);
+    throw error;
+  }
+}
+
+/**
+ * Send ticket creation notification to admins/technicians
+ */
+export async function sendTicketCreationSMS(
+  ticketId: string, 
+  clientName: string, 
+  clientNumber: string,
+  station: string,
+  houseNumber: string,
+  category: string,
+  dateTimeReported: Date,
+  problemDescription: string,
+  baseUrl?: string
+): Promise<void> {
+  // Get base URL from environment or use default
+  const appUrl = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const ticketLink = `${appUrl}/admin/tickets?ticket=${ticketId}`;
+  
+  // Format date and time
+  const reportedDate = new Date(dateTimeReported);
+  const formattedDate = reportedDate.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const formattedTime = reportedDate.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const formattedDateTime = `${formattedDate} ${formattedTime}`;
+  
+  const message = `New Ticket Created\n\nTicket ID: ${ticketId}\nClient: ${clientName}\nClient Phone: ${clientNumber}\nLocation: ${station}\nHouse/Barrack: ${houseNumber}\nCategory: ${category}\nReported: ${formattedDateTime}\nDescription: ${problemDescription}\n\nView & Update: ${ticketLink}`;
+  
+  const numbers = TICKET_NUMBERS.split(',').map(num => num.trim());
+  
+  console.log(`[SMS] Attempting to send ticket creation SMS for ticket ${ticketId}`);
+  console.log(`[SMS] Phone numbers:`, numbers);
+  console.log(`[SMS] Ticket link:`, ticketLink);
+  console.log(`[SMS] Zettatel Username:`, ZETTATEL_USERNAME);
+  console.log(`[SMS] Zettatel Sender ID:`, ZETTATEL_SENDER_ID);
+  
+  try {
+    const result = await sendSMS({
+      mobile: numbers,
+      msg: message,
+    });
+    console.log(`[SMS] ✅ SMS notification sent successfully for ticket ${ticketId}`, result);
+  } catch (error) {
+    console.error(`[SMS] ❌ Failed to send SMS for ticket ${ticketId}:`, error);
+    // Don't throw - SMS failure shouldn't prevent ticket creation
+  }
+}
+
+/**
+ * Send SMS to client when ticket is created
+ */
+export async function sendClientTicketSMS(
+  ticketId: string, 
+  clientName: string, 
+  clientNumber: string,
+  station: string, 
+  category: string,
+  technicians?: Array<{ name: string; phone: string }>
+): Promise<void> {
+  const customerCareNumber = '+254746089137';
+  
+  // Build technician information section if technicians are assigned
+  let technicianSection = '';
+  if (technicians && technicians.length > 0) {
+    const technicianList = technicians
+      .filter(tech => tech.name && tech.phone) // Only include technicians with both name and phone
+      .map(tech => `${tech.name}: ${tech.phone}`)
+      .join('\n');
+    
+    if (technicianList) {
+      technicianSection = `\nTechnician${technicians.length > 1 ? 's' : ''}:\n${technicianList}\n`;
+    }
+  }
+  
+  // Concise message for the client
+  const message = `Hello ${clientName},\n\nYour ticket ${ticketId} has been created.\n\nIssue: ${category}\nLocation: ${station}${technicianSection}Our team will attend to this shortly. Maximum resolution time: 48 hours.\n\nFor queries, contact: ${customerCareNumber}\n\nIconic Fibre Support`;
+  
+  console.log(`[Client SMS] Attempting to send SMS to client for ticket ${ticketId}`);
+  console.log(`[Client SMS] Client number:`, clientNumber);
+  console.log(`[Client SMS] Technicians assigned:`, technicians?.length || 0);
+  console.log(`[Client SMS] Message:`, message);
+  
+  try {
+    const result = await sendSMS({
+      mobile: [clientNumber],
+      msg: message,
+    });
+    console.log(`[Client SMS] ✅ SMS sent successfully to client for ticket ${ticketId}`, result);
+  } catch (error) {
+    console.error(`[Client SMS] ❌ Failed to send SMS to client for ticket ${ticketId}:`, error);
+    // Don't throw - SMS failure shouldn't prevent ticket creation
+  }
+}
+
+/**
+ * Send SMS to client when ticket is resolved
+ */
+export async function sendTicketResolvedSMS(
+  ticketId: string,
+  clientName: string,
+  clientNumber: string
+): Promise<void> {
+  const message = `Hello,\n\nWe are pleased to inform you that the issue you reported has now been fully resolved.\n\nPlease take a moment to confirm that the service is working smoothly on your side.\n\nThank you for your patience and for choosing our services.\n\nIconic Support Team`;
+  
+  console.log(`[Client Resolution SMS] Attempting to send resolution SMS to client for ticket ${ticketId}`);
+  console.log(`[Client Resolution SMS] Client number:`, clientNumber);
+  console.log(`[Client Resolution SMS] Message:`, message);
+  
+  try {
+    const result = await sendSMS({
+      mobile: [clientNumber],
+      msg: message,
+    });
+    console.log(`[Client Resolution SMS] ✅ SMS sent successfully to client for ticket ${ticketId}`, result);
+  } catch (error) {
+    console.error(`[Client Resolution SMS] ❌ Failed to send resolution SMS to client for ticket ${ticketId}:`, error);
+    // Don't throw - SMS failure shouldn't prevent ticket resolution
+  }
+}
+
+/**
+ * Send SMS to technician when ticket is assigned
+ */
+export async function sendTechnicianAssignmentSMS(
+  technicianPhone: string,
+  ticketId: string,
+  issueType: string,
+  clientName: string,
+  location: string,
+  clientPhone: string,
+  problemDescription: string,
+  baseUrl?: string
+): Promise<void> {
+  const appUrl = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const ticketLink = `${appUrl}/admin/tickets`;
+  
+  // Truncate description if too long
+  const shortDescription = problemDescription.length > 100 
+    ? problemDescription.substring(0, 100) + '...' 
+    : problemDescription;
+  
+  const message = `New Ticket Assigned\n\nA new support ticket has been assigned to you.\n\nIssue: ${issueType}\nClient Name: ${clientName}\nLocation: ${location}\nContact: ${clientPhone}\nTicket ID: ${ticketId}\nDetails: ${shortDescription}\n\nKindly attend to the issue as soon as possible and update the ticket once done.\n\nView Ticket: ${ticketLink}\n\n3 Iconic Concepts Limited – Support Team`;
+  
+  console.log(`[Technician Assignment SMS] Attempting to send to ${technicianPhone} for ticket ${ticketId}`);
+  
+  try {
+    const result = await sendSMS({
+      mobile: [technicianPhone],
+      msg: message,
+    });
+    console.log(`[Technician Assignment SMS] ✅ SMS sent successfully to technician for ticket ${ticketId}`, result);
+  } catch (error) {
+    console.error(`[Technician Assignment SMS] ❌ Failed to send SMS to technician for ticket ${ticketId}:`, error);
+  }
+}
+
+/**
+ * Send urgent escalation SMS to technician
+ */
+export async function sendTechnicianEscalationSMS(
+  technicianPhone: string,
+  ticketId: string,
+  issueType: string,
+  clientName: string,
+  location: string,
+  clientPhone: string,
+  baseUrl?: string
+): Promise<void> {
+  const appUrl = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const ticketLink = `${appUrl}/admin/tickets`;
+  
+  const message = `Urgent Ticket Escalation\n\nPlease prioritize the following issue:\n\nIssue: ${issueType}\nClient: ${clientName}\nLocation: ${location}\nContact: ${clientPhone}\nPriority: HIGH\nTicket ID: ${ticketId}\n\nImmediate action is required.\n\nView Ticket: ${ticketLink}\n\n3 Iconic Concepts Limited – Support Team`;
+  
+  console.log(`[Technician Escalation SMS] Attempting to send to ${technicianPhone} for ticket ${ticketId}`);
+  
+  try {
+    const result = await sendSMS({
+      mobile: [technicianPhone],
+      msg: message,
+    });
+    console.log(`[Technician Escalation SMS] ✅ SMS sent successfully to technician for ticket ${ticketId}`, result);
+  } catch (error) {
+    console.error(`[Technician Escalation SMS] ❌ Failed to send SMS to technician for ticket ${ticketId}:`, error);
+  }
+}
+
+/**
+ * Send reminder SMS to technician for pending tickets
+ */
+export async function sendTechnicianReminderSMS(
+  technicianPhone: string,
+  ticketId: string,
+  issueType: string,
+  clientName: string,
+  baseUrl?: string
+): Promise<void> {
+  const appUrl = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const ticketLink = `${appUrl}/admin/tickets`;
+  
+  const message = `Ticket Pending Attention\n\nYou have a pending support ticket:\n\nTicket ID: ${ticketId}\nIssue: ${issueType}\nClient: ${clientName}\n\nKindly update or resolve this ticket as soon as possible.\n\nView Ticket: ${ticketLink}\n\n3 Iconic Concepts Limited – Support Team`;
+  
+  console.log(`[Technician Reminder SMS] Attempting to send to ${technicianPhone} for ticket ${ticketId}`);
+  
+  try {
+    const result = await sendSMS({
+      mobile: [technicianPhone],
+      msg: message,
+    });
+    console.log(`[Technician Reminder SMS] ✅ SMS sent successfully to technician for ticket ${ticketId}`, result);
+  } catch (error) {
+    console.error(`[Technician Reminder SMS] ❌ Failed to send SMS to technician for ticket ${ticketId}:`, error);
+  }
+}
+
+/**
+ * Send ticket reminder SMS (for tickets open > 24 hours) - to admins/technicians
+ */
+export async function sendTicketReminderSMS(ticketId: string, clientName: string, station: string, category: string, hoursOpen: number): Promise<void> {
+  const message = `Ticket Reminder\nTicket ID: ${ticketId}\nClient: ${clientName}\nStation: ${station}\nCategory: ${category}\nStatus: Still Open\nOpen for: ${Math.round(hoursOpen)} hours\n\nPlease follow up on this ticket.`;
+  
+  const numbers = TICKET_NUMBERS.split(',').map(num => num.trim());
+  
+  try {
+    await sendSMS({
+      mobile: numbers,
+      msg: message,
+    });
+    console.log(`Reminder SMS sent for ticket ${ticketId}`);
+  } catch (error) {
+    console.error(`Failed to send reminder SMS for ticket ${ticketId}:`, error);
+  }
+}
+
+/**
+ * Send SMS notification when ticket category is changed
+ */
+export async function sendCategoryChangeSMS(
+  ticketId: string,
+  clientName: string,
+  station: string,
+  oldCategory: string,
+  newCategory: string,
+  baseUrl?: string
+): Promise<void> {
+  // Read CAT_NUMBERS at runtime - always read from process.env first
+  // This ensures we get the latest value even if .env.local was updated
+  let catNumbers = process.env.CAT_NUMBERS;
+  
+  // If not found in process.env, try the default constant
+  if (!catNumbers || catNumbers.trim() === '') {
+    catNumbers = CAT_NUMBERS_DEFAULT;
+  }
+  
+  // Debug: Log environment variable status
+  console.log(`[Category Change SMS] Environment Check:`, {
+    'process.env.CAT_NUMBERS exists': !!process.env.CAT_NUMBERS,
+    'process.env.CAT_NUMBERS value': process.env.CAT_NUMBERS || '(empty)',
+    'process.env.CAT_NUMBERS length': process.env.CAT_NUMBERS?.length || 0,
+    'CAT_NUMBERS_DEFAULT value': CAT_NUMBERS_DEFAULT || '(empty)',
+    'Final catNumbers value': catNumbers || '(empty)',
+  });
+  
+  // If still empty, try reading from a default location or show helpful error
+  if (!catNumbers || catNumbers.trim() === '') {
+    console.error(`[Category Change SMS] ❌ CAT_NUMBERS not configured!`);
+    console.error(`[Category Change SMS] Current value: "${catNumbers}"`);
+    console.error(`[Category Change SMS] Please ensure CAT_NUMBERS is set in .env.local file`);
+    console.error(`[Category Change SMS] Format: CAT_NUMBERS=+254796030992,+254746089137`);
+    console.error(`[Category Change SMS] After adding, restart your Next.js dev server`);
+    return;
+  }
+
+  const appUrl = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const ticketLink = `${appUrl}/admin/tickets?ticket=${ticketId}`;
+  
+  const message = `Ticket Category Changed\n\nTicket ID: ${ticketId}\nClient: ${clientName}\nStation: ${station}\nPrevious Category: ${oldCategory}\nNew Category: ${newCategory}\n\nView Ticket: ${ticketLink}`;
+  
+  const numbers = catNumbers.split(',').map(num => num.trim()).filter(num => num.length > 0);
+  
+  if (numbers.length === 0) {
+    console.log(`[Category Change SMS] ⚠️ No valid phone numbers in CAT_NUMBERS, skipping SMS for ticket ${ticketId}`);
+    return;
+  }
+  
+  console.log(`[Category Change SMS] Attempting to send category change SMS for ticket ${ticketId}`);
+  console.log(`[Category Change SMS] Phone numbers:`, numbers);
+  console.log(`[Category Change SMS] Old Category: ${oldCategory}, New Category: ${newCategory}`);
+  console.log(`[Category Change SMS] Message:`, message);
+  
+  try {
+    const result = await sendSMS({
+      mobile: numbers,
+      msg: message,
+    });
+    console.log(`[Category Change SMS] ✅ SMS notification sent successfully for ticket ${ticketId}`, result);
+  } catch (error) {
+    console.error(`[Category Change SMS] ❌ Failed to send SMS for ticket ${ticketId}:`, error);
+    // Don't throw - SMS failure shouldn't prevent category update
+  }
+}
+
+/**
+ * Send SMS to technician when assigned to a station task
+ */
+export async function sendStationTaskAssignmentSMS(
+  technicianPhone: string,
+  taskTitle: string,
+  stationName: string,
+  stationId: string,
+  taskDescription: string,
+  baseUrl?: string
+): Promise<void> {
+  const appUrl = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const taskLink = `${appUrl}/admin/station-tasks`;
+  
+  // Truncate description if too long
+  const shortDescription = taskDescription && taskDescription.length > 100 
+    ? taskDescription.substring(0, 100) + '...' 
+    : taskDescription || 'No description provided';
+  
+  const message = `New Station Task Assigned\n\nA new station task has been assigned to you.\n\nTask: ${taskTitle}\nStation: ${stationName} (${stationId})\nDescription: ${shortDescription}\n\nKindly complete the task and mark it as done once finished.\n\nView Tasks: ${taskLink}\n\n3 Iconic Concepts Limited – Support Team`;
+  
+  console.log(`[Station Task Assignment SMS] Attempting to send to ${technicianPhone} for task: ${taskTitle}`);
+  
+  try {
+    const result = await sendSMS({
+      mobile: [technicianPhone],
+      msg: message,
+    });
+    console.log(`[Station Task Assignment SMS] ✅ SMS sent successfully to technician for task: ${taskTitle}`, result);
+  } catch (error) {
+    console.error(`[Station Task Assignment SMS] ❌ Failed to send SMS to technician for task: ${taskTitle}`, error);
+    // Don't throw - SMS failure shouldn't prevent task assignment
+  }
+}
+
