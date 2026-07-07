@@ -149,8 +149,18 @@ export function inferItemTypeFromItem(item: {
   unitType?: string;
   category?: string;
   itemName?: string;
+  itemCode?: string;
 }): InventoryItemTypeId {
   if (item.isCable || item.unitType === 'meters' || item.unitType === 'm') return 'cable';
+
+  const code = (item.itemCode || '').trim().toUpperCase();
+  if (code) {
+    const byPrefix = INVENTORY_ITEM_TYPES.find(
+      (t) => t.tracking === 'serialized' && code.startsWith(`${t.codePrefix}-`)
+    );
+    if (byPrefix) return byPrefix.id;
+  }
+
   const name = (item.itemName || '').toLowerCase();
   const cat = (item.category || '').toLowerCase();
   if (name.includes('router') || cat === 'routers') return 'router';

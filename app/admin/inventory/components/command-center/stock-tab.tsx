@@ -17,11 +17,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Plus, MoreHorizontal, Loader2, History, PackagePlus, BookMarked } from 'lucide-react';
+import { Plus, MoreHorizontal, Loader2, History, PackagePlus, BookMarked, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { AddStockModal } from './add-stock-modal';
 import { CableRollDrawer } from './cable-roll-drawer';
+import { StockItemDrawer } from './stock-item-drawer';
 import { ItemCatalogSheet, type ItemTemplate } from './item-catalog-sheet';
 import {
   stockStatusStyle,
@@ -194,6 +195,7 @@ export function StockTab({
   const [addOpen, setAddOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [cableItem, setCableItem] = useState<StockItem | null>(null);
+  const [detailItem, setDetailItem] = useState<MergedStockItem | null>(null);
   const [addToItem, setAddToItem] = useState<StockItem | null>(null);
   const [templates, setTemplates] = useState<ItemTemplate[]>([]);
 
@@ -244,7 +246,12 @@ export function StockTab({
   );
 
   const handleRowClick = (item: MergedStockItem) => {
-    if (isMeterItem(item) && !isAllStations) setCableItem(item);
+    const meter = isMeterItem(item);
+    if (meter && !isAllStations) {
+      setCableItem(item);
+      return;
+    }
+    setDetailItem(item);
   };
 
   return (
@@ -302,7 +309,7 @@ export function StockTab({
                     <TableHead className="hidden md:table-cell">Coverage</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="hidden xl:table-cell">Last Movement</TableHead>
-                    {!isAllStations && <TableHead className="w-10" />}
+                    <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -315,7 +322,7 @@ export function StockTab({
                       <TableRow
                         key={`${item.category}-${item.itemName}-${item.itemCode || ''}`}
                         className={cn(
-                          meter && !isAllStations ? 'cursor-pointer hover:bg-muted/50' : '',
+                          'cursor-pointer hover:bg-muted/50',
                           rowHighlightForItem(item.quantityAvailable, item.minimumLevel)
                         )}
                         onClick={() => handleRowClick(item)}
@@ -328,7 +335,7 @@ export function StockTab({
                           {item.mergedCount > 1 && (
                             <p className="text-[10px] text-blue-700 dark:text-blue-400 mt-0.5">
                               {item.mergedCount} stock entries merged · {item.quantityAvailable}{' '}
-                              {meter ? 'm' : 'pcs'} total
+                              {meter ? 'm' : 'pcs'} total · click to view units
                             </p>
                           )}
                           {meter && item.rollSummary && (
@@ -368,33 +375,36 @@ export function StockTab({
                         <TableCell className="hidden xl:table-cell text-muted-foreground text-sm">
                           {fmtDateTime(item.lastMovement as string)}
                         </TableCell>
-                        {!isAllStations && (
-                          <TableCell onClick={(e) => e.stopPropagation()}>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                {meter ? (
-                                  <DropdownMenuItem onClick={() => setCableItem(item)}>
-                                    View rolls
-                                  </DropdownMenuItem>
-                                ) : (
-                                  <DropdownMenuItem onClick={() => { setAddToItem(item); setAddOpen(true); }}>
-                                    <PackagePlus className="h-4 w-4 mr-2" />
-                                    Add quantity
-                                  </DropdownMenuItem>
-                                )}
-                                <DropdownMenuItem disabled>
-                                  <History className="h-4 w-4 mr-2" />
-                                  History
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => setDetailItem(item)}>
+                                <Eye className="h-4 w-4 mr-2" />
+                                View details
+                              </DropdownMenuItem>
+                              {meter && !isAllStations && (
+                                <DropdownMenuItem onClick={() => setCableItem(item)}>
+                                  View rolls
                                 </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        )}
+                              )}
+                              {!isAllStations && !meter && (
+                                <DropdownMenuItem onClick={() => { setAddToItem(item); setAddOpen(true); }}>
+                                  <PackagePlus className="h-4 w-4 mr-2" />
+                                  Add quantity
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem disabled>
+                                <History className="h-4 w-4 mr-2" />
+                                History
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
                       </TableRow>
                     );
                   })}
@@ -421,6 +431,19 @@ export function StockTab({
         open={catalogOpen}
         onOpenChange={setCatalogOpen}
         onUpdated={fetchTemplates}
+      />
+      <StockItemDrawer
+        open={!!detailItem}
+        onOpenChange={(o) => !o && setDetailItem(null)}
+        item={detailItem}
+        stationId={stationId}
+        stations={stations}
+        isAllStations={isAllStations}
+        onAddStock={(it) => {
+          setAddToItem(it);
+          setAddOpen(true);
+          setDetailItem(null);
+        }}
       />
       {!isAllStations && (
         <CableRollDrawer
