@@ -17,13 +17,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Plus, MoreHorizontal, Loader2, History, PackagePlus, BookMarked, Eye } from 'lucide-react';
+import { Plus, MoreHorizontal, Loader2, History, PackagePlus, BookMarked, Eye, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { AddStockModal } from './add-stock-modal';
 import { CableRollDrawer } from './cable-roll-drawer';
 import { StockItemDrawer } from './stock-item-drawer';
 import { ItemCatalogSheet, type ItemTemplate } from './item-catalog-sheet';
+import { DeleteStockDialog } from './delete-stock-dialog';
 import {
   stockStatusStyle,
   unitBadgeClasses,
@@ -198,6 +199,8 @@ export function StockTab({
   const [detailItem, setDetailItem] = useState<MergedStockItem | null>(null);
   const [addToItem, setAddToItem] = useState<StockItem | null>(null);
   const [templates, setTemplates] = useState<ItemTemplate[]>([]);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<MergedStockItem | null>(null);
 
   const fetchTemplates = () => {
     fetch('/api/isp/item-templates', { cache: 'no-store' })
@@ -209,6 +212,13 @@ export function StockTab({
   useEffect(() => {
     fetchTemplates();
   }, [refreshKey]);
+
+  useEffect(() => {
+    fetch('/api/isp/me', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => setIsSuperAdmin(d.role === 'SUPER_ADMIN'))
+      .catch(() => setIsSuperAdmin(false));
+  }, []);
 
   const fetchItems = () => {
     setLoading(true);
@@ -402,6 +412,15 @@ export function StockTab({
                                 <History className="h-4 w-4 mr-2" />
                                 History
                               </DropdownMenuItem>
+                              {isSuperAdmin && (
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => setDeleteTarget(item)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete stock
+                                </DropdownMenuItem>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -439,10 +458,26 @@ export function StockTab({
         stationId={stationId}
         stations={stations}
         isAllStations={isAllStations}
+        isSuperAdmin={isSuperAdmin}
+        onDelete={(it) => {
+          setDeleteTarget(it);
+          setDetailItem(null);
+        }}
         onAddStock={(it) => {
           setAddToItem(it);
           setAddOpen(true);
           setDetailItem(null);
+        }}
+      />
+      <DeleteStockDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        itemName={deleteTarget?.itemName || ''}
+        itemIds={deleteTarget?.mergedIds || []}
+        mergedCount={deleteTarget?.mergedCount}
+        onDeleted={() => {
+          fetchItems();
+          onRefresh();
         }}
       />
       {!isAllStations && (

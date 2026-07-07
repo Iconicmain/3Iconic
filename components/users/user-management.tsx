@@ -173,9 +173,7 @@ export function UserManagement() {
         },
       });
       const data = await response.json();
-      // Filter out superadmins from the user list - they shouldn't be displayed
-      const filteredUsers = (data.users || []).filter((user: User) => user.role !== 'superadmin');
-      setUsers(filteredUsers);
+      setUsers(data.users || []);
       setAvailablePages(data.availablePages || []);
     } catch (error) {
       console.error('Error fetching users:', error);
