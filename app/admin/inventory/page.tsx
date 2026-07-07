@@ -16,21 +16,31 @@ export default async function InventoryPage() {
     redirect('/admin/login');
   }
 
-  const client = await clientPromise;
-  const db = client.db(ISP_DB);
-  const usersCol = db.collection('users');
-  const stationsCol = db.collection('stations'); // Same collection as /admin/stations
+  let isSuperAdmin = session.user.role === 'superadmin';
+  let assignedStationId: string | null | undefined =
+    (session.user as { assignedStationId?: string | null }).assignedStationId;
+  let rawStations: Array<{ stationId?: string; _id?: unknown; name?: string; location?: string }> = [];
 
-  const user = await usersCol.findOne(
-    { email: session.user.email.toLowerCase() },
-    { projection: { role: 1, assignedStationId: 1 } }
-  ) as { role?: string; assignedStationId?: string | null } | null;
+  try {
+    const client = await clientPromise;
+    const db = client.db(ISP_DB);
+    const usersCol = db.collection('users');
+    const stationsCol = db.collection('stations'); // Same collection as /admin/stations
 
-  const isSuperAdmin = user?.role === 'superadmin';
-  const assignedStationId = user?.assignedStationId;
+    const user = await usersCol.findOne(
+      { email: session.user.email.toLowerCase() },
+      { projection: { role: 1, assignedStationId: 1 } }
+    ) as { role?: string; assignedStationId?: string | null } | null;
 
-  // Fetch ALL stations from DB (same as /admin/stations) - no filtering
-  const rawStations = await stationsCol.find({}).sort({ name: 1 }).toArray();
+    isSuperAdmin = user?.role === 'superadmin';
+    assignedStationId = user?.assignedStationId;
+
+    // Fetch ALL stations from DB (same as /admin/stations) - no filtering
+    rawStations = await stationsCol.find({}).sort({ name: 1 }).toArray();
+  } catch (error) {
+    console.error('[InventoryPage] Database error:', error);
+    // Fall back to session role so the page still renders if MongoDB is temporarily unavailable
+  }
 
   // Map to inventory format - each station gets UNIQUE id (use _id when stationId duplicated)
   const seenStationIds = new Set<string>();

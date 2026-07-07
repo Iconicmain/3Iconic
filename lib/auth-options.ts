@@ -186,7 +186,10 @@ export const authOptions: NextAuthConfig = {
         !token.lastFetched || 
         (now - (token.lastFetched as number)) > CACHE_DURATION;
       
-      if (shouldBypassCache) {
+      // Middleware runs on Edge — MongoDB driver needs Node.js crypto; skip DB refresh there.
+      const isEdgeRuntime = process.env.NEXT_RUNTIME === 'edge';
+
+      if (shouldBypassCache && !isEdgeRuntime) {
         try {
           // Use Promise.race for timeout protection
           const fetchUserData = async () => {
