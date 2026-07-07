@@ -1,8 +1,12 @@
 import { auth } from '@/auth';
 import clientPromise from '@/lib/mongodb';
 import { ISP_COLLECTIONS, ISP_DB } from './models';
+import {
+  normalizeAssignedStationIds,
+  stationMatchesAssignment,
+} from './station-access';
 
-export type IspUserRole = 'SUPER_ADMIN' | 'STATION_MANAGER' | 'INVENTORY_OFFICER' | 'TECHNICIAN';
+export type IspUserRole = 'SUPER_ADMIN' | 'STATION_MANAGER' | 'INVENTORY_OFFICER' | 'TECHNICIAN' | 'CUSTOMER_CARE';
 
 interface IspUserRecord {
   id: string;
@@ -11,6 +15,7 @@ interface IspUserRecord {
   role?: string;
   ispRole?: IspUserRole;
   assignedStationId?: string | null;
+  assignedStationIds?: string[] | null;
   approved?: boolean;
 }
 
@@ -24,6 +29,7 @@ export async function getIspUserContext(): Promise<{
   name: string;
   role: IspUserRole;
   assignedStationId: string | null;
+  assignedStationIds: string[];
   canAccessAllStations: boolean;
 } | null> {
   const session = await auth();
@@ -34,19 +40,30 @@ export async function getIspUserContext(): Promise<{
   const usersCol = db.collection('users');
   const user = await usersCol.findOne(
     { email: session.user.email.toLowerCase() },
-    { projection: { id: 1, email: 1, name: 1, role: 1, ispRole: 1, assignedStationId: 1, approved: 1 } }
+    {
+      projection: {
+        id: 1,
+        email: 1,
+        name: 1,
+        role: 1,
+        ispRole: 1,
+        assignedStationId: 1,
+        assignedStationIds: 1,
+        approved: 1,
+      },
+    }
   ) as IspUserRecord | null;
 
   if (!user || user.approved === false) return null;
 
-  // Superadmin in main system = SUPER_ADMIN in ISP
   const ispRole: IspUserRole =
     user.role === 'superadmin'
       ? 'SUPER_ADMIN'
       : (user.ispRole as IspUserRole) || 'TECHNICIAN';
 
+  const assignedStationIds = normalizeAssignedStationIds(user);
   const canAccessAllStations = ispRole === 'SUPER_ADMIN';
-  const assignedStationId = user.assignedStationId ?? null;
+  const assignedStationId = assignedStationIds[0] ?? null;
 
   return {
     userId: user.id || (user as { _id?: unknown }).toString(),
@@ -54,6 +71,7 @@ export async function getIspUserContext(): Promise<{
     name: user.name,
     role: ispRole,
     assignedStationId,
+    assignedStationIds,
     canAccessAllStations,
   };
 }
@@ -66,9 +84,7 @@ export async function canAccessStation(stationIdOrMongoId: string): Promise<bool
   const ctx = await getIspUserContext();
   if (!ctx) return false;
   if (ctx.canAccessAllStations) return true;
-  // Resolve mongoId to stationId for comparison
-  const resolved = await import('./station-resolve').then((m) => m.resolveStationId(stationIdOrMongoId));
-  return ctx.assignedStationId === resolved || ctx.assignedStationId === stationIdOrMongoId;
+  return stationMatchesAssignment(stationIdOrMongoId, ctx.assignedStationIds);
 }
 
 /**
@@ -89,7 +105,9 @@ export async function getAccessibleStationIds(): Promise<string[]> {
     const client = await clientPromise;
     const db = client.db(ISP_DB);
     const stations = await db.collection(ISP_COLLECTIONS.stations).find({}).toArray();
-    return stations.map((s: { stationId: string }) => s.stationId);
+    return stations.map((s: { stationId?: string; _id?: { toString(): string } }) =>
+      s.stationId || s._id?.toString() || ''
+    ).filter(Boolean);
   }
-  return ctx.assignedStationId ? [ctx.assignedStationId] : [];
+  return ctx.assignedStationIds;
 }

@@ -1,6 +1,6 @@
 // ISP Station Inventory - TypeScript types and constants
 
-export type IspUserRole = 'SUPER_ADMIN' | 'STATION_MANAGER' | 'INVENTORY_OFFICER' | 'TECHNICIAN';
+export type IspUserRole = 'SUPER_ADMIN' | 'STATION_MANAGER' | 'INVENTORY_OFFICER' | 'TECHNICIAN' | 'CUSTOMER_CARE';
 
 export type TransactionType =
   | 'ADD'

@@ -3,6 +3,13 @@ import clientPromise from '@/lib/mongodb';
 import { auth } from '@/auth';
 import { ObjectId } from 'mongodb';
 import { AVAILABLE_PAGES } from '@/lib/constants';
+import {
+  applyAccountType,
+  accountTypeFromUser,
+  accountTypeRequiresPagePermissions,
+  type AccountType,
+} from '@/lib/user-account-types';
+import { normalizeAssignedStationIds } from '@/lib/isp/station-access';
 
 // Ensure Node.js runtime for MongoDB and crypto modules
 export const runtime = 'nodejs';
@@ -17,9 +24,14 @@ interface User {
   _id?: any;
   email: string;
   name: string;
+  phone?: string | null;
   image?: string;
   pagePermissions: PagePermission[];
   role?: 'superadmin' | 'admin' | 'user';
+  accountType?: AccountType;
+  ispRole?: string;
+  assignedStationId?: string | null;
+  assignedStationIds?: string[] | null;
   approved?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
@@ -65,9 +77,14 @@ export async function GET(
       id: user.id || user._id.toString(),
       email: user.email,
       name: user.name,
+      phone: user.phone || null,
       image: user.image,
       pagePermissions: user.pagePermissions || [],
       role: user.role || 'user',
+      accountType: accountTypeFromUser(user),
+      ispRole: user.ispRole || null,
+      assignedStationId: user.assignedStationId || null,
+      assignedStationIds: user.assignedStationIds || normalizeAssignedStationIds(user),
       approved: user.approved !== undefined ? user.approved : false,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
@@ -117,13 +134,13 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { name, image, pagePermissions, role, approved } = body;
+    const { name, image, pagePermissions, role, accountType, approved, phone, assignedStationIds } = body;
 
     // Only superadmins can modify permissions, roles, and approvals
     const userIsSuperAdmin = await isSuperAdmin();
     console.log(`[PUT /api/users/${id}] User is superadmin: ${userIsSuperAdmin}, approved: ${approved}`);
     
-    if (!userIsSuperAdmin && (pagePermissions !== undefined || role !== undefined || approved !== undefined)) {
+    if (!userIsSuperAdmin && (pagePermissions !== undefined || role !== undefined || accountType !== undefined || approved !== undefined)) {
       console.error(`[PUT /api/users/${id}] Access denied - not a superadmin`);
       return NextResponse.json({ 
         error: 'Only super admins can manage user permissions, roles, and approvals',
@@ -167,52 +184,88 @@ export async function PUT(
       updatedAt: new Date(),
     };
 
-    // Non-superadmins can only update name and image
     if (name !== undefined) updateData.name = name.trim();
     if (image !== undefined) updateData.image = image;
-    
+    if (phone !== undefined) updateData.phone = phone?.trim() || null;
+
+    if (userIsSuperAdmin && assignedStationIds !== undefined) {
+      const ids = Array.isArray(assignedStationIds)
+        ? assignedStationIds.filter((id: unknown) => typeof id === 'string' && id.trim()).map((id: string) => id.trim())
+        : [];
+      updateData.assignedStationIds = ids;
+      updateData.assignedStationId = ids[0] || null;
+    }
+
     // Only superadmins can modify these fields
     if (userIsSuperAdmin) {
       if (pagePermissions !== undefined) updateData.pagePermissions = pagePermissions;
-      if (role !== undefined) {
+
+      const resolvedAccountType: AccountType | undefined =
+        accountType ||
+        (role === 'superadmin'
+          ? 'superadmin'
+          : role === 'admin'
+            ? 'admin'
+            : undefined);
+
+      if (resolvedAccountType) {
+        const applied = applyAccountType(resolvedAccountType);
+        updateData.role = applied.role;
+        updateData.accountType = applied.accountType;
+        if (applied.ispRole) updateData.ispRole = applied.ispRole;
+        else updateData.ispRole = null;
+
+        if (applied.autoApprove && approved === undefined) {
+          updateData.approved = true;
+        }
+
+        if (applied.role === 'superadmin') {
+          updateData.pagePermissions = AVAILABLE_PAGES.map((page) => ({
+            pageId: page.id,
+            permissions: ['view', 'add', 'edit', 'delete'],
+          }));
+        }
+
+        if (accountTypeRequiresPagePermissions(resolvedAccountType)) {
+          const finalPagePermissions =
+            pagePermissions !== undefined ? pagePermissions : user.pagePermissions || [];
+          const hasAnyPermission = finalPagePermissions.some(
+            (p: { permissions?: string[] }) => p.permissions && p.permissions.length > 0
+          );
+          if (!hasAnyPermission) {
+            return NextResponse.json(
+              {
+                error:
+                  'Admin users must have at least one page permission. Please grant permissions before saving.',
+              },
+              { status: 400 }
+            );
+          }
+        }
+      } else if (role !== undefined) {
         updateData.role = role;
-        // Auto-approve when promoted to admin or superadmin
         if (role === 'admin' || role === 'superadmin') {
           updateData.approved = true;
         }
-        // Superadmins automatically get all permissions for all pages
         if (role === 'superadmin') {
           updateData.pagePermissions = AVAILABLE_PAGES.map((page) => ({
             pageId: page.id,
             permissions: ['view', 'add', 'edit', 'delete'],
           }));
         }
-        // When promoting to admin, require at least one permission
-        if (role === 'admin') {
-          const finalPagePermissions = pagePermissions !== undefined ? pagePermissions : user.pagePermissions || [];
-          const hasAnyPermission = finalPagePermissions.some((p: any) => 
-            p.permissions && p.permissions.length > 0
-          );
-          if (!hasAnyPermission) {
-            return NextResponse.json({ 
-              error: 'Admin users must have at least one page permission. Please grant permissions before promoting to admin.' 
-            }, { status: 400 });
-          }
-        }
       }
+
       if (approved !== undefined) {
         updateData.approved = approved;
-        console.log(`[PUT /api/users/${id}] Setting approved to: ${approved}`);
-        
-        // When approving a user, check if they have permissions
-        // If not, they'll stay on waiting-approval page
         if (approved === true) {
-          const finalPagePermissions = pagePermissions !== undefined ? pagePermissions : user.pagePermissions || [];
-          const hasAnyPermission = finalPagePermissions.some((p: any) => 
-            p.permissions && p.permissions.length > 0
+          const finalPagePermissions =
+            pagePermissions !== undefined ? pagePermissions : user.pagePermissions || [];
+          const hasAnyPermission = finalPagePermissions.some(
+            (p: { permissions?: string[] }) => p.permissions && p.permissions.length > 0
           );
-          if (!hasAnyPermission && user.role !== 'superadmin') {
-            console.log(`[PUT /api/users/${id}] User approved but has no permissions - they'll need permissions to access pages`);
+          const type = resolvedAccountType || accountTypeFromUser(user);
+          if (!hasAnyPermission && type !== 'superadmin' && accountTypeRequiresPagePermissions(type)) {
+            console.log(`[PUT /api/users/${id}] Admin approved without permissions warning`);
           }
         }
       }
@@ -244,9 +297,14 @@ export async function PUT(
         id: updatedUser?.id || updatedUser?._id.toString(),
         email: updatedUser?.email,
         name: updatedUser?.name,
+        phone: updatedUser?.phone || null,
         image: updatedUser?.image,
         pagePermissions: updatedUser?.pagePermissions || [],
         role: updatedUser?.role || 'user',
+        accountType: updatedUser ? accountTypeFromUser(updatedUser) : 'technician',
+        ispRole: updatedUser?.ispRole || null,
+        assignedStationId: updatedUser?.assignedStationId || null,
+        assignedStationIds: updatedUser?.assignedStationIds || [],
         approved: updatedUser?.approved !== undefined ? updatedUser.approved : false,
       },
       // Signal that session should be refreshed

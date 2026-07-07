@@ -68,6 +68,7 @@ interface InventoryClientProps {
   allStationsForSelection?: Station[];
   defaultStationId: string | null;
   isSuperAdmin: boolean;
+  scopedStationAccess?: boolean;
 }
 
 function StatCard({
@@ -103,6 +104,7 @@ export function InventoryStationPage({
   allStationsForSelection = [],
   defaultStationId,
   isSuperAdmin,
+  scopedStationAccess = false,
 }: InventoryClientProps) {
   const stationList = allStationsForSelection.length > 0 ? allStationsForSelection : stations;
   const initialStation = isSuperAdmin ? ALL_STATIONS : (defaultStationId || stations[0]?.id || null);
@@ -156,11 +158,17 @@ export function InventoryStationPage({
           <main className="mt-32 sm:mt-36 md:mt-0 px-4 md:px-6 lg:px-8 pt-6 pb-8">
             <Card className="max-w-md">
               <CardContent className="pt-6">
-                <p className="font-semibold mb-2">No Stations</p>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Create stations from the Stations page to use inventory.
+                <p className="font-semibold mb-2">
+                  {scopedStationAccess ? 'No stations assigned' : 'No stations'}
                 </p>
-                <Button asChild><a href="/admin/stations">Go to Stations</a></Button>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {scopedStationAccess
+                    ? 'Your account has inventory access but no stations are assigned yet. Ask a super admin to assign stations on the Users page.'
+                    : 'Create stations from the Stations page to use inventory.'}
+                </p>
+                {!scopedStationAccess && (
+                  <Button asChild><a href="/admin/stations">Go to Stations</a></Button>
+                )}
               </CardContent>
             </Card>
           </main>

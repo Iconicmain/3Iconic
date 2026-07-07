@@ -29,6 +29,16 @@ import {
 import { Plus, Edit, Trash2, Save, X, UserPlus, Users, ChevronDown, ChevronUp, CheckCircle, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import {
+  ACCOUNT_TYPE_OPTIONS,
+  accountTypeFromUser,
+  accountTypeLabel,
+  accountTypeRequiresPagePermissions,
+  accountTypeSupportsStationAssignment,
+  userNeedsAdminPagePermissions,
+  totalPagePermissionCount,
+  type AccountType,
+} from '@/lib/user-account-types';
 
 interface PagePermission {
   pageId: string;
@@ -39,10 +49,19 @@ interface User {
   id: string;
   email: string;
   name: string;
+  phone?: string | null;
   image?: string;
   pagePermissions: PagePermission[];
   role: 'superadmin' | 'admin' | 'user';
+  accountType?: AccountType;
+  ispRole?: string | null;
+  assignedStationIds?: string[];
   approved?: boolean;
+}
+
+interface StationOption {
+  id: string;
+  stationName: string;
 }
 
 interface AvailablePage {
@@ -63,13 +82,16 @@ export function UserManagement() {
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [currentUserRole, setCurrentUserRole] = useState<'superadmin' | 'admin' | 'user'>('user');
   const [currentUserPermissions, setCurrentUserPermissions] = useState<PagePermission[]>([]);
+  const [stationOptions, setStationOptions] = useState<StationOption[]>([]);
   const [formData, setFormData] = useState({
     email: '',
     name: '',
+    phone: '',
     image: '',
-    role: 'user' as 'superadmin' | 'admin' | 'user',
+    accountType: 'technician' as AccountType,
     approved: false,
     pagePermissions: [] as PagePermission[],
+    assignedStationIds: [] as string[],
   });
 
   const isSuperAdmin = currentUserRole === 'superadmin';
@@ -83,7 +105,29 @@ export function UserManagement() {
   useEffect(() => {
     fetchCurrentUser();
     fetchUsers();
+    fetchStationsForAssignment();
   }, []);
+
+  const fetchStationsForAssignment = async () => {
+    try {
+      const res = await fetch('/api/stations', { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok) return;
+      const seen = new Set<string>();
+      const options: StationOption[] = [];
+      for (const s of data.stations || []) {
+        const stationId = s.stationId || '';
+        const mongoId = s._id?.toString?.() || s._id || '';
+        const isDup = stationId && seen.has(stationId);
+        if (stationId) seen.add(stationId);
+        const id = isDup ? String(mongoId) : stationId || String(mongoId);
+        if (id) options.push({ id, stationName: s.name || id });
+      }
+      setStationOptions(options.sort((a, b) => a.stationName.localeCompare(b.stationName)));
+    } catch {
+      setStationOptions([]);
+    }
+  };
 
   const fetchCurrentUser = async () => {
     try {
@@ -145,20 +189,24 @@ export function UserManagement() {
       setFormData({
         email: user.email,
         name: user.name,
+        phone: user.phone || '',
         image: user.image || '',
-        role: user.role,
+        accountType: user.accountType || accountTypeFromUser(user),
         approved: user.approved !== undefined ? user.approved : false,
         pagePermissions: user.pagePermissions || [],
+        assignedStationIds: user.assignedStationIds || [],
       });
     } else {
       setEditingUser(null);
       setFormData({
         email: '',
         name: '',
+        phone: '',
         image: '',
-        role: 'user',
+        accountType: 'technician',
         approved: false,
         pagePermissions: [],
+        assignedStationIds: [],
       });
     }
     setIsDialogOpen(true);
@@ -170,9 +218,24 @@ export function UserManagement() {
     setFormData({
       email: '',
       name: '',
+      phone: '',
       image: '',
-      role: 'user',
+      accountType: 'technician',
+      approved: false,
       pagePermissions: [],
+      assignedStationIds: [],
+    });
+  };
+
+  const toggleAssignedStation = (stationId: string) => {
+    setFormData((prev) => {
+      const has = prev.assignedStationIds.includes(stationId);
+      return {
+        ...prev,
+        assignedStationIds: has
+          ? prev.assignedStationIds.filter((id) => id !== stationId)
+          : [...prev.assignedStationIds, stationId],
+      };
     });
   };
 
@@ -212,15 +275,21 @@ export function UserManagement() {
       return;
     }
 
-    // Validate: Admin users must have at least one permission
-    if (formData.role === 'admin' && formData.pagePermissions.length === 0) {
-      toast.error('Admin users must have at least one page permission. Please grant permissions before saving.');
+    if (formData.accountType === 'customer_care' && formData.assignedStationIds.length === 0) {
+      toast.error('Customer Care users need at least one assigned inventory station.');
       return;
     }
 
-    // Validate: Approved users (except superadmin) should have at least one permission
-    if (formData.approved && formData.role !== 'superadmin' && formData.pagePermissions.length === 0) {
-      toast.error('Approved users must have at least one page permission. Please grant permissions before approving.');
+    const needsPerms = userNeedsAdminPagePermissions(formData.accountType, formData.pagePermissions);
+    const permCount = totalPagePermissionCount(formData.pagePermissions);
+
+    if (needsPerms && permCount === 0) {
+      toast.error('Users with admin access must have at least one page permission. Please grant permissions before saving.');
+      return;
+    }
+
+    if (formData.approved && needsPerms && permCount === 0) {
+      toast.error('Approved users with admin access must have at least one page permission.');
       return;
     }
 
@@ -381,7 +450,7 @@ export function UserManagement() {
                     Admins
                   </p>
                   <p className="text-2xl sm:text-3xl font-bold text-purple-900 dark:text-purple-100">
-                    {users.filter(u => u.role === 'admin').length}
+                    {users.filter(u => (u.accountType || accountTypeFromUser(u)) === 'admin').length}
                   </p>
                 </div>
                 <Users className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600 dark:text-purple-400" />
@@ -393,10 +462,10 @@ export function UserManagement() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs sm:text-sm font-medium text-blue-700 dark:text-blue-300 mb-1">
-                    Regular Users
+                    Technicians
                   </p>
                   <p className="text-2xl sm:text-3xl font-bold text-blue-900 dark:text-blue-100">
-                    {users.filter(u => u.role === 'user').length}
+                    {users.filter(u => (u.accountType || accountTypeFromUser(u)) === 'technician').length}
                   </p>
                 </div>
                 <Users className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 dark:text-blue-400" />
@@ -481,16 +550,27 @@ export function UserManagement() {
                       </CardTitle>
                       <CardDescription className="text-xs sm:text-sm text-muted-foreground truncate mb-2">
                         {user.email}
+                        {user.phone && (
+                          <span className="block text-[11px] mt-0.5">{user.phone}</span>
+                        )}
+                        {(user.accountType || accountTypeFromUser(user)) === 'customer_care' &&
+                          (user.assignedStationIds?.length || 0) > 0 && (
+                          <span className="block text-[11px] mt-0.5 text-cyan-700 dark:text-cyan-400">
+                            Stations: {user.assignedStationIds!.length} assigned
+                          </span>
+                        )}
                       </CardDescription>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold shadow-sm ${
-                          user.role === 'superadmin'
-                            ? 'bg-gradient-to-r from-red-100 to-red-200 text-red-800 dark:from-red-900/50 dark:to-red-800/50 dark:text-red-200 border border-red-300 dark:border-red-700'
-                            : user.role === 'admin' 
-                            ? 'bg-gradient-to-r from-purple-100 to-purple-200 text-purple-800 dark:from-purple-900/50 dark:to-purple-800/50 dark:text-purple-200 border border-purple-300 dark:border-purple-700' 
-                            : 'bg-gradient-to-r from-blue-100 to-blue-200 text-blue-800 dark:from-blue-900/50 dark:to-blue-800/50 dark:text-blue-200 border border-blue-300 dark:border-blue-700'
+                          (user.accountType || accountTypeFromUser(user)) === 'admin'
+                            ? 'bg-gradient-to-r from-purple-100 to-purple-200 text-purple-800 dark:from-purple-900/50 dark:to-purple-800/50 dark:text-purple-200 border border-purple-300 dark:border-purple-700'
+                            : (user.accountType || accountTypeFromUser(user)) === 'technician'
+                            ? 'bg-gradient-to-r from-blue-100 to-blue-200 text-blue-800 dark:from-blue-900/50 dark:to-blue-800/50 dark:text-blue-200 border border-blue-300 dark:border-blue-700'
+                            : (user.accountType || accountTypeFromUser(user)) === 'customer_care'
+                            ? 'bg-gradient-to-r from-cyan-100 to-cyan-200 text-cyan-800 dark:from-cyan-900/50 dark:to-cyan-800/50 dark:text-cyan-200 border border-cyan-300 dark:border-cyan-700'
+                            : 'bg-gradient-to-r from-slate-100 to-slate-200 text-slate-800 dark:from-slate-900/50 dark:to-slate-800/50 dark:text-slate-200 border border-slate-300 dark:border-slate-700'
                         }`}>
-                          {user.role === 'superadmin' ? 'Super Admin' : user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                          {accountTypeLabel(user.accountType || accountTypeFromUser(user))}
                         </span>
                         {user.approved ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700">
@@ -799,6 +879,17 @@ export function UserManagement() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
+                  <Label htmlFor="phone" className="text-sm font-medium">Phone number</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    placeholder="+254712345678"
+                    className="h-11 border-2 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 dark:focus:ring-emerald-900"
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="image" className="text-sm font-medium">Image URL (optional)</Label>
                   <Input
                     id="image"
@@ -809,37 +900,42 @@ export function UserManagement() {
                     className="h-11 border-2 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 dark:focus:ring-emerald-900"
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {isSuperAdmin && (
                 <div className="space-y-2">
-                  <Label htmlFor="role" className="text-sm font-medium">Role</Label>
+                  <Label htmlFor="accountType" className="text-sm font-medium">Account type</Label>
                   <select
-                    id="role"
-                    value={formData.role}
+                    id="accountType"
+                    value={formData.accountType}
                     onChange={(e) => {
-                      const newRole = e.target.value as 'superadmin' | 'admin' | 'user';
-                      // Superadmins and admins are auto-approved and get all permissions
-                        const isSuperAdminRole = newRole === 'superadmin';
-                      const isAdmin = newRole === 'admin';
-                      
-                      setFormData({ 
-                        ...formData, 
-                        role: newRole,
-                          approved: isSuperAdminRole || isAdmin ? true : formData.approved,
-                          pagePermissions: isSuperAdminRole 
+                      const newType = e.target.value as AccountType;
+                      const isSuperAdminRole = newType === 'superadmin';
+                      const isAdmin = newType === 'admin';
+                      setFormData({
+                        ...formData,
+                        accountType: newType,
+                        approved: isSuperAdminRole || isAdmin || newType === 'technician' || newType === 'customer_care'
+                          ? true
+                          : formData.approved,
+                        pagePermissions: isSuperAdminRole
                           ? availablePages.map((page) => ({
                               pageId: page.id,
-                                permissions: ['view', 'add', 'edit', 'delete'],
+                              permissions: ['view', 'add', 'edit', 'delete'],
                             }))
-                          : formData.pagePermissions
+                          : formData.pagePermissions,
                       });
                     }}
                     className="h-11 w-full rounded-md border-2 border-input bg-background px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 dark:focus-visible:ring-emerald-900 focus-visible:border-emerald-500 transition-colors"
                   >
-                    <option value="user">User</option>
-                    <option value="admin">Admin</option>
-                    <option value="superadmin">Super Admin</option>
+                    {ACCOUNT_TYPE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
                   </select>
-                    {formData.role === 'admin' && formData.pagePermissions.length === 0 && (
+                    {accountTypeRequiresPagePermissions(formData.accountType) && formData.pagePermissions.length === 0 && (
                       <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
                         <span>⚠️</span>
                         <span>Admin users must have at least one page permission. Please grant permissions below.</span>
@@ -849,13 +945,48 @@ export function UserManagement() {
                 )}
                 {!isSuperAdmin && !editingUser && (
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium text-muted-foreground">Role</Label>
+                    <Label className="text-sm font-medium text-muted-foreground">Account type</Label>
                     <div className="h-11 px-3 py-2 text-sm text-muted-foreground bg-muted rounded-md border-2 border-input">
-                      User (Only super admins can set roles)
+                      Technician (Only super admins can set account types)
               </div>
                   </div>
                 )}
               </div>
+
+              {isSuperAdmin && accountTypeSupportsStationAssignment(formData.accountType) && (
+                <div className="space-y-2 rounded-lg border border-cyan-200/80 bg-cyan-50/40 dark:bg-cyan-950/20 p-3">
+                  <Label className="text-sm font-medium">Inventory stations</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Customer Care can only manage inventory for the stations selected here. Also grant{' '}
+                    <strong>Inventory Command Center</strong> permissions below.
+                  </p>
+                  {stationOptions.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No stations found.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pt-1">
+                      {stationOptions.map((station) => (
+                        <label
+                          key={station.id}
+                          className="flex items-center gap-2 rounded-md border bg-background px-2.5 py-2 text-sm cursor-pointer hover:bg-muted/50"
+                        >
+                          <Checkbox
+                            checked={formData.assignedStationIds.includes(station.id)}
+                            onCheckedChange={() => toggleAssignedStation(station.id)}
+                          />
+                          <span className="truncate">{station.stationName}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  {formData.assignedStationIds.length > 0 && (
+                    <p className="text-xs text-cyan-800 dark:text-cyan-300">
+                      {formData.assignedStationIds.length} station
+                      {formData.assignedStationIds.length !== 1 ? 's' : ''} selected
+                    </p>
+                  )}
+                </div>
+              )}
+
               {isSuperAdmin && (
               <div className="space-y-2">
                 <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800">
@@ -863,7 +994,7 @@ export function UserManagement() {
                     id="approved"
                     checked={formData.approved}
                     onCheckedChange={(checked) => setFormData({ ...formData, approved: checked as boolean })}
-                    disabled={formData.role === 'superadmin' || formData.role === 'admin'}
+                    disabled={formData.accountType === 'superadmin' || formData.accountType === 'admin'}
                     className="border-2"
                   />
                   <div className="flex-1">
@@ -871,11 +1002,11 @@ export function UserManagement() {
                       Approved
                     </Label>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {formData.role === 'superadmin' || formData.role === 'admin'
-                          ? `${formData.role === 'superadmin' ? 'Super admins' : 'Admins'} are automatically approved`
+                      {formData.accountType === 'superadmin' || formData.accountType === 'admin'
+                          ? `${accountTypeLabel(formData.accountType)} accounts are automatically approved`
                         : 'Check to approve this user'}
                     </p>
-                      {formData.approved && formData.role !== 'superadmin' && formData.role !== 'admin' && formData.pagePermissions.length === 0 && (
+                      {formData.approved && accountTypeRequiresPagePermissions(formData.accountType) && formData.pagePermissions.length === 0 && (
                         <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
                           <span>⚠️</span>
                           <span>Approved users must have at least one page permission to access the system.</span>

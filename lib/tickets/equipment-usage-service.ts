@@ -44,16 +44,53 @@ export async function resolveTechnicianIdsByNames(names: string[]): Promise<
 > {
   const client = await clientPromise;
   const db = client.db(ISP_DB);
+  const map = new Map<string, { id: string; name: string }>();
+
+  const trimmedNames = names.map((n) => n.trim()).filter(Boolean);
+  if (trimmedNames.length === 0) return map;
+
+  // Prefer explicit ispUserId links on ticket technicians
+  const techDocs = await db
+    .collection('technicians')
+    .find({ name: { $in: trimmedNames } })
+    .project({ name: 1, ispUserId: 1, linkedEmail: 1 })
+    .toArray();
+
+  for (const rawName of trimmedNames) {
+    const linked = techDocs.find(
+      (t: { name?: string; ispUserId?: string; linkedEmail?: string }) =>
+        (t.name || '').toLowerCase() === rawName.toLowerCase() && t.ispUserId
+    );
+    if (linked) {
+      map.set(rawName, { id: linked.ispUserId!, name: linked.name || rawName });
+    }
+  }
+
+  // Match by linked Gmail on technician record
+  for (const rawName of trimmedNames) {
+    if (map.has(rawName)) continue;
+    const tech = techDocs.find(
+      (t: { name?: string; linkedEmail?: string }) =>
+        (t.name || '').toLowerCase() === rawName.toLowerCase() && t.linkedEmail
+    );
+    if (tech?.linkedEmail) {
+      const user = await db.collection('users').findOne({ email: tech.linkedEmail.toLowerCase() });
+      if (user) {
+        const id = (user as { id: string }).id;
+        map.set(rawName, { id, name: (user as { name?: string }).name || rawName });
+      }
+    }
+  }
+
   const users = await db
     .collection('users')
     .find({ approved: true })
-    .project({ id: 1, name: 1, email: 1 })
+    .project({ id: 1, name: 1, email: 1, isTechnicianProfile: 1 })
     .toArray();
 
-  const map = new Map<string, { id: string; name: string }>();
-  for (const rawName of names) {
-    const name = rawName.trim();
-    if (!name) continue;
+  for (const rawName of trimmedNames) {
+    if (map.has(rawName)) continue;
+    const name = rawName;
     const match = users.find(
       (u: { name?: string; email?: string }) =>
         (u.name || '').toLowerCase() === name.toLowerCase() ||

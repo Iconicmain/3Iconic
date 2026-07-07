@@ -3,6 +3,13 @@ import clientPromise from '@/lib/mongodb';
 import { auth } from '@/auth';
 import { generateUUID } from '@/lib/uuid';
 import { AVAILABLE_PAGES, PERMISSION_TYPES, type PermissionType } from '@/lib/constants';
+import {
+  applyAccountType,
+  accountTypeFromUser,
+  accountTypeRequiresPagePermissions,
+  type AccountType,
+} from '@/lib/user-account-types';
+import { normalizeAssignedStationIds } from '@/lib/isp/station-access';
 
 // Ensure Node.js runtime for crypto module
 export const runtime = 'nodejs';
@@ -20,9 +27,14 @@ interface User {
   _id?: any;
   email: string;
   name: string;
+  phone?: string | null;
   image?: string;
   pagePermissions: PagePermission[];
   role?: 'superadmin' | 'admin' | 'user';
+  accountType?: AccountType;
+  ispRole?: string;
+  assignedStationId?: string | null;
+  assignedStationIds?: string[] | null;
   approved?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
@@ -118,9 +130,14 @@ export async function GET(request: NextRequest) {
       id: user.id || user._id.toString(),
       email: user.email,
       name: user.name,
+      phone: user.phone || null,
       image: user.image,
       pagePermissions: user.pagePermissions || [],
       role: user.role || 'user',
+      accountType: accountTypeFromUser(user),
+      ispRole: user.ispRole || null,
+      assignedStationId: user.assignedStationId || null,
+      assignedStationIds: user.assignedStationIds || normalizeAssignedStationIds(user),
       approved: user.approved !== undefined ? user.approved : false,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
@@ -169,7 +186,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { email, name, image, pagePermissions, role } = body;
+    const { email, name, phone, image, pagePermissions, role, accountType, assignedStationIds } = body;
 
     if (!email || !name) {
       return NextResponse.json({ error: 'Email and name are required' }, { status: 400 });
@@ -212,14 +229,52 @@ export async function POST(request: NextRequest) {
 
     const userId = existingUser?.id || existingUser?._id?.toString() || generateUUID();
 
+    const resolvedAccountType: AccountType =
+      accountType ||
+      (role === 'superadmin' ? 'superadmin' : role === 'admin' ? 'admin' : 'technician');
+    const applied = applyAccountType(resolvedAccountType);
+
+    if (accountTypeRequiresPagePermissions(resolvedAccountType)) {
+      const perms = userIsSuperAdmin ? pagePermissions || [] : [];
+      const hasAnyPermission = perms.some(
+        (p: { permissions?: string[] }) => p.permissions && p.permissions.length > 0
+      );
+      if (!hasAnyPermission && userIsSuperAdmin) {
+        return NextResponse.json(
+          { error: 'Admin users must have at least one page permission.' },
+          { status: 400 }
+        );
+      }
+    }
+
+    const stationIds = Array.isArray(assignedStationIds)
+      ? assignedStationIds.filter((id: unknown) => typeof id === 'string' && id.trim()).map((id: string) => id.trim())
+      : [];
+
     const userData: User = {
       id: userId,
       email: email.trim().toLowerCase(),
       name: name.trim(),
+      phone: phone?.trim() || null,
       image: image || null,
-      pagePermissions: userIsSuperAdmin ? (pagePermissions || []) : [], // Only superadmins can set permissions
-      role: userIsSuperAdmin ? (role || 'user') : 'user', // Only superadmins can set roles
-      approved: existingUser ? existingUser.approved : (userIsSuperAdmin && (role === 'admin' || role === 'superadmin') ? true : false), // Only superadmins can auto-approve
+      pagePermissions: userIsSuperAdmin
+        ? applied.role === 'superadmin'
+          ? AVAILABLE_PAGES.map((page) => ({
+              pageId: page.id,
+              permissions: ['view', 'add', 'edit', 'delete'],
+            }))
+          : pagePermissions || []
+        : [],
+      role: userIsSuperAdmin ? applied.role : 'user',
+      accountType: applied.accountType,
+      ispRole: applied.ispRole,
+      assignedStationIds: stationIds,
+      assignedStationId: stationIds[0] || null,
+      approved: existingUser
+        ? existingUser.approved
+        : userIsSuperAdmin && applied.autoApprove
+          ? true
+          : false,
       updatedAt: new Date(),
     };
 

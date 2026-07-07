@@ -29,6 +29,8 @@ interface Technician {
   _id?: string;
   name: string;
   phone?: string;
+  linkedEmail?: string | null;
+  ispUserId?: string | null;
   createdAt?: string;
 }
 
@@ -44,9 +46,11 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
   const [fetching, setFetching] = useState(true);
   const [newTechnician, setNewTechnician] = useState('');
   const [newTechnicianPhone, setNewTechnicianPhone] = useState('');
+  const [newLinkedEmail, setNewLinkedEmail] = useState('');
   const [editingTechnician, setEditingTechnician] = useState<Technician | null>(null);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editLinkedEmail, setEditLinkedEmail] = useState('');
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; technician: Technician | null }>({
     open: false,
     technician: null,
@@ -95,9 +99,10 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           name: newTechnician.trim(),
           phone: newTechnicianPhone.trim(),
+          linkedEmail: newLinkedEmail.trim() || undefined,
         }),
       });
 
@@ -110,6 +115,7 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
       toast.success('Technician added successfully!');
       setNewTechnician('');
       setNewTechnicianPhone('');
+      setNewLinkedEmail('');
       fetchTechnicians();
       if (onTechnicianAdded) {
         onTechnicianAdded();
@@ -126,6 +132,7 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
     setEditingTechnician(technician);
     setEditName(technician.name);
     setEditPhone(technician.phone || '');
+    setEditLinkedEmail(technician.linkedEmail || '');
   };
 
   const handleUpdateTechnician = async (e: React.FormEvent) => {
@@ -143,9 +150,10 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           name: editName.trim(),
           phone: editPhone.trim() || null,
+          linkedEmail: editLinkedEmail.trim() || null,
         }),
       });
 
@@ -239,6 +247,19 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
                         type="tel"
                         required
                       />
+                      <Input
+                        id="newLinkedEmail"
+                        value={newLinkedEmail}
+                        onChange={(e) => setNewLinkedEmail(e.target.value)}
+                        placeholder="Link Gmail login (optional, e.g., frank@gmail.com)"
+                        className="h-10 text-sm"
+                        disabled={loading}
+                        type="email"
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        Link to the user&apos;s Google login email so inventory & tickets can match issued equipment.
+                        User must have signed in at least once.
+                      </p>
                       <Button
                         type="submit"
                         disabled={loading || !newTechnician.trim() || !newTechnicianPhone.trim()}
@@ -278,6 +299,13 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
                                <span className="text-sm font-medium text-foreground">{technician.name}</span>
                                {technician.phone && (
                                  <span className="text-xs text-muted-foreground">{technician.phone}</span>
+                               )}
+                               {technician.linkedEmail ? (
+                                 <span className="text-xs text-emerald-600 dark:text-emerald-400 truncate">
+                                   Linked: {technician.linkedEmail}
+                                 </span>
+                               ) : (
+                                 <span className="text-xs text-amber-600 dark:text-amber-400">No Gmail linked</span>
                                )}
                              </div>
                              <div className="flex items-center gap-2">
@@ -348,11 +376,26 @@ export function TechnicianManager({ open, onOpenChange, onTechnicianAdded }: Tec
                 id="editPhone"
                 value={editPhone}
                 onChange={(e) => setEditPhone(e.target.value)}
-                placeholder="Phone number (optional, e.g., +254712345678)"
+                placeholder="Phone number (e.g., +254712345678)"
                 className="h-10 text-sm"
                 disabled={loading}
                 type="tel"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editLinkedEmail">Gmail / login email</Label>
+              <Input
+                id="editLinkedEmail"
+                value={editLinkedEmail}
+                onChange={(e) => setEditLinkedEmail(e.target.value)}
+                placeholder="frank@gmail.com"
+                className="h-10 text-sm"
+                disabled={loading}
+                type="email"
+              />
+              <p className="text-xs text-muted-foreground">
+                Must match the Google account they use to sign in. Leave empty to unlink.
+              </p>
             </div>
             <DialogFooter>
               <Button
