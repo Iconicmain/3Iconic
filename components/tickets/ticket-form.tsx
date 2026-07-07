@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
 import {
   Dialog,
   DialogContent,
@@ -21,7 +20,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Plus, Clock } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Loader2, Plus, Clock, ChevronDown, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface TicketFormProps {
@@ -31,12 +32,14 @@ interface TicketFormProps {
 }
 
 export function TicketForm({ open, onOpenChange, onSuccess }: TicketFormProps) {
-  const { data: session } = useSession();
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [stations, setStations] = useState<string[]>([]);
+  const [technicians, setTechnicians] = useState<string[]>([]);
   const [fetchingCategories, setFetchingCategories] = useState(true);
   const [fetchingStations, setFetchingStations] = useState(true);
+  const [fetchingTechnicians, setFetchingTechnicians] = useState(true);
+  const [technicianPopoverOpen, setTechnicianPopoverOpen] = useState(false);
   const [formData, setFormData] = useState({
     clientName: '',
     clientNumber: '',
@@ -81,10 +84,29 @@ export function TicketForm({ open, onOpenChange, onSuccess }: TicketFormProps) {
     }
   };
 
+  const fetchTechnicians = async () => {
+    try {
+      setFetchingTechnicians(true);
+      const response = await fetch('/api/technicians', { cache: 'no-store' });
+      const data = await response.json();
+      if (response.ok) {
+        setTechnicians(data.technicians?.map((tech: { name: string }) => tech.name) || []);
+      } else {
+        toast.error('Failed to load technicians');
+      }
+    } catch (error) {
+      console.error('Error fetching technicians:', error);
+      toast.error('Failed to load technicians');
+    } finally {
+      setFetchingTechnicians(false);
+    }
+  };
+
   useEffect(() => {
     if (open) {
       fetchCategories();
       fetchStations();
+      fetchTechnicians();
     }
   }, [open]);
 
@@ -121,7 +143,6 @@ export function TicketForm({ open, onOpenChange, onSuccess }: TicketFormProps) {
       // Normalize client number before submitting
       const normalizedClientNumber = normalizePhoneNumber(formData.clientNumber);
       
-      const loggedInTechnician = session?.user?.name?.trim();
       const response = await fetch('/api/tickets', {
         method: 'POST',
         cache: 'no-store',
@@ -131,7 +152,6 @@ export function TicketForm({ open, onOpenChange, onSuccess }: TicketFormProps) {
         body: JSON.stringify({
           ...formData,
           clientNumber: normalizedClientNumber,
-          technicians: loggedInTechnician ? [loggedInTechnician] : [],
         }),
       });
 
@@ -168,7 +188,23 @@ export function TicketForm({ open, onOpenChange, onSuccess }: TicketFormProps) {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const loggedInTechnician = session?.user?.name?.trim();
+  const handleTechnicianToggle = (technicianName: string) => {
+    setFormData((prev) => {
+      const currentTechnicians = prev.technicians || [];
+      const isSelected = currentTechnicians.includes(technicianName);
+      const newTechnicians = isSelected
+        ? currentTechnicians.filter((t) => t !== technicianName)
+        : [...currentTechnicians, technicianName];
+      return { ...prev, technicians: newTechnicians };
+    });
+  };
+
+  const handleRemoveTechnician = (technicianName: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      technicians: (prev.technicians || []).filter((t) => t !== technicianName),
+    }));
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -383,12 +419,95 @@ export function TicketForm({ open, onOpenChange, onSuccess }: TicketFormProps) {
             </div>
           </div>
 
-          {loggedInTechnician && (
-            <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 dark:border-indigo-800 dark:bg-indigo-950/20 px-3 py-2">
-              <p className="text-xs text-muted-foreground">Assigned technician</p>
-              <p className="text-sm font-medium text-foreground">{loggedInTechnician}</p>
+          {/* Technician Assignment Section */}
+          <div className="space-y-3 sm:space-y-4">
+            <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div className="w-1 h-4 sm:h-5 bg-indigo-500 rounded-full"></div>
+              <h3 className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300">Assign Technicians (Optional)</h3>
             </div>
-          )}
+            <div className="space-y-2">
+              <Label className="text-xs sm:text-sm font-medium">Technicians</Label>
+              <Popover open={technicianPopoverOpen} onOpenChange={setTechnicianPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-between h-10 sm:h-11 text-sm border-slate-300 focus:border-blue-500"
+                    disabled={loading}
+                  >
+                    <span className="truncate text-left">
+                      {formData.technicians.length === 0
+                        ? 'Select technicians...'
+                        : formData.technicians.length === 1
+                        ? formData.technicians[0]
+                        : `${formData.technicians.length} technicians selected`}
+                    </span>
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-0" align="start">
+                  <div className="max-h-[300px] overflow-y-auto p-2">
+                    {fetchingTechnicians ? (
+                      <div className="py-6 text-center text-sm text-muted-foreground">
+                        Loading technicians...
+                      </div>
+                    ) : technicians.length === 0 ? (
+                      <div className="py-6 text-center text-sm text-muted-foreground">
+                        No technicians available. Add technicians from inventory or user management first.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {technicians.map((tech) => {
+                          const isSelected = formData.technicians.includes(tech);
+                          return (
+                            <div
+                              key={tech}
+                              className="flex items-center space-x-2 p-2 rounded-md hover:bg-accent cursor-pointer"
+                              onClick={() => handleTechnicianToggle(tech)}
+                            >
+                              <Checkbox
+                                id={`tech-${tech}`}
+                                checked={isSelected}
+                                onCheckedChange={() => handleTechnicianToggle(tech)}
+                              />
+                              <label
+                                htmlFor={`tech-${tech}`}
+                                className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                              >
+                                {tech}
+                              </label>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+              {formData.technicians.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {formData.technicians.map((tech) => (
+                    <div
+                      key={tech}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300 text-xs"
+                    >
+                      <span>{tech}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveTechnician(tech)}
+                        className="ml-1 hover:bg-indigo-200 dark:hover:bg-indigo-800 rounded-full p-0.5"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-[10px] sm:text-xs text-muted-foreground">
+                Select one or more technicians to assign. They will be notified via SMS.
+              </p>
+            </div>
+          </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-2 pt-3 sm:pt-4 border-t border-slate-200 dark:border-slate-700 mt-4 sm:mt-6">
             <Button
