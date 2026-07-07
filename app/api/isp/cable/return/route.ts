@@ -6,6 +6,7 @@ import { getIspUserContext, canAccessStation } from '@/lib/isp/permissions';
 import { createAuditLog } from '@/lib/isp/audit';
 import { cableReturnSchema } from '@/lib/isp/validation';
 import { ISP_COLLECTIONS, ISP_DB } from '@/lib/isp/models';
+import { syncInventoryItemMeters } from '@/lib/isp/inventory-roll-stats';
 
 export async function POST(request: NextRequest) {
   try {
@@ -60,15 +61,27 @@ export async function POST(request: NextRequest) {
 
     const roll = await rollsCol.findOne({ id: log.rollId });
     if (roll) {
+      const newRemaining = roll.currentRemainingMeters + metersReturned;
       await rollsCol.updateOne(
         { id: log.rollId },
         {
           $set: {
-            currentRemainingMeters: roll.currentRemainingMeters + metersReturned,
+            currentRemainingMeters: newRemaining,
+            status: newRemaining > 0 && roll.status === 'FINISHED' ? 'ACTIVE' : roll.status,
             updatedAt: new Date(),
           },
         }
       );
+
+      if (metersReturned > 0) {
+        await syncInventoryItemMeters(
+          db,
+          roll,
+          metersReturned,
+          ctx.userId,
+          `Returned ${metersReturned}m unused to roll ${roll.rollCode}`
+        );
+      }
     }
 
     await createAuditLog({

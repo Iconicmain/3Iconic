@@ -18,18 +18,17 @@ import {
 import {
   Package,
   Users,
-  Cable,
   AlertTriangle,
   ArrowDownCircle,
   ArrowUpCircle,
   Search,
   RefreshCw,
-  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { InventorySection } from './components/inventory-section';
+import { StockTab } from './components/command-center/stock-tab';
+import { ActivitySidebar } from './components/command-center/activity-sidebar';
 import { IssueReturnSection } from './components/issue-return-section';
-import { CableSection } from './components/cable-section';
+import { CableReturnsPanel } from './components/command-center/cable-returns-panel';
 import { TransfersTab } from './components/command-center/transfers-tab';
 import { ReportsTab } from './components/command-center/reports-tab';
 import { TechniciansTab } from './components/command-center/technicians-tab';
@@ -53,12 +52,7 @@ interface DashboardSummary {
   returnedToday: number;
   pendingReturns: number;
   cableAvailable: number;
-  cableIssuedToday: number;
-  cableReturnedToday?: number;
-  cableUsedToday?: number;
-  cableWastedToday?: number;
   techniciansActiveToday: number;
-  damagedLostItems: number;
 }
 
 interface InventoryClientProps {
@@ -83,9 +77,9 @@ function StatCard({
 }) {
   return (
     <Card className={warn ? 'border-amber-300 dark:border-amber-800' : ''}>
-      <CardContent className="p-4 flex items-center gap-3">
+      <CardContent className="p-3 flex items-center gap-2.5">
         <div
-          className={`p-2 rounded-lg shrink-0 ${
+          className={`p-1.5 rounded-lg shrink-0 ${
             warn
               ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600'
               : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600'
@@ -94,8 +88,8 @@ function StatCard({
           {icon}
         </div>
         <div className="min-w-0">
-          <p className="text-lg font-bold leading-tight truncate">{loading ? '…' : value}</p>
-          <p className="text-xs text-muted-foreground truncate">{title}</p>
+          <p className="text-base font-bold leading-tight truncate">{loading ? '…' : value}</p>
+          <p className="text-[11px] text-muted-foreground truncate">{title}</p>
         </div>
       </CardContent>
     </Card>
@@ -118,10 +112,10 @@ export function InventoryStationPage({
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
+  const [filterUnit, setFilterUnit] = useState('all');
   const [filterLowStock, setFilterLowStock] = useState(false);
-  const [activeTab, setActiveTab] = useState('inventory');
+  const [activeTab, setActiveTab] = useState('stock');
   const [refreshKey, setRefreshKey] = useState(0);
-  const [allItems, setAllItems] = useState<{ id: string; itemName: string; itemCode?: string; category?: string; quantityAvailable: number; minimumLevel: number; unitType?: string }[]>([]);
 
   const isAllStations = stationId === ALL_STATIONS;
   const currentStation = stations.find((s) => s.id === stationId);
@@ -134,20 +128,15 @@ export function InventoryStationPage({
     const activityUrl = isAllStations
       ? '/api/isp/activity?limit=30'
       : `/api/isp/activity?stationId=${stationId}&limit=30`;
-    const fetches: Promise<Record<string, unknown>>[] = [
+    Promise.all([
       fetch(`/api/isp/dashboard-summary?stationId=${stationId}`, { cache: 'no-store' }).then((r) => r.json()),
       fetch(activityUrl, { cache: 'no-store' }).then((r) => r.json()),
-    ];
-    if (isAllStations) {
-      fetches.push(fetch('/api/isp/inventory?stationId=all', { cache: 'no-store' }).then((r) => r.json()));
-    }
-    Promise.all(fetches)
-      .then(([sum, act, inv]) => {
+    ])
+      .then(([sum, act]) => {
         if (sum.error) throw new Error(sum.error as string);
         setSummary(sum.summary as DashboardSummary);
         setStationComparison((sum.stationComparison as StationComparison[]) || []);
         setActivities((act.activities as ActivityItem[]) || []);
-        if (inv) setAllItems((inv.items as typeof allItems) || []);
       })
       .catch((e) => {
         toast.error(e.message || 'Failed to load data');
@@ -155,11 +144,6 @@ export function InventoryStationPage({
       })
       .finally(() => setLoading(false));
   }, [stationId, isAllStations, refreshKey]);
-
-  const handleSelectStationFromReport = (id: string) => {
-    setStationId(id);
-    setActiveTab('inventory');
-  };
 
   if (stations.length === 0) {
     return (
@@ -183,31 +167,19 @@ export function InventoryStationPage({
     );
   }
 
-  const filteredAllItems = allItems.filter((i) => {
-    if (filterCategory !== 'all' && i.category !== filterCategory) return false;
-    if (filterLowStock && i.quantityAvailable > i.minimumLevel) return false;
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      i.itemName.toLowerCase().includes(q) ||
-      (i.itemCode || '').toLowerCase().includes(q) ||
-      (i.category || '').toLowerCase().includes(q)
-    );
-  });
-
   return (
     <div className="flex">
       <Sidebar />
       <div className="md:ml-72 flex-1 min-h-screen bg-slate-50/50 dark:bg-slate-950/30">
         <Header />
-        <main className="mt-32 sm:mt-36 md:mt-0 px-3 sm:px-4 md:px-6 lg:px-8 pt-5 pb-8 max-w-[1400px]">
-          {/* Page header */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+        <main className="mt-32 sm:mt-36 md:mt-0 px-3 sm:px-4 md:px-6 lg:px-8 pt-5 pb-8">
+          {/* Command bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div>
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Inventory</h1>
               <p className="text-sm text-muted-foreground mt-0.5">
                 {isAllStations
-                  ? 'All stations overview'
+                  ? 'All stations — unified stock view'
                   : `${currentStation?.stationName || 'Station'} operations`}
               </p>
             </div>
@@ -231,176 +203,161 @@ export function InventoryStationPage({
             </div>
           </div>
 
-          {/* Stat cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
-            <StatCard title="Active Items" value={summary?.totalActiveItems ?? '-'} icon={<Package className="h-4 w-4" />} loading={loading} />
-            <StatCard title="Low Stock" value={summary?.lowStockItems ?? '-'} icon={<AlertTriangle className="h-4 w-4" />} loading={loading} warn={!!summary && summary.lowStockItems > 0} />
-            <StatCard title="Issued Today" value={summary?.issuedToday ?? '-'} icon={<ArrowUpCircle className="h-4 w-4" />} loading={loading} />
-            <StatCard title="Pending Returns" value={summary?.pendingReturns ?? '-'} icon={<ArrowDownCircle className="h-4 w-4" />} loading={loading} warn={!!summary && summary.pendingReturns > 0} />
-            <StatCard title="Cable Available" value={summary ? `${summary.cableAvailable}m` : '-'} icon={<Cable className="h-4 w-4" />} loading={loading} />
-            <StatCard title="Techs Today" value={summary?.techniciansActiveToday ?? '-'} icon={<Users className="h-4 w-4" />} loading={loading} />
+          {/* KPI cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-4">
+            <StatCard title="Active Items" value={summary?.totalActiveItems ?? '-'} icon={<Package className="h-3.5 w-3.5" />} loading={loading} />
+            <StatCard title="Low Stock" value={summary?.lowStockItems ?? '-'} icon={<AlertTriangle className="h-3.5 w-3.5" />} loading={loading} warn={!!summary && summary.lowStockItems > 0} />
+            <StatCard title="Issued Today" value={summary?.issuedToday ?? '-'} icon={<ArrowUpCircle className="h-3.5 w-3.5" />} loading={loading} />
+            <StatCard title="Pending Returns" value={summary?.pendingReturns ?? '-'} icon={<ArrowDownCircle className="h-3.5 w-3.5" />} loading={loading} warn={!!summary && summary.pendingReturns > 0} />
+            <StatCard title="Cable (m)" value={summary ? `${summary.cableAvailable.toLocaleString()}m` : '-'} icon={<Package className="h-3.5 w-3.5" />} loading={loading} />
+            <StatCard title="Techs Today" value={summary?.techniciansActiveToday ?? '-'} icon={<Users className="h-3.5 w-3.5" />} loading={loading} />
           </div>
 
-          {/* Tabs */}
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="w-full sm:w-auto flex flex-wrap h-auto gap-1 p-1 mb-4 bg-white dark:bg-slate-900 border">
-              <TabsTrigger value="inventory" className="flex-1 sm:flex-initial px-4">Inventory</TabsTrigger>
-              <TabsTrigger value="issue-return" className="flex-1 sm:flex-initial px-4">
-                Issue & Return
-                {!!summary?.pendingReturns && (
-                  <Badge variant="destructive" className="ml-1.5 h-5 px-1.5 text-[10px]">{summary.pendingReturns}</Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="cable" className="flex-1 sm:flex-initial px-4">Cable</TabsTrigger>
-              <TabsTrigger value="transfers" className="flex-1 sm:flex-initial px-4">Transfers</TabsTrigger>
-              <TabsTrigger value="overview" className="flex-1 sm:flex-initial px-4">Overview</TabsTrigger>
-            </TabsList>
-
-            {/* Inventory */}
-            <TabsContent value="inventory" className="space-y-4">
-              <div className="flex flex-col sm:flex-row gap-2">
-                <div className="relative flex-1 sm:max-w-xs">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search items..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 bg-background"
-                  />
-                </div>
-                <Select value={filterCategory} onValueChange={setFilterCategory}>
-                  <SelectTrigger className="w-full sm:w-[150px] bg-background"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All categories</SelectItem>
-                    <SelectItem value="Equipment">Equipment</SelectItem>
-                    <SelectItem value="Materials">Materials</SelectItem>
-                    <SelectItem value="Drop Cable">Drop Cable</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant={filterLowStock ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setFilterLowStock(!filterLowStock)}
-                  className="h-9"
-                >
-                  Low stock only
-                </Button>
-              </div>
-
-              {isAllStations ? (
-                <Card>
-                  <CardContent className="pt-6">
-                    {loading ? (
-                      <div className="py-10 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" /></div>
-                    ) : filteredAllItems.length === 0 ? (
-                      <p className="text-center text-muted-foreground py-10 text-sm">
-                        No inventory items found. Select a station to add your first item.
-                      </p>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b text-left text-muted-foreground">
-                              <th className="py-2 pr-4 font-medium">Item</th>
-                              <th className="py-2 pr-4 font-medium">Category</th>
-                              <th className="py-2 pr-4 font-medium">Available</th>
-                              <th className="py-2 font-medium">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredAllItems.slice(0, 100).map((item) => (
-                              <tr key={item.id} className="border-b last:border-0">
-                                <td className="py-2.5 pr-4">
-                                  <p className="font-medium">{item.itemName}</p>
-                                  <p className="text-xs text-muted-foreground">{item.itemCode}</p>
-                                </td>
-                                <td className="py-2.5 pr-4">{item.category}</td>
-                                <td className="py-2.5 pr-4">{item.quantityAvailable} {item.unitType}</td>
-                                <td className="py-2.5">
-                                  {item.quantityAvailable <= 0 ? (
-                                    <Badge variant="destructive">Out of Stock</Badge>
-                                  ) : item.quantityAvailable <= item.minimumLevel ? (
-                                    <Badge className="bg-amber-500">Low Stock</Badge>
-                                  ) : (
-                                    <Badge variant="secondary">In Stock</Badge>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        <p className="text-xs text-muted-foreground mt-3">
-                          Viewing all stations. Select a station above to add, issue or adjust items.
-                        </p>
-                      </div>
+          {/* Main layout: tabs + sidebar */}
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-4 items-start">
+            <div className="min-w-0">
+              <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="w-full sm:w-auto flex flex-wrap h-auto gap-1 p-1 mb-3 bg-white dark:bg-slate-900 border">
+                  <TabsTrigger value="stock" className="flex-1 sm:flex-initial px-3 text-sm">Stock</TabsTrigger>
+                  <TabsTrigger value="movement" className="flex-1 sm:flex-initial px-3 text-sm">Movement</TabsTrigger>
+                  <TabsTrigger value="returns" className="flex-1 sm:flex-initial px-3 text-sm">
+                    Returns
+                    {!!summary?.pendingReturns && (
+                      <Badge variant="destructive" className="ml-1.5 h-4 px-1 text-[10px]">{summary.pendingReturns}</Badge>
                     )}
-                  </CardContent>
-                </Card>
-              ) : stationId ? (
-                <InventorySection
-                  stationId={stationId}
-                  stations={stationList}
-                  searchQuery={searchQuery}
-                  filterCategory={filterCategory}
-                  filterLowStock={filterLowStock}
-                  onRefresh={refresh}
-                  refreshKey={refreshKey}
-                />
-              ) : null}
-            </TabsContent>
+                  </TabsTrigger>
+                  <TabsTrigger value="transfers" className="flex-1 sm:flex-initial px-3 text-sm">Transfers</TabsTrigger>
+                  <TabsTrigger value="reports" className="flex-1 sm:flex-initial px-3 text-sm">Reports</TabsTrigger>
+                </TabsList>
 
-            {/* Issue & Return */}
-            <TabsContent value="issue-return">
-              {isAllStations ? (
-                <Card>
-                  <CardContent className="py-12 text-center text-muted-foreground text-sm">
-                    Select a station above to issue items or process returns.
-                  </CardContent>
-                </Card>
-              ) : stationId ? (
-                <IssueReturnSection stationId={stationId} onRefresh={refresh} refreshKey={refreshKey} />
-              ) : null}
-            </TabsContent>
+                <TabsContent value="stock" className="space-y-3 mt-0">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1 sm:max-w-xs">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search items..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-9 bg-background h-9"
+                      />
+                    </div>
+                    <Select value={filterCategory} onValueChange={setFilterCategory}>
+                      <SelectTrigger className="w-full sm:w-[130px] bg-background h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All categories</SelectItem>
+                        <SelectItem value="Equipment">Equipment</SelectItem>
+                        <SelectItem value="Materials">Materials</SelectItem>
+                        <SelectItem value="Drop Cable">Drop Cable</SelectItem>
+                        <SelectItem value="Fiber Cable">Fiber Cable</SelectItem>
+                        <SelectItem value="Accessories">Accessories</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={filterUnit} onValueChange={setFilterUnit}>
+                      <SelectTrigger className="w-full sm:w-[90px] bg-background h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All units</SelectItem>
+                        <SelectItem value="pcs">pcs</SelectItem>
+                        <SelectItem value="m">m</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant={filterLowStock ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setFilterLowStock(!filterLowStock)}
+                      className="h-9"
+                    >
+                      Low stock
+                    </Button>
+                  </div>
 
-            {/* Cable */}
-            <TabsContent value="cable">
-              {isAllStations ? (
-                <Card>
-                  <CardContent className="py-12 text-center text-muted-foreground text-sm">
-                    Select a station above to manage cable rolls.
-                  </CardContent>
-                </Card>
-              ) : stationId ? (
-                <CableSection stationId={stationId} onRefresh={refresh} refreshKey={refreshKey} />
-              ) : null}
-            </TabsContent>
+                  {stationId ? (
+                    <StockTab
+                      stationId={stationId}
+                      stations={stationList}
+                      isAllStations={isAllStations}
+                      searchQuery={searchQuery}
+                      filterCategory={filterCategory}
+                      filterUnit={filterUnit}
+                      filterLowStock={filterLowStock}
+                      refreshKey={refreshKey}
+                      onRefresh={refresh}
+                    />
+                  ) : null}
+                </TabsContent>
 
-            {/* Transfers */}
-            <TabsContent value="transfers">
-              <TransfersTab
-                stations={stationList}
-                stationId={stationId || ALL_STATIONS}
-                refreshKey={refreshKey}
-                onRefresh={refresh}
-              />
-            </TabsContent>
+                <TabsContent value="movement" className="mt-0">
+                  {isAllStations ? (
+                    <Card>
+                      <CardContent className="py-12 text-center text-muted-foreground text-sm">
+                        Select a station to issue equipment or cable.
+                      </CardContent>
+                    </Card>
+                  ) : stationId ? (
+                    <IssueReturnSection
+                      stationId={stationId}
+                      mode="issue"
+                      onRefresh={refresh}
+                      refreshKey={refreshKey}
+                    />
+                  ) : null}
+                </TabsContent>
 
-            {/* Overview */}
-            <TabsContent value="overview" className="space-y-4">
-              <ReportsTab
-                stationComparison={stationComparison}
-                activities={activities}
-                onSelectStation={handleSelectStationFromReport}
-                isAllStations={isAllStations}
-              />
-              <TechniciansTab
-                stationId={stationId || ALL_STATIONS}
-                stations={stations}
-                refreshKey={refreshKey}
-              />
-            </TabsContent>
-          </Tabs>
+                <TabsContent value="returns" className="space-y-4 mt-0">
+                  {isAllStations ? (
+                    <Card>
+                      <CardContent className="py-12 text-center text-muted-foreground text-sm">
+                        Select a station to process returns.
+                      </CardContent>
+                    </Card>
+                  ) : stationId ? (
+                    <>
+                      <IssueReturnSection
+                        stationId={stationId}
+                        mode="return"
+                        onRefresh={refresh}
+                        refreshKey={refreshKey}
+                      />
+                      <CableReturnsPanel
+                        stationId={stationId}
+                        refreshKey={refreshKey}
+                        onRefresh={refresh}
+                      />
+                    </>
+                  ) : null}
+                </TabsContent>
+
+                <TabsContent value="transfers" className="mt-0">
+                  <TransfersTab
+                    stations={stationList}
+                    stationId={stationId || ALL_STATIONS}
+                    refreshKey={refreshKey}
+                    onRefresh={refresh}
+                  />
+                </TabsContent>
+
+                <TabsContent value="reports" className="space-y-4 mt-0">
+                  <ReportsTab
+                    stationComparison={stationComparison}
+                    activities={activities}
+                    onSelectStation={(id) => {
+                      setStationId(id);
+                      setActiveTab('stock');
+                    }}
+                    isAllStations={isAllStations}
+                  />
+                  <TechniciansTab
+                    stationId={stationId || ALL_STATIONS}
+                    stations={stations}
+                    refreshKey={refreshKey}
+                  />
+                </TabsContent>
+              </Tabs>
+            </div>
+
+            <aside className="hidden xl:block">
+              <ActivitySidebar activities={activities} summary={summary} loading={loading} />
+            </aside>
+          </div>
         </main>
       </div>
     </div>

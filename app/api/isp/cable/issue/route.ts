@@ -7,6 +7,7 @@ import { getIspUserContext, canAccessStation } from '@/lib/isp/permissions';
 import { createAuditLog } from '@/lib/isp/audit';
 import { cableIssueSchema } from '@/lib/isp/validation';
 import { ISP_COLLECTIONS, ISP_DB } from '@/lib/isp/models';
+import { syncInventoryItemMeters } from '@/lib/isp/inventory-roll-stats';
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,6 +36,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied to this station' }, { status: 403 });
     }
 
+    if (roll.status === 'FINISHED' || roll.status === 'CLOSED' || roll.status === 'DAMAGED') {
+      return NextResponse.json({ error: 'This roll is not available for issuing' }, { status: 400 });
+    }
+
+    if (roll.currentRemainingMeters <= 0) {
+      return NextResponse.json({ error: 'This roll has no remaining cable' }, { status: 400 });
+    }
+
     if (roll.currentRemainingMeters < parsed.data.metersIssued) {
       return NextResponse.json({
         error: `Insufficient cable. Available: ${roll.currentRemainingMeters}m`,
@@ -43,10 +52,19 @@ export async function POST(request: NextRequest) {
 
     const openingMeters = roll.currentRemainingMeters;
     const closingMeters = openingMeters - parsed.data.metersIssued;
+    const newStatus = closingMeters <= 0 ? 'FINISHED' : roll.status;
 
     await rollsCol.updateOne(
       { id: parsed.data.rollId },
-      { $set: { currentRemainingMeters: closingMeters, updatedAt: new Date() } }
+      { $set: { currentRemainingMeters: closingMeters, status: newStatus, updatedAt: new Date() } }
+    );
+
+    await syncInventoryItemMeters(
+      db,
+      roll,
+      -parsed.data.metersIssued,
+      ctx.userId,
+      `Issued ${parsed.data.metersIssued}m from roll ${roll.rollCode}`
     );
 
     const log = {
@@ -58,7 +76,7 @@ export async function POST(request: NextRequest) {
       openingMeters,
       metersIssued: parsed.data.metersIssued,
       metersReturned: 0,
-      metersUsed: parsed.data.metersIssued,
+      metersUsed: 0,
       closingMeters,
       approvedBy: ctx.userId,
       notes: parsed.data.notes || null,

@@ -6,6 +6,7 @@ import { generateUUID } from '@/lib/uuid';
 import { getIspUserContext, canAccessStation } from '@/lib/isp/permissions';
 import { inventoryItemSchema } from '@/lib/isp/validation';
 import { ISP_COLLECTIONS, ISP_DB, CABLE_CATEGORY } from '@/lib/isp/models';
+import { enrichItemsWithRollStats } from '@/lib/isp/inventory-roll-stats';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const stationIdParam = searchParams.get('stationId');
     const category = searchParams.get('category');
+    const unitFilter = searchParams.get('unitType');
     const lowStockOnly = searchParams.get('lowStock') === 'true';
     const cableOnly = searchParams.get('cableOnly') === 'true';
 
@@ -37,7 +39,13 @@ export async function GET(request: NextRequest) {
       let query: Record<string, unknown> = {};
       if (category) query.category = category;
       if (cableOnly) query.isCable = true;
-      const items = await itemsCol.find(query).sort({ category: 1, itemName: 1 }).toArray();
+      let items = await itemsCol.find(query).sort({ category: 1, itemName: 1 }).toArray();
+      if (unitFilter === 'pcs') {
+        items = items.filter((i: { unitType?: string; isCable?: boolean }) => !i.isCable && i.unitType !== 'meters' && i.unitType !== 'm');
+      } else if (unitFilter === 'm') {
+        items = items.filter((i: { unitType?: string; isCable?: boolean }) => i.isCable || i.unitType === 'meters' || i.unitType === 'm');
+      }
+      items = await enrichItemsWithRollStats(db, items as Record<string, unknown>[]);
       if (lowStockOnly) {
         const filtered = items.filter(
           (i: { quantityAvailable: number; minimumLevel: number }) =>
@@ -64,12 +72,24 @@ export async function GET(request: NextRequest) {
     if (category) query.category = category;
     if (cableOnly) query.isCable = true;
     if (lowStockOnly) {
-      const items = await itemsCol.find({ $or: [{ stationId }, { stationIds: stationId }], ...(category ? { category } : {}), ...(cableOnly ? { isCable: true } : {}) }).toArray();
-      const filtered = items.filter((i: { quantityAvailable: number; minimumLevel: number }) => i.quantityAvailable <= i.minimumLevel);
-      return NextResponse.json({ items: filtered }, { headers: NO_CACHE_HEADERS });
+      let items = await itemsCol.find({ $or: [{ stationId }, { stationIds: stationId }], ...(category ? { category } : {}), ...(cableOnly ? { isCable: true } : {}) }).toArray();
+      items = items.filter((i: { quantityAvailable: number; minimumLevel: number }) => i.quantityAvailable <= i.minimumLevel);
+      if (unitFilter === 'pcs') {
+        items = items.filter((i: { unitType?: string; isCable?: boolean }) => !i.isCable && i.unitType !== 'meters' && i.unitType !== 'm');
+      } else if (unitFilter === 'm') {
+        items = items.filter((i: { unitType?: string; isCable?: boolean }) => i.isCable || i.unitType === 'meters' || i.unitType === 'm');
+      }
+      items = await enrichItemsWithRollStats(db, items as Record<string, unknown>[], stationId);
+      return NextResponse.json({ items }, { headers: NO_CACHE_HEADERS });
     }
 
-    const items = await itemsCol.find({ $or: [{ stationId }, { stationIds: stationId }], ...(category ? { category } : {}), ...(cableOnly ? { isCable: true } : {}) }).sort({ category: 1, itemName: 1 }).toArray();
+    let items = await itemsCol.find({ $or: [{ stationId }, { stationIds: stationId }], ...(category ? { category } : {}), ...(cableOnly ? { isCable: true } : {}) }).sort({ category: 1, itemName: 1 }).toArray();
+    if (unitFilter === 'pcs') {
+      items = items.filter((i: { unitType?: string; isCable?: boolean }) => !i.isCable && i.unitType !== 'meters' && i.unitType !== 'm');
+    } else if (unitFilter === 'm') {
+      items = items.filter((i: { unitType?: string; isCable?: boolean }) => i.isCable || i.unitType === 'meters' || i.unitType === 'm');
+    }
+    items = await enrichItemsWithRollStats(db, items as Record<string, unknown>[], stationId);
     return NextResponse.json({ items }, { headers: NO_CACHE_HEADERS });
   } catch (error) {
     console.error('[ISP Inventory GET]', error);

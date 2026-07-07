@@ -93,6 +93,7 @@ interface IssueReturnSectionProps {
   onRefresh: () => void;
   refreshKey?: number;
   hideHeader?: boolean;
+  mode?: 'issue' | 'return' | 'all';
   openDialog?: 'issue' | 'return' | null;
   onOpenDialogHandled?: () => void;
 }
@@ -102,6 +103,7 @@ export function IssueReturnSection({
   onRefresh,
   refreshKey = 0,
   hideHeader = false,
+  mode = 'all',
   openDialog = null,
   onOpenDialogHandled,
 }: IssueReturnSectionProps) {
@@ -257,14 +259,25 @@ export function IssueReturnSection({
       .catch((e) => toast.error(e.message));
   };
 
+  const showIssue = mode === 'all' || mode === 'issue';
+  const showReturn = mode === 'all' || mode === 'return';
+
   return (
     <>
       <Card>
-        {!hideHeader && (
+        {!hideHeader && showReturn && mode === 'return' && (
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            <ArrowDownCircle className="h-5 w-5 shrink-0" />
+            Equipment Returns
+          </CardTitle>
+        </CardHeader>
+        )}
+        {!hideHeader && showIssue && (
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2">
           <CardTitle className="text-base sm:text-lg flex items-center gap-2">
             <ArrowUpCircle className="h-5 w-5 shrink-0" />
-            Daily Issue / Return
+            {mode === 'issue' ? 'Issue Equipment' : 'Daily Issue / Return'}
           </CardTitle>
           <Button size="sm" onClick={() => setIssueOpen(true)} className="w-full sm:w-auto h-9">
             <Plus className="h-4 w-4 mr-1" />
@@ -277,6 +290,13 @@ export function IssueReturnSection({
             <div className="py-6 text-center text-muted-foreground text-sm">Loading...</div>
           ) : (
             <div className="space-y-4">
+              {showIssue && mode === 'issue' && (
+                <p className="text-sm text-muted-foreground">
+                  Issue piece-based equipment here. For cable, open a cable item in the <strong>Stock</strong> tab and issue from a specific roll.
+                </p>
+              )}
+              {showReturn && (
+              <>
               <div className="flex flex-wrap gap-2">
                 <Button
                   variant="outline"
@@ -434,12 +454,14 @@ export function IssueReturnSection({
                   </div>
                 </div>
               )}
+              </>
+              )}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Issue dialog */}
+      {showIssue && (
       <Dialog open={issueOpen} onOpenChange={setIssueOpen}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -528,8 +550,9 @@ export function IssueReturnSection({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
 
-      {/* Return dialog */}
+      {showReturn && (
       <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -580,6 +603,7 @@ export function IssueReturnSection({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
     </>
   );
 }
