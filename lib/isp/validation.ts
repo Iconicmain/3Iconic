@@ -41,6 +41,7 @@ export const issueItemSchema = z.object({
       itemId: z.string().min(1),
       quantityTaken: z.number().min(0.01, 'Quantity must be positive'),
       unitType: z.string().min(1),
+      routerUnitIds: z.array(z.string().min(1)).optional(),
     })
   ).min(1, 'At least one item is required'),
   notes: z.string().optional(),
@@ -49,6 +50,7 @@ export const issueItemSchema = z.object({
 export const returnItemSchema = z.object({
   issueItemId: z.string().min(1),
   quantityReturned: z.number().min(0, 'Quantity cannot be negative'),
+  routerUnitIds: z.array(z.string().min(1)).optional(),
   returnCondition: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -72,6 +74,7 @@ export const cableIssueSchema = z.object({
 export const cableReturnSchema = z.object({
   usageLogId: z.string().min(1),
   metersReturned: z.number().min(0),
+  metersUsed: z.number().min(0).optional(),
   wasteMeters: z.number().min(0).optional(),
   notes: z.string().optional(),
 });

@@ -71,6 +71,8 @@ export async function POST(request: NextRequest) {
       id: generateUUID(),
       stationId: roll.stationId,
       rollId: roll.id,
+      rollCode: roll.rollCode,
+      cableType: roll.cableType,
       technicianId: parsed.data.technicianId,
       jobReference: parsed.data.jobReference || null,
       openingMeters,

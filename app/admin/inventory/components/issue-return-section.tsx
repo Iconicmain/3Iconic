@@ -29,7 +29,23 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ArrowUpCircle, ArrowDownCircle, Plus } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+
+interface SerializedUnit {
+  id: string;
+  serialNumber?: string | null;
+  macAddress?: string | null;
+  status?: string;
+  label?: string;
+}
+
+interface RouterUnitOption {
+  id: string;
+  serialNumber?: string | null;
+  macAddress?: string | null;
+  status: string;
+}
 
 interface Technician {
   id: string;
@@ -53,6 +69,8 @@ interface IssueItem {
   quantityReturned: number;
   quantityUsed: number;
   unitType: string;
+  routerUnitIds?: string[];
+  serializedUnits?: SerializedUnit[];
   timeOut?: string | null;
   returnTime?: string | null;
   returnCondition?: string | null;
@@ -79,6 +97,15 @@ function fmtDateTime(value?: string | null): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function unitsStillOut(item: IssueItem): SerializedUnit[] {
+  if (!item.serializedUnits?.length) return [];
+  return item.serializedUnits.filter((u) => u.status === 'issued');
+}
+
+function formatUnitList(units: SerializedUnit[]): string {
+  return units.map((u) => u.label || u.serialNumber || u.macAddress || u.id).join(', ');
 }
 
 function daysOut(from?: string | null): number {
@@ -116,11 +143,31 @@ export function IssueReturnSection({
   const [selectedIssueItem, setSelectedIssueItem] = useState<{ issue: Issue; item: IssueItem } | null>(null);
   const [returnQty, setReturnQty] = useState('');
   const [returnCondition, setReturnCondition] = useState('');
+  const [returnUnitIds, setReturnUnitIds] = useState<string[]>([]);
+  const [availableUnits, setAvailableUnits] = useState<Record<number, RouterUnitOption[]>>({});
   const [issueForm, setIssueForm] = useState({
     technicianId: '',
     jobReference: '',
-    items: [] as { itemId: string; quantityTaken: number; unitType: string }[],
+    items: [] as { itemId: string; quantityTaken: number; unitType: string; routerUnitIds: string[] }[],
   });
+
+  const fetchAvailableUnits = (idx: number, itemId: string) => {
+    const item = items.find((i) => i.id === itemId);
+    if (!item) {
+      setAvailableUnits((p) => ({ ...p, [idx]: [] }));
+      return;
+    }
+    fetch(
+      `/api/isp/routers?stationId=${stationId}&itemName=${encodeURIComponent(item.itemName)}&status=available`,
+      { cache: 'no-store' }
+    )
+      .then((r) => r.json())
+      .then((d) => setAvailableUnits((p) => ({ ...p, [idx]: d.routers || [] })))
+      .catch(() => setAvailableUnits((p) => ({ ...p, [idx]: [] })));
+  };
+
+  const unitLabel = (u: RouterUnitOption | SerializedUnit) =>
+    u.serialNumber || u.macAddress || u.id;
 
   const loadData = () => {
     setLoading(true);
@@ -165,11 +212,24 @@ export function IssueReturnSection({
     if (issueForm.items.length >= 10) return;
     setIssueForm((p) => ({
       ...p,
-      items: [...p.items, { itemId: '', quantityTaken: 1, unitType: 'pcs' }],
+      items: [...p.items, { itemId: '', quantityTaken: 1, unitType: 'pcs', routerUnitIds: [] }],
     }));
   };
 
-  const updateIssueItem = (idx: number, field: string, value: string | number) => {
+  const toggleIssueUnit = (idx: number, unitId: string, checked: boolean) => {
+    setIssueForm((p) => ({
+      ...p,
+      items: p.items.map((it, i) => {
+        if (i !== idx) return it;
+        const ids = checked
+          ? [...it.routerUnitIds, unitId]
+          : it.routerUnitIds.filter((id) => id !== unitId);
+        return { ...it, routerUnitIds: ids, quantityTaken: ids.length || it.quantityTaken };
+      }),
+    }));
+  };
+
+  const updateIssueItem = (idx: number, field: string, value: string | number | string[]) => {
     setIssueForm((p) => ({
       ...p,
       items: p.items.map((it, i) =>
@@ -190,11 +250,16 @@ export function IssueReturnSection({
       toast.error('Select technician and add at least one item');
       return;
     }
-    const validItems = issueForm.items.filter(
-      (it) => it.itemId && it.quantityTaken > 0
-    );
+    const validItems = issueForm.items
+      .map((it, idx) => ({ ...it, idx }))
+      .filter(({ itemId, quantityTaken, routerUnitIds, idx }) => {
+        if (!itemId) return false;
+        const units = availableUnits[idx] || [];
+        if (units.length > 0) return routerUnitIds.length > 0;
+        return quantityTaken > 0;
+      });
     if (validItems.length === 0) {
-      toast.error('Add valid items');
+      toast.error('Add valid items or select specific serial/MAC units');
       return;
     }
     fetch('/api/isp/technician-issues', {
@@ -205,11 +270,15 @@ export function IssueReturnSection({
         stationId,
         technicianId: issueForm.technicianId,
         jobReference: issueForm.jobReference || undefined,
-        items: validItems.map((it) => ({
-          itemId: it.itemId,
-          quantityTaken: it.quantityTaken,
-          unitType: items.find((i) => i.id === it.itemId)?.unitType || 'pcs',
-        })),
+        items: validItems.map((it) => {
+          const units = availableUnits[it.idx] || [];
+          return {
+            itemId: it.itemId,
+            quantityTaken: units.length > 0 ? it.routerUnitIds.length : it.quantityTaken,
+            unitType: items.find((i) => i.id === it.itemId)?.unitType || 'pcs',
+            routerUnitIds: it.routerUnitIds.length > 0 ? it.routerUnitIds : undefined,
+          };
+        }),
       }),
     })
       .then((r) => r.json())
@@ -218,6 +287,7 @@ export function IssueReturnSection({
         toast.success('Items issued');
         setIssueOpen(false);
         setIssueForm({ technicianId: '', jobReference: '', items: [] });
+        setAvailableUnits({});
         loadData();
         onRefresh();
       })
@@ -226,6 +296,39 @@ export function IssueReturnSection({
 
   const handleReturn = () => {
     if (!selectedIssueItem) return;
+    const hasSerialized = (selectedIssueItem.item.serializedUnits?.length || 0) > 0;
+
+    if (hasSerialized) {
+      if (returnUnitIds.length === 0) {
+        toast.error('Select which units are being returned');
+        return;
+      }
+      fetch('/api/isp/technician-issues/return', {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          issueItemId: selectedIssueItem.item.id,
+          quantityReturned: returnUnitIds.length,
+          routerUnitIds: returnUnitIds,
+          returnCondition: returnCondition || undefined,
+        }),
+      })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.error) throw new Error(d.error);
+          toast.success(`Returned ${returnUnitIds.length} unit(s)`);
+          setReturnOpen(false);
+          setSelectedIssueItem(null);
+          setReturnUnitIds([]);
+          setReturnCondition('');
+          loadData();
+          onRefresh();
+        })
+        .catch((e) => toast.error(e.message));
+      return;
+    }
+
     const qty = parseFloat(returnQty);
     if (isNaN(qty) || qty < 0) {
       toast.error('Enter valid quantity');
@@ -292,7 +395,7 @@ export function IssueReturnSection({
             <div className="space-y-4">
               {showIssue && mode === 'issue' && (
                 <p className="text-sm text-muted-foreground">
-                  Issue piece-based equipment here. For cable, open a cable item in the <strong>Stock</strong> tab and issue from a specific roll.
+                  Select exact serial/MAC for routers and ONUs. Use the cable panel below to issue from a specific roll.
                 </p>
               )}
               {showReturn && (
@@ -326,6 +429,11 @@ export function IssueReturnSection({
                           <div className="text-xs text-muted-foreground space-y-0.5">
                             <p>Picked up: {fmtDateTime(item.timeOut || issue.issueDate)}</p>
                             <p>Out: {item.quantityTaken - item.quantityReturned} {item.unitType} · {days} day{days === 1 ? '' : 's'} out</p>
+                            {unitsStillOut(item).length > 0 && (
+                              <p className="font-mono text-[11px] break-all">
+                                Units: {formatUnitList(unitsStillOut(item))}
+                              </p>
+                            )}
                           </div>
                           <Button
                             variant="outline"
@@ -334,6 +442,7 @@ export function IssueReturnSection({
                             onClick={() => {
                               setSelectedIssueItem({ issue, item });
                               setReturnQty(String(item.quantityTaken - item.quantityReturned));
+                              setReturnUnitIds([]);
                               setReturnOpen(true);
                             }}
                           >
@@ -362,7 +471,14 @@ export function IssueReturnSection({
                           return (
                             <TableRow key={item.id}>
                               <TableCell className="font-medium">{issue.technicianName || issue.technicianId}</TableCell>
-                              <TableCell>{item.itemName || item.itemId}</TableCell>
+                              <TableCell>
+                                <p>{item.itemName || item.itemId}</p>
+                                {unitsStillOut(item).length > 0 && (
+                                  <p className="text-xs font-mono text-muted-foreground mt-0.5 max-w-[200px] truncate" title={formatUnitList(unitsStillOut(item))}>
+                                    {formatUnitList(unitsStillOut(item))}
+                                  </p>
+                                )}
+                              </TableCell>
                               <TableCell>{item.quantityTaken - item.quantityReturned} {item.unitType}</TableCell>
                               <TableCell className="text-sm whitespace-nowrap">{fmtDateTime(item.timeOut || issue.issueDate)}</TableCell>
                               <TableCell>{days}</TableCell>
@@ -378,6 +494,7 @@ export function IssueReturnSection({
                                   onClick={() => {
                                     setSelectedIssueItem({ issue, item });
                                     setReturnQty(String(item.quantityTaken - item.quantityReturned));
+                                    setReturnUnitIds([]);
                                     setReturnOpen(true);
                                   }}
                                 >
@@ -501,46 +618,85 @@ export function IssueReturnSection({
                   + Add item
                 </Button>
               </div>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {issueForm.items.map((it, idx) => (
-                  <div key={idx} className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                    <Select
-                      value={it.itemId}
-                      onValueChange={(v) => {
-                        const item = items.find((i) => i.id === v);
-                        updateIssueItem(idx, 'itemId', v);
-                        if (item) updateIssueItem(idx, 'unitType', item.unitType);
-                      }}
-                    >
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Select item" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {items.map((i) => (
-                          <SelectItem key={i.id} value={i.id}>
-                            {i.itemName} ({i.quantityAvailable} avail)
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      type="number"
-                      min="1"
-                      className="w-full sm:w-20"
-                      value={it.quantityTaken}
-                      onChange={(e) =>
-                        updateIssueItem(idx, 'quantityTaken', parseInt(e.target.value) || 0)
-                      }
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => removeIssueItem(idx)}
-                    >
-                      ×
-                    </Button>
-                  </div>
-                ))}
+              <div className="space-y-3 max-h-[50vh] overflow-y-auto">
+                {issueForm.items.map((it, idx) => {
+                  const units = availableUnits[idx] || [];
+                  const hasUnits = units.length > 0;
+                  return (
+                    <div key={idx} className="rounded-lg border p-3 space-y-2">
+                      <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                        <Select
+                          value={it.itemId}
+                          onValueChange={(v) => {
+                            const item = items.find((i) => i.id === v);
+                            setIssueForm((p) => ({
+                              ...p,
+                              items: p.items.map((row, i) =>
+                                i === idx
+                                  ? { ...row, itemId: v, routerUnitIds: [], unitType: item?.unitType || row.unitType }
+                                  : row
+                              ),
+                            }));
+                            fetchAvailableUnits(idx, v);
+                          }}
+                        >
+                          <SelectTrigger className="flex-1">
+                            <SelectValue placeholder="Select item" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {items.map((i) => (
+                              <SelectItem key={i.id} value={i.id}>
+                                {i.itemName} ({i.quantityAvailable} avail)
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {!hasUnits && (
+                          <Input
+                            type="number"
+                            min="1"
+                            className="w-full sm:w-20"
+                            value={it.quantityTaken}
+                            onChange={(e) =>
+                              updateIssueItem(idx, 'quantityTaken', parseInt(e.target.value) || 0)
+                            }
+                          />
+                        )}
+                        {hasUnits && (
+                          <Badge variant="secondary" className="shrink-0 self-center">
+                            {it.routerUnitIds.length} selected
+                          </Badge>
+                        )}
+                        <Button variant="ghost" size="icon-sm" onClick={() => removeIssueItem(idx)}>
+                          ×
+                        </Button>
+                      </div>
+                      {hasUnits && (
+                        <div className="space-y-1.5 pl-1">
+                          <p className="text-xs font-medium text-muted-foreground">
+                            Select exact units (serial / MAC):
+                          </p>
+                          <div className="grid gap-1.5 max-h-32 overflow-y-auto">
+                            {units.map((u) => (
+                              <label
+                                key={u.id}
+                                className="flex items-center gap-2 text-sm cursor-pointer rounded px-1 py-0.5 hover:bg-muted/50"
+                              >
+                                <Checkbox
+                                  checked={it.routerUnitIds.includes(u.id)}
+                                  onCheckedChange={(c) => toggleIssueUnit(idx, u.id, !!c)}
+                                />
+                                <span className="font-mono text-xs">
+                                  {u.serialNumber ? `SN: ${u.serialNumber}` : `MAC: ${u.macAddress}`}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -571,6 +727,27 @@ export function IssueReturnSection({
                   {selectedIssueItem.issue.technicianName || selectedIssueItem.issue.technicianId}. Drop-off time is recorded automatically when you save.
                 </p>
               </div>
+              {unitsStillOut(selectedIssueItem.item).length > 0 ? (
+                <div className="space-y-2">
+                  <Label>Select units being returned (serial / MAC)</Label>
+                  <div className="space-y-2 max-h-40 overflow-y-auto rounded-lg border p-2">
+                    {unitsStillOut(selectedIssueItem.item).map((u) => (
+                      <label key={u.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <Checkbox
+                          checked={returnUnitIds.includes(u.id)}
+                          onCheckedChange={(c) =>
+                            setReturnUnitIds((prev) =>
+                              c ? [...prev, u.id] : prev.filter((id) => id !== u.id)
+                            )
+                          }
+                        />
+                        <span className="font-mono text-xs">{unitLabel(u)}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">{returnUnitIds.length} unit(s) selected</p>
+                </div>
+              ) : (
               <div>
                 <Label>Quantity Returned</Label>
                 <Input
@@ -581,6 +758,7 @@ export function IssueReturnSection({
                   onChange={(e) => setReturnQty(e.target.value)}
                 />
               </div>
+              )}
               <div>
                 <Label>Return condition</Label>
                 <Select value={returnCondition} onValueChange={setReturnCondition}>

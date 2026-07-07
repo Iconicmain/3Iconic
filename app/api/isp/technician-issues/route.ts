@@ -10,6 +10,42 @@ import { issueItemSchema } from '@/lib/isp/validation';
 import { ISP_COLLECTIONS, ISP_DB } from '@/lib/isp/models';
 import type { Db } from 'mongodb';
 
+async function enrichIssueItems(
+  db: Db,
+  issueItems: { itemId: string; routerUnitIds?: string[]; [key: string]: unknown }[],
+  itemsCol: ReturnType<Db['collection']>
+) {
+  const routersCol = db.collection(ISP_COLLECTIONS.routerUnits);
+  const allUnitIds = issueItems.flatMap((ii) => ii.routerUnitIds || []);
+  const units =
+    allUnitIds.length > 0
+      ? await routersCol.find({ id: { $in: allUnitIds } }).toArray()
+      : [];
+  const unitMap = new Map(units.map((u: { id: string }) => [u.id, u]));
+
+  return Promise.all(
+    issueItems.map(async (ii) => {
+      const invItem = await itemsCol.findOne({ id: ii.itemId });
+      const serializedUnits = (ii.routerUnitIds || [])
+        .map((id) => unitMap.get(id))
+        .filter(Boolean)
+        .map((u: { id: string; serialNumber?: string; macAddress?: string; status?: string }) => ({
+          id: u.id,
+          serialNumber: u.serialNumber || null,
+          macAddress: u.macAddress || null,
+          status: u.status,
+          label: u.serialNumber || u.macAddress || u.id,
+        }));
+      return {
+        ...ii,
+        itemName: invItem?.itemName,
+        itemCode: invItem?.itemCode,
+        serializedUnits,
+      };
+    })
+  );
+}
+
 async function attachTechnicianNames<T extends { technicianId?: unknown }>(
   db: Db,
   issues: T[]
@@ -68,12 +104,7 @@ export async function GET(request: NextRequest) {
       const issuesWithItems = await Promise.all(
         issues.map(async (issue: { id: string; [key: string]: unknown }) => {
           const issueItems = await issueItemsCol.find({ technicianIssueId: issue.id }).toArray();
-          const itemsWithDetails = await Promise.all(
-            issueItems.map(async (ii: { itemId: string; [key: string]: unknown }) => {
-              const invItem = await itemsCol.findOne({ id: ii.itemId });
-              return { ...ii, itemName: invItem?.itemName, itemCode: invItem?.itemCode };
-            })
-          );
+          const itemsWithDetails = await enrichIssueItems(db, issueItems as { itemId: string; routerUnitIds?: string[] }[], itemsCol);
           return { ...issue, items: itemsWithDetails };
         })
       );
@@ -105,12 +136,7 @@ export async function GET(request: NextRequest) {
     const issuesWithItems = await Promise.all(
       issues.map(async (issue: { id: string; [key: string]: unknown }) => {
         const items = await issueItemsCol.find({ technicianIssueId: issue.id }).toArray();
-        const itemsWithDetails = await Promise.all(
-          items.map(async (ii: { itemId: string; [key: string]: unknown }) => {
-            const invItem = await itemsCol.findOne({ id: ii.itemId });
-            return { ...ii, itemName: invItem?.itemName, itemCode: invItem?.itemCode };
-          })
-        );
+        const itemsWithDetails = await enrichIssueItems(db, items as { itemId: string; routerUnitIds?: string[] }[], itemsCol);
         return { ...issue, items: itemsWithDetails };
       })
     );
@@ -152,13 +178,32 @@ export async function POST(request: NextRequest) {
     const issuesCol = db.collection(ISP_COLLECTIONS.technicianIssues);
     const issueItemsCol = db.collection(ISP_COLLECTIONS.technicianIssueItems);
     const txCol = db.collection(ISP_COLLECTIONS.inventoryTransactions);
+    const routersCol = db.collection(ISP_COLLECTIONS.routerUnits);
 
     for (const it of parsed.data.items) {
       const item = await itemsCol.findOne({ id: it.itemId });
       if (!item) {
         return NextResponse.json({ error: `Item ${it.itemId} not found` }, { status: 404 });
       }
-      if (item.quantityAvailable < it.quantityTaken) {
+      if (it.routerUnitIds?.length) {
+        if (it.routerUnitIds.length !== it.quantityTaken) {
+          return NextResponse.json({
+            error: `Quantity (${it.quantityTaken}) must match selected units (${it.routerUnitIds.length}) for ${item.itemName}`,
+          }, { status: 400 });
+        }
+        const units = await routersCol.find({ id: { $in: it.routerUnitIds } }).toArray();
+        if (units.length !== it.routerUnitIds.length) {
+          return NextResponse.json({ error: 'One or more selected units not found' }, { status: 400 });
+        }
+        for (const u of units as { id: string; itemName: string; status: string; stationIds?: string[] }[]) {
+          if (u.status !== 'available') {
+            return NextResponse.json({ error: `Unit ${u.id} is not available` }, { status: 400 });
+          }
+          if (u.itemName !== item.itemName) {
+            return NextResponse.json({ error: `Unit does not match item ${item.itemName}` }, { status: 400 });
+          }
+        }
+      } else if (item.quantityAvailable < it.quantityTaken) {
         return NextResponse.json({
           error: `Insufficient stock for ${item.itemName}. Available: ${item.quantityAvailable}`,
         }, { status: 400 });
@@ -198,11 +243,27 @@ export async function POST(request: NextRequest) {
         quantityReturned: 0,
         quantityUsed: it.quantityTaken,
         unitType: it.unitType,
+        routerUnitIds: it.routerUnitIds || [],
         timeOut: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
       };
       await issueItemsCol.insertOne(issueItem);
+
+      if (it.routerUnitIds?.length) {
+        await routersCol.updateMany(
+          { id: { $in: it.routerUnitIds } },
+          {
+            $set: {
+              status: 'issued',
+              technicianId: parsed.data.technicianId,
+              jobReference: parsed.data.jobReference || null,
+              issueItemId: issueItem.id,
+              updatedAt: new Date(),
+            },
+          }
+        );
+      }
 
       await txCol.insertOne({
         id: generateUUID(),
@@ -232,12 +293,7 @@ export async function POST(request: NextRequest) {
 
     const fullIssue = await issuesCol.findOne({ id: issue.id });
     const items = await issueItemsCol.find({ technicianIssueId: issue.id }).toArray();
-    const itemsWithDetails = await Promise.all(
-      items.map(async (ii: { itemId: string }) => {
-        const invItem = await itemsCol.findOne({ id: ii.itemId });
-        return { ...ii, itemName: invItem?.itemName, itemCode: invItem?.itemCode };
-      })
-    );
+    const itemsWithDetails = await enrichIssueItems(db, items as { itemId: string; routerUnitIds?: string[] }[], itemsCol);
 
     return NextResponse.json({ issue: { ...fullIssue, items: itemsWithDetails } }, { status: 201 });
   } catch (error) {

@@ -37,13 +37,26 @@ export async function POST(request: NextRequest) {
 
     const metersReturned = parsed.data.metersReturned;
     const wasteMeters = parsed.data.wasteMeters ?? 0;
+    const metersUsedInput = parsed.data.metersUsed ?? 0;
+
+    const alreadySettled = (log.metersReturned || 0) + (log.metersUsed || 0) + (log.wasteMeters || 0);
+    const outstanding = log.metersIssued - alreadySettled;
+
+    if (metersReturned + metersUsedInput + wasteMeters <= 0) {
+      return NextResponse.json({ error: 'Enter used, returned, or damaged meters' }, { status: 400 });
+    }
+
+    if (metersReturned + metersUsedInput + wasteMeters > outstanding) {
+      return NextResponse.json({ error: `Total cannot exceed ${outstanding}m outstanding on this roll issue` }, { status: 400 });
+    }
 
     if (metersReturned > log.metersIssued) {
       return NextResponse.json({ error: 'Cannot return more than was issued' }, { status: 400 });
     }
 
     const newMetersReturned = log.metersReturned + metersReturned;
-    const newMetersUsed = log.metersIssued - newMetersReturned - wasteMeters;
+    const newWasteMeters = (log.wasteMeters || 0) + wasteMeters;
+    const newMetersUsed = log.metersIssued - newMetersReturned - newWasteMeters;
 
     await logsCol.updateOne(
       { id: parsed.data.usageLogId },
@@ -51,7 +64,7 @@ export async function POST(request: NextRequest) {
         $set: {
           metersReturned: newMetersReturned,
           metersUsed: Math.max(0, newMetersUsed),
-          wasteMeters: wasteMeters || 0,
+          wasteMeters: newWasteMeters,
           closingMeters: log.closingMeters + metersReturned,
           returnedAt: new Date(),
           updatedAt: new Date(),

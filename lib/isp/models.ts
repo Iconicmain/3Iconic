@@ -112,6 +112,7 @@ export interface TechnicianIssueItem {
   quantityReturned: number;
   quantityUsed: number;
   unitType: string;
+  routerUnitIds?: string[];
   returnCondition?: string | null;
   notes?: string | null;
   timeOut?: Date | null;
@@ -139,7 +140,10 @@ export interface CableUsageLog {
   id: string;
   stationId: string;
   rollId: string;
+  rollCode?: string;
+  cableType?: string;
   technicianId: string;
+  technicianName?: string;
   jobReference?: string | null;
   openingMeters: number;
   metersIssued: number;
@@ -149,6 +153,7 @@ export interface CableUsageLog {
   closingMeters: number;
   approvedBy?: string | null;
   notes?: string | null;
+  returnedAt?: Date | null;
   createdAt: Date;
 }
 

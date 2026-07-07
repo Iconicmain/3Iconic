@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import { StockTab } from './components/command-center/stock-tab';
 import { ActivitySidebar } from './components/command-center/activity-sidebar';
 import { IssueReturnSection } from './components/issue-return-section';
+import { IssueCablePanel } from './components/command-center/issue-cable-panel';
 import { CableReturnsPanel } from './components/command-center/cable-returns-panel';
 import { TransfersTab } from './components/command-center/transfers-tab';
 import { ReportsTab } from './components/command-center/reports-tab';
@@ -285,7 +286,7 @@ export function InventoryStationPage({
                   ) : null}
                 </TabsContent>
 
-                <TabsContent value="movement" className="mt-0">
+                <TabsContent value="movement" className="space-y-4 mt-0">
                   {isAllStations ? (
                     <Card>
                       <CardContent className="py-12 text-center text-muted-foreground text-sm">
@@ -293,12 +294,19 @@ export function InventoryStationPage({
                       </CardContent>
                     </Card>
                   ) : stationId ? (
-                    <IssueReturnSection
-                      stationId={stationId}
-                      mode="issue"
-                      onRefresh={refresh}
-                      refreshKey={refreshKey}
-                    />
+                    <>
+                      <IssueReturnSection
+                        stationId={stationId}
+                        mode="issue"
+                        onRefresh={refresh}
+                        refreshKey={refreshKey}
+                      />
+                      <IssueCablePanel
+                        stationId={stationId}
+                        refreshKey={refreshKey}
+                        onRefresh={refresh}
+                      />
+                    </>
                   ) : null}
                 </TabsContent>
 
