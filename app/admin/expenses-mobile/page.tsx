@@ -1,7 +1,5 @@
-import { getOrCreateSubmitToken } from '@/lib/expenses/mobile-submit-token';
-import { ExpenseMobileSubmit } from '@/components/expenses/expense-mobile-submit';
+import { redirect } from 'next/navigation';
 
-export default async function ExpensesMobilePage() {
-  const token = await getOrCreateSubmitToken();
-  return <ExpenseMobileSubmit token={token} />;
+export default function ExpensesMobileAdminRedirect() {
+  redirect('/expense-mobile');
 }

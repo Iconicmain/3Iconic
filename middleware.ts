@@ -3,6 +3,13 @@ import type { NextRequest } from 'next/server';
 import { auth } from '@/auth';
 
 export async function middleware(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith('/expense-mobile')) {
+    const response = NextResponse.next();
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    return response;
+  }
+
   // Wrap auth() call in try-catch to handle any errors gracefully
   let session = null;
   try {
@@ -37,6 +44,6 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*'],
+  matcher: ['/admin/:path*', '/expense-mobile', '/expense-mobile/:path*'],
 };
 

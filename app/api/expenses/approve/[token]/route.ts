@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import { resolveVerifiedSuperAdminApprover } from '@/lib/expenses/expense-submit-auth';
 import { notifyExpenseApproved } from '@/lib/expenses/expense-notifications';
+import { getExpenseMobileBaseUrl, getExpenseMobileSubmitUrl } from '@/lib/expenses/expense-mobile-urls';
 
 export const runtime = 'nodejs';
 
@@ -90,13 +91,19 @@ export async function POST(
       submitterPhone = typeof submitter?.phone === 'string' ? submitter.phone : null;
     }
 
-    notifyExpenseApproved({
-      expenseId: expense.id,
-      expenseType: expenseType === 'capital' ? 'Capital' : 'Recurrent',
-      approvedByName: approver.name,
-      submittedByName: expense.submittedByName || 'Unknown',
-      submitterPhone,
-    }).catch(console.error);
+    try {
+      const submitUrl = getExpenseMobileSubmitUrl(getExpenseMobileBaseUrl(request.headers.get('origin')));
+      await notifyExpenseApproved({
+        expenseId: expense.id,
+        expenseType: expenseType === 'capital' ? 'Capital' : 'Recurrent',
+        approvedByName: approver.name,
+        submittedByName: expense.submittedByName || 'Unknown',
+        submitterPhone,
+        submitUrl,
+      });
+    } catch (err) {
+      console.error('[Expense Approve SMS]', err);
+    }
 
     return NextResponse.json({ success: true, status: 'fully-paid' });
   } catch (error) {

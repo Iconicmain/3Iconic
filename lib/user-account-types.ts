@@ -11,6 +11,17 @@ export function accountTypeLabel(type: AccountType | string): string {
   return ACCOUNT_TYPE_OPTIONS.find((o) => o.value === type)?.label || String(type);
 }
 
+export function isSuperAdminAccount(user: {
+  role?: string;
+  accountType?: string;
+  ispRole?: string;
+}): boolean {
+  if (user.role === 'superadmin') return true;
+  if (user.accountType === 'superadmin') return true;
+  if (user.ispRole === 'SUPER_ADMIN') return true;
+  return false;
+}
+
 export function accountTypeFromUser(user: {
   role?: string;
   ispRole?: string;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import clientPromise from '@/lib/mongodb';
+import { getExpenseMobileBaseUrl, getExpenseMobileSubmitUrl } from '@/lib/expenses/expense-mobile-urls';
 
 export const runtime = 'nodejs';
 
@@ -20,8 +21,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Super admin only' }, { status: 403 });
   }
 
-  const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || '';
-  const url = `${origin}/admin/expenses-mobile`;
+  const baseUrl = getExpenseMobileBaseUrl(request.headers.get('origin'));
+  const url = getExpenseMobileSubmitUrl(baseUrl);
 
   return NextResponse.json({ url });
 }
@@ -31,6 +32,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Super admin only' }, { status: 403 });
   }
 
-  const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || '';
-  return NextResponse.json({ url: `${origin}/admin/expenses-mobile` });
+  const baseUrl = getExpenseMobileBaseUrl(request.headers.get('origin'));
+  return NextResponse.json({ url: getExpenseMobileSubmitUrl(baseUrl) });
 }

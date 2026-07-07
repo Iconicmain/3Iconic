@@ -8,6 +8,11 @@ import {
   sanitizeExpenseDescription,
 } from '@/lib/expenses/expense-submit-auth';
 import { notifySuperAdminsExpensePending } from '@/lib/expenses/expense-notifications';
+import {
+  getExpenseMobileApprovalUrl,
+  getExpenseMobileBaseUrl,
+  getExpenseMobileSubmitUrl,
+} from '@/lib/expenses/expense-mobile-urls';
 
 export const runtime = 'nodejs';
 
@@ -65,11 +70,9 @@ export async function POST(request: NextRequest) {
 
     await expensesCol.insertOne(expense);
 
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      request.headers.get('origin') ||
-      'https://www.3iconic.co.ke';
-    const approvalUrl = `${baseUrl}/expense-mobile/approve/${approvalToken}`;
+    const baseUrl = getExpenseMobileBaseUrl(request.headers.get('origin'));
+    const approvalUrl = getExpenseMobileApprovalUrl(baseUrl, approvalToken);
+    const submitUrl = getExpenseMobileSubmitUrl(baseUrl);
 
     const dateLabel = expenseDate.toLocaleDateString('en-KE', {
       day: 'numeric',
@@ -77,14 +80,19 @@ export async function POST(request: NextRequest) {
       year: 'numeric',
     });
 
-    notifySuperAdminsExpensePending({
-      expenseId,
-      description: expense.description,
-      category: expense.category,
-      date: dateLabel,
-      submittedByName: submitter.name,
-      approvalUrl,
-    }).catch((err) => console.error('[Expense Create SMS]', err));
+    try {
+      await notifySuperAdminsExpensePending({
+        expenseId,
+        description: expense.description,
+        category: expense.category,
+        date: dateLabel,
+        submittedByName: submitter.name,
+        approvalUrl,
+        submitUrl,
+      });
+    } catch (err) {
+      console.error('[Expense Create SMS]', err);
+    }
 
     return NextResponse.json({
       success: true,

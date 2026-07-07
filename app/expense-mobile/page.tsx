@@ -1,3 +1,4 @@
+import { getOrCreateSubmitToken } from '@/lib/expenses/mobile-submit-token';
 import {
   getExpenseMobileCategories,
   getExpenseMobileSubmitBootstrap,
@@ -6,12 +7,8 @@ import { ExpenseMobileSubmitLite } from '@/components/expenses/expense-mobile-su
 
 export const dynamic = 'force-dynamic';
 
-export default async function ExpenseSubmitTokenPage({
-  params,
-}: {
-  params: Promise<{ token: string }>;
-}) {
-  const { token } = await params;
+export default async function ExpenseMobilePage() {
+  const token = await getOrCreateSubmitToken();
   const [{ admins }, categories] = await Promise.all([
     getExpenseMobileSubmitBootstrap(token),
     getExpenseMobileCategories(),

@@ -1,8 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter, Space_Grotesk } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
-import { Toaster } from '@/components/ui/sonner'
-import { Providers } from './providers'
+import { ConditionalAppShell } from './conditional-app-shell'
 import './globals.css'
 
 const inter = Inter({
@@ -73,11 +71,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="scroll-smooth">
       <body className={`${inter.variable} ${spaceGrotesk.variable} font-sans antialiased`}>
-        <Providers>
-          {children}
-          <Toaster />
-          <Analytics />
-        </Providers>
+        <ConditionalAppShell>{children}</ConditionalAppShell>
       </body>
     </html>
   )

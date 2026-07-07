@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import clientPromise from '@/lib/mongodb';
 import { sendSMS } from '@/lib/sms';
-import { accountTypeFromUser } from '@/lib/user-account-types';
+import { accountTypeFromUser, isSuperAdminAccount } from '@/lib/user-account-types';
 
 const OTP_COLLECTION = 'expense_otp_codes';
 const OTP_PURPOSE_SUBMIT = 'expense_submit';
@@ -34,7 +34,7 @@ function isSuperAdminUser(user: {
   accountType?: string;
   ispRole?: string;
 }): boolean {
-  return accountTypeFromUser(user) === 'superadmin';
+  return isSuperAdminAccount(user);
 }
 
 export function maskPhone(phone: string): string {
