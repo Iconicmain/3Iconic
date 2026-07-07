@@ -30,15 +30,24 @@ import {
   ChevronRight,
   Loader2,
   MapPin,
+  Minus,
   Package,
   Plus,
+  Search,
   Share2,
   Trash2,
   User,
+  Wifi,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ISSUE_TYPE_OPTIONS, type IssueType } from '@/lib/isp/issue-types';
+import {
+  inferItemTypeFromItem,
+  getItemTypeConfig,
+  type InventoryItemTypeId,
+} from './inventory-item-types';
+import { categoryBadgeClasses, softBadgeClass, unitBadgeClasses } from './inventory-colors';
 
 interface Station {
   id: string;
@@ -50,17 +59,21 @@ interface InventoryItem {
   itemName: string;
   unitType: string;
   quantityAvailable: number;
-}
-
-interface Technician {
-  id: string;
-  name: string;
+  category?: string;
+  isCable?: boolean;
 }
 
 interface RouterUnitOption {
   id: string;
+  itemName?: string;
   serialNumber?: string | null;
   macAddress?: string | null;
+}
+
+/** Per-item selection in the quick picker */
+interface ItemSelection {
+  quantityTaken: number;
+  routerUnitIds: string[];
 }
 
 export interface IssueLineItem {
@@ -70,13 +83,43 @@ export interface IssueLineItem {
   routerUnitIds: string[];
 }
 
+const CATEGORY_FILTERS = ['All', 'Equipment', 'Materials', 'Accessories', 'Other'] as const;
+type CategoryFilter = (typeof CATEGORY_FILTERS)[number];
+
+const TYPE_ICONS: Partial<Record<InventoryItemTypeId, typeof Package>> = {
+  router: Wifi,
+  access_point: Wifi,
+  bridge: Wifi,
+  onu: Package,
+  patch_cord: Package,
+  splitter: Package,
+  socket: Package,
+};
+
 interface IssueEquipmentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   stationId: string;
   stations: Station[];
-  technicians: Technician[];
+  technicians: { id: string; name: string }[];
   onSuccess: () => void;
+}
+
+function unitLabel(u: RouterUnitOption): string {
+  return u.serialNumber || u.macAddress || u.id;
+}
+
+function getUnitsForItem(
+  item: InventoryItem,
+  unitsByItemName: Map<string, RouterUnitOption[]>
+): RouterUnitOption[] {
+  return unitsByItemName.get(item.itemName.toLowerCase()) || [];
+}
+
+function isSerializedItem(item: InventoryItem, units: RouterUnitOption[]): boolean {
+  if (units.length > 0) return true;
+  const typeId = inferItemTypeFromItem(item);
+  return getItemTypeConfig(typeId).tracking === 'serialized';
 }
 
 const STEPS = [
@@ -189,7 +232,13 @@ export function IssueEquipmentDialog({
   const [submitting, setSubmitting] = useState(false);
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
-  const [availableUnits, setAvailableUnits] = useState<Record<number, RouterUnitOption[]>>({});
+  const [loadingUnits, setLoadingUnits] = useState(false);
+  const [unitsByItemName, setUnitsByItemName] = useState<Map<string, RouterUnitOption[]>>(new Map());
+  const [selections, setSelections] = useState<Record<string, ItemSelection>>({});
+  const [expandedMac, setExpandedMac] = useState<Set<string>>(new Set());
+  const [itemSearch, setItemSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('All');
+  const [macSearch, setMacSearch] = useState<Record<string, string>>({});
   const [form, setForm] = useState({
     issueType: 'SINGLE_STATION' as IssueType,
     sourceStationId: stationId,
@@ -199,7 +248,6 @@ export function IssueEquipmentDialog({
     projectCustomer: '',
     expectedReturnDate: '',
     notes: '',
-    lines: [] as IssueLineItem[],
   });
 
   useEffect(() => {
@@ -214,9 +262,13 @@ export function IssueEquipmentDialog({
       projectCustomer: '',
       expectedReturnDate: '',
       notes: '',
-      lines: [],
     });
-    setAvailableUnits({});
+    setSelections({});
+    setExpandedMac(new Set());
+    setUnitsByItemName(new Map());
+    setItemSearch('');
+    setCategoryFilter('All');
+    setMacSearch({});
   }, [open, stationId]);
 
   useEffect(() => {
@@ -227,13 +279,37 @@ export function IssueEquipmentDialog({
       .then((d) =>
         setItems(
           (d.items || []).filter(
-            (i: InventoryItem & { isCable?: boolean; category?: string }) =>
-              !i.isCable && i.category !== 'Drop Cable'
+            (i: InventoryItem) => !i.isCable && i.category !== 'Drop Cable'
           )
         )
       )
       .catch(() => setItems([]))
       .finally(() => setLoadingItems(false));
+  }, [open, form.sourceStationId]);
+
+  useEffect(() => {
+    setSelections({});
+    setExpandedMac(new Set());
+    setMacSearch({});
+  }, [form.sourceStationId]);
+
+  useEffect(() => {
+    if (!open || !form.sourceStationId) return;
+    setLoadingUnits(true);
+    fetch(`/api/isp/routers?stationId=${form.sourceStationId}&status=available`, { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        const map = new Map<string, RouterUnitOption[]>();
+        for (const u of (d.routers || []) as RouterUnitOption[]) {
+          const key = (u.itemName || '').toLowerCase();
+          if (!key) continue;
+          if (!map.has(key)) map.set(key, []);
+          map.get(key)!.push(u);
+        }
+        setUnitsByItemName(map);
+      })
+      .catch(() => setUnitsByItemName(new Map()))
+      .finally(() => setLoadingUnits(false));
   }, [open, form.sourceStationId]);
 
   const showShared = form.issueType === 'SHARED_STATIONS';
@@ -247,39 +323,134 @@ export function IssueEquipmentDialog({
     .map((id) => stations.find((s) => s.id === id)?.stationName)
     .filter(Boolean);
 
+  const filteredItems = useMemo(() => {
+    const q = itemSearch.trim().toLowerCase();
+    return items.filter((item) => {
+      if (item.quantityAvailable <= 0) return false;
+      if (categoryFilter !== 'All') {
+        const cat = item.category || 'Other';
+        if (cat !== categoryFilter) return false;
+      }
+      if (!q) return true;
+      return (
+        item.itemName.toLowerCase().includes(q) ||
+        (item.category || '').toLowerCase().includes(q)
+      );
+    });
+  }, [items, itemSearch, categoryFilter]);
+
+  const selectedCount = useMemo(() => {
+    let lines = 0;
+    let units = 0;
+    for (const item of items) {
+      const sel = selections[item.id];
+      if (!sel) continue;
+      const macUnits = getUnitsForItem(item, unitsByItemName);
+      if (macUnits.length > 0 && sel.routerUnitIds.length > 0) {
+        lines += 1;
+        units += sel.routerUnitIds.length;
+      } else if (macUnits.length === 0 && sel.quantityTaken > 0) {
+        lines += 1;
+        units += sel.quantityTaken;
+      }
+    }
+    return { lines, units };
+  }, [items, selections, unitsByItemName]);
+
   const lineSummary = useMemo(() => {
-    return form.lines
-      .filter((l) => l.itemId)
-      .map((line, idx) => {
-        const item = items.find((i) => i.id === line.itemId);
-        const units = availableUnits[idx] || [];
-        const qty = units.length > 0 ? line.routerUnitIds.length : line.quantityTaken;
-        return { name: item?.itemName || 'Item', qty, unit: item?.unitType || 'pcs' };
-      });
-  }, [form.lines, items, availableUnits]);
+    const rows: { name: string; qty: number; unit: string; macs?: string[] }[] = [];
+    for (const item of items) {
+      const sel = selections[item.id];
+      if (!sel) continue;
+      const macUnits = getUnitsForItem(item, unitsByItemName);
+      if (macUnits.length > 0 && sel.routerUnitIds.length > 0) {
+        const labels = sel.routerUnitIds
+          .map((id) => macUnits.find((u) => u.id === id))
+          .filter(Boolean)
+          .map((u) => unitLabel(u!));
+        rows.push({
+          name: item.itemName,
+          qty: sel.routerUnitIds.length,
+          unit: item.unitType,
+          macs: labels,
+        });
+      } else if (macUnits.length === 0 && sel.quantityTaken > 0) {
+        rows.push({ name: item.itemName, qty: sel.quantityTaken, unit: item.unitType });
+      }
+    }
+    return rows;
+  }, [items, selections, unitsByItemName]);
 
-  const fetchUnits = (idx: number, itemId: string) => {
-    const item = items.find((i) => i.id === itemId);
-    if (!item) return;
-    fetch(
-      `/api/isp/routers?stationId=${form.sourceStationId}&itemName=${encodeURIComponent(item.itemName)}&status=available`,
-      { cache: 'no-store' }
-    )
-      .then((r) => r.json())
-      .then((d) => setAvailableUnits((p) => ({ ...p, [idx]: d.routers || [] })))
-      .catch(() => setAvailableUnits((p) => ({ ...p, [idx]: [] })));
+  const getSelection = (itemId: string): ItemSelection =>
+    selections[itemId] || { quantityTaken: 0, routerUnitIds: [] };
+
+  const setBulkQty = (item: InventoryItem, qty: number) => {
+    const max = item.quantityAvailable;
+    const next = Math.max(0, Math.min(max, qty));
+    setSelections((prev) => {
+      const copy = { ...prev };
+      if (next <= 0) {
+        delete copy[item.id];
+      } else {
+        copy[item.id] = { quantityTaken: next, routerUnitIds: [] };
+      }
+      return copy;
+    });
   };
 
-  const addLine = () => {
-    if (form.lines.length >= 10) return;
-    setForm((f) => ({
-      ...f,
-      lines: [...f.lines, { itemId: '', quantityTaken: 1, unitType: 'pcs', routerUnitIds: [] }],
+  const adjustBulkQty = (item: InventoryItem, delta: number) => {
+    const current = getSelection(item.id).quantityTaken;
+    setBulkQty(item, current + delta);
+  };
+
+  const toggleMacUnit = (itemId: string, unitId: string, checked: boolean) => {
+    setSelections((prev) => {
+      const current = prev[itemId] || { quantityTaken: 0, routerUnitIds: [] };
+      const ids = checked
+        ? [...current.routerUnitIds, unitId]
+        : current.routerUnitIds.filter((id) => id !== unitId);
+      const copy = { ...prev };
+      if (ids.length === 0) {
+        delete copy[itemId];
+      } else {
+        copy[itemId] = { quantityTaken: ids.length, routerUnitIds: ids };
+      }
+      return copy;
+    });
+    setExpandedMac((prev) => new Set(prev).add(itemId));
+  };
+
+  const selectAllMacs = (item: InventoryItem) => {
+    const units = getUnitsForItem(item, unitsByItemName);
+    const filter = (macSearch[item.id] || '').toLowerCase();
+    const filtered = filter
+      ? units.filter((u) => unitLabel(u).toLowerCase().includes(filter))
+      : units;
+    setSelections((prev) => ({
+      ...prev,
+      [item.id]: {
+        quantityTaken: filtered.length,
+        routerUnitIds: filtered.map((u) => u.id),
+      },
     }));
+    setExpandedMac((prev) => new Set(prev).add(item.id));
   };
 
-  const ensureLine = () => {
-    if (form.lines.length === 0) addLine();
+  const clearItemSelection = (itemId: string) => {
+    setSelections((prev) => {
+      const copy = { ...prev };
+      delete copy[itemId];
+      return copy;
+    });
+  };
+
+  const toggleMacExpanded = (itemId: string) => {
+    setExpandedMac((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
   };
 
   const toggleShared = (id: string, checked: boolean) => {
@@ -313,7 +484,6 @@ export function IssueEquipmentDialog({
 
   const goNext = () => {
     if (!validateStep(step)) return;
-    if (step === 2) ensureLine();
     setStep((s) => Math.min(3, s + 1));
   };
 
@@ -325,17 +495,29 @@ export function IssueEquipmentDialog({
       return;
     }
 
-    const validLines = form.lines
-      .map((line, idx) => ({ ...line, idx }))
-      .filter(({ itemId, routerUnitIds, quantityTaken, idx }) => {
-        if (!itemId) return false;
-        const units = availableUnits[idx] || [];
-        if (units.length > 0) return routerUnitIds.length > 0;
-        return quantityTaken > 0;
-      });
+    const validLines: { item: InventoryItem; sel: ItemSelection }[] = [];
+    for (const item of items) {
+      const sel = selections[item.id];
+      if (!sel) continue;
+      const macUnits = getUnitsForItem(item, unitsByItemName);
+      if (macUnits.length > 0) {
+        if (sel.routerUnitIds.length === 0) continue;
+        if (sel.routerUnitIds.length > macUnits.length) {
+          toast.error(`Too many units selected for ${item.itemName}`);
+          return;
+        }
+        validLines.push({ item, sel });
+      } else if (sel.quantityTaken > 0) {
+        if (sel.quantityTaken > item.quantityAvailable) {
+          toast.error(`Not enough ${item.itemName} in stock`);
+          return;
+        }
+        validLines.push({ item, sel });
+      }
+    }
 
     if (validLines.length === 0) {
-      toast.error('Add at least one item');
+      toast.error('Select at least one item — set qty or pick MAC addresses');
       return;
     }
 
@@ -355,13 +537,14 @@ export function IssueEquipmentDialog({
           technicianId: form.technicianId,
           jobReference: form.projectCustomer || undefined,
           notes: form.notes || undefined,
-          items: validLines.map((line) => {
-            const units = availableUnits[line.idx] || [];
+          items: validLines.map(({ item, sel }) => {
+            const macUnits = getUnitsForItem(item, unitsByItemName);
             return {
-              itemId: line.itemId,
-              quantityTaken: units.length > 0 ? line.routerUnitIds.length : line.quantityTaken,
-              unitType: items.find((i) => i.id === line.itemId)?.unitType || 'pcs',
-              routerUnitIds: line.routerUnitIds.length ? line.routerUnitIds : undefined,
+              itemId: item.id,
+              quantityTaken:
+                macUnits.length > 0 ? sel.routerUnitIds.length : sel.quantityTaken,
+              unitType: item.unitType || 'pcs',
+              routerUnitIds: sel.routerUnitIds.length ? sel.routerUnitIds : undefined,
             };
           }),
         }),
@@ -483,7 +666,7 @@ export function IssueEquipmentDialog({
                     <Select
                       value={form.sourceStationId}
                       onValueChange={(v) =>
-                        setForm((f) => ({ ...f, sourceStationId: v, lines: [] }))
+                        setForm((f) => ({ ...f, sourceStationId: v }))
                       }
                     >
                       <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
@@ -595,162 +778,273 @@ export function IssueEquipmentDialog({
 
           {step === 3 && (
             <>
-              <SectionCard title="Items to issue" description={`From ${sourceName || 'source station'}`} icon={Package}>
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <p className="text-xs text-muted-foreground">
-                    {loadingItems ? 'Loading inventory…' : `${items.length} items available`}
-                  </p>
-                  <Button type="button" variant="outline" size="sm" onClick={addLine} disabled={loadingItems}>
-                    <Plus className="h-3.5 w-3.5 mr-1.5" />
-                    Add item
-                  </Button>
-                </div>
-
-                {loadingItems ? (
-                  <div className="py-10 text-center">
-                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+              <SectionCard
+                title="Quick pick — select multiple items"
+                description={`Tap qty for patch cords, splitters, sockets · pick MAC for routers & ONUs · From ${sourceName || 'source station'}`}
+                icon={Package}
+              >
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        value={itemSearch}
+                        onChange={(e) => setItemSearch(e.target.value)}
+                        placeholder="Search routers, patch cords, splitters…"
+                        className="pl-9 h-9"
+                      />
+                    </div>
+                    {selectedCount.lines > 0 && (
+                      <Badge className="self-start sm:self-center bg-primary/10 text-primary border-primary/20 shrink-0">
+                        {selectedCount.lines} type{selectedCount.lines !== 1 ? 's' : ''} · {selectedCount.units} unit{selectedCount.units !== 1 ? 's' : ''}
+                      </Badge>
+                    )}
                   </div>
-                ) : form.lines.length === 0 ? (
-                  <button
-                    type="button"
-                    onClick={addLine}
-                    className="w-full rounded-xl border-2 border-dashed py-10 px-4 text-center hover:bg-muted/40 transition-colors"
-                  >
-                    <Plus className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                    <p className="text-sm font-medium">Add your first item</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Routers, ONUs, patch cords, and more
-                    </p>
-                  </button>
-                ) : (
-                  <div className="space-y-3">
-                    {form.lines.map((line, idx) => {
-                      const units = availableUnits[idx] || [];
-                      const hasUnits = units.length > 0;
-                      const selectedItem = items.find((i) => i.id === line.itemId);
-                      return (
-                        <div
-                          key={idx}
-                          className="rounded-xl border bg-background p-3.5 space-y-3 shadow-sm"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <Badge variant="outline" className="text-[10px] font-semibold">
-                              Item {idx + 1}
-                            </Badge>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                              onClick={() =>
-                                setForm((f) => ({ ...f, lines: f.lines.filter((_, i) => i !== idx) }))
-                              }
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                          <div className="grid sm:grid-cols-[1fr_auto] gap-3">
-                            <div className="space-y-1.5">
-                              <Label className="text-xs text-muted-foreground">Item</Label>
-                              <Select
-                                value={line.itemId}
-                                onValueChange={(v) => {
-                                  const item = items.find((i) => i.id === v);
-                                  setForm((f) => ({
-                                    ...f,
-                                    lines: f.lines.map((row, i) =>
-                                      i === idx
-                                        ? {
-                                            ...row,
-                                            itemId: v,
-                                            routerUnitIds: [],
-                                            unitType: item?.unitType || 'pcs',
-                                          }
-                                        : row
-                                    ),
-                                  }));
-                                  fetchUnits(idx, v);
-                                }}
-                              >
-                                <SelectTrigger className="h-10">
-                                  <SelectValue placeholder="Choose item…" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {items.map((i) => (
-                                    <SelectItem key={i.id} value={i.id}>
-                                      <span className="font-medium">{i.itemName}</span>
-                                      <span className="text-muted-foreground ml-1.5">
-                                        · {i.quantityAvailable} {i.unitType} avail
-                                      </span>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {CATEGORY_FILTERS.map((cat) => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setCategoryFilter(cat)}
+                        className={cn(
+                          'rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
+                          categoryFilter === cat
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background hover:bg-muted/60'
+                        )}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  {(loadingItems || loadingUnits) ? (
+                    <div className="py-12 text-center">
+                      <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground mb-2" />
+                      <p className="text-sm text-muted-foreground">Loading stock & serial units…</p>
+                    </div>
+                  ) : filteredItems.length === 0 ? (
+                    <div className="rounded-xl border border-dashed py-10 px-4 text-center">
+                      <Package className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                      <p className="text-sm font-medium">No items in stock</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {items.length === 0
+                          ? `Nothing available at ${sourceName || 'this station'} — add stock first`
+                          : 'Try a different search or category filter'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[min(42vh,360px)] overflow-y-auto pr-0.5">
+                      {filteredItems.map((item) => {
+                        const typeId = inferItemTypeFromItem(item);
+                        const TypeIcon = TYPE_ICONS[typeId] || Package;
+                        const macUnits = getUnitsForItem(item, unitsByItemName);
+                        const serialized = isSerializedItem(item, macUnits);
+                        const sel = getSelection(item.id);
+                        const isActive =
+                          serialized
+                            ? sel.routerUnitIds.length > 0
+                            : sel.quantityTaken > 0;
+                        const macExpanded = expandedMac.has(item.id) || isActive;
+
+                        const macFilter = (macSearch[item.id] || '').toLowerCase();
+                        const visibleMacs = macFilter
+                          ? macUnits.filter((u) => unitLabel(u).toLowerCase().includes(macFilter))
+                          : macUnits;
+
+                        return (
+                          <div
+                            key={item.id}
+                            className={cn(
+                              'rounded-xl border transition-colors',
+                              isActive
+                                ? 'border-primary/40 bg-primary/[0.03] shadow-sm'
+                                : 'bg-background hover:border-muted-foreground/25'
+                            )}
+                          >
+                            <div className="flex items-center gap-2 p-3">
+                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                                <TypeIcon className="h-4 w-4 text-muted-foreground" />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <p className="text-sm font-semibold truncate">{item.itemName}</p>
+                                  {serialized && macUnits.length > 0 && (
+                                    <span className={softBadgeClass('bg-violet-100 text-violet-800 border-violet-200 text-[10px]')}>
+                                      MAC / Serial
+                                    </span>
+                                  )}
+                                  <span className={softBadgeClass(categoryBadgeClasses(item.category))}>
+                                    {item.category || 'Other'}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {serialized && macUnits.length > 0
+                                    ? `${macUnits.length} units with MAC · ${item.quantityAvailable} ${item.unitType} in stock`
+                                    : `${item.quantityAvailable} ${item.unitType} available`}
+                                </p>
+                              </div>
+
+                              {!serialized || macUnits.length === 0 ? (
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    disabled={sel.quantityTaken <= 0}
+                                    onClick={() => adjustBulkQty(item, -1)}
+                                  >
+                                    <Minus className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    max={item.quantityAvailable}
+                                    className="h-8 w-14 text-center px-1 tabular-nums"
+                                    value={sel.quantityTaken || ''}
+                                    placeholder="0"
+                                    onChange={(e) =>
+                                      setBulkQty(item, parseInt(e.target.value, 10) || 0)
+                                    }
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    disabled={sel.quantityTaken >= item.quantityAvailable}
+                                    onClick={() => adjustBulkQty(item, 1)}
+                                  >
+                                    <Plus className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    className="h-8 px-2 text-[11px] hidden sm:inline-flex"
+                                    disabled={sel.quantityTaken + 5 > item.quantityAvailable}
+                                    onClick={() => adjustBulkQty(item, 5)}
+                                  >
+                                    +5
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {isActive && (
+                                    <Badge variant="secondary" className="tabular-nums">
+                                      {sel.routerUnitIds.length} picked
+                                    </Badge>
+                                  )}
+                                  <Button
+                                    type="button"
+                                    variant={macExpanded ? 'secondary' : 'outline'}
+                                    size="sm"
+                                    className="h-8 text-xs"
+                                    onClick={() => toggleMacExpanded(item.id)}
+                                  >
+                                    {macExpanded ? 'Hide MACs' : 'Pick MACs'}
+                                  </Button>
+                                  {isActive && (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 text-muted-foreground"
+                                      onClick={() => clearItemSelection(item.id)}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                            {!hasUnits && (
-                              <div className="space-y-1.5 sm:w-28">
-                                <Label className="text-xs text-muted-foreground">Qty</Label>
-                                <Input
-                                  type="number"
-                                  min={1}
-                                  max={selectedItem?.quantityAvailable}
-                                  className="h-10"
-                                  value={line.quantityTaken}
-                                  onChange={(e) =>
-                                    setForm((f) => ({
-                                      ...f,
-                                      lines: f.lines.map((row, i) =>
-                                        i === idx
-                                          ? { ...row, quantityTaken: parseInt(e.target.value, 10) || 1 }
-                                          : row
-                                      ),
-                                    }))
-                                  }
-                                />
+
+                            {serialized && macUnits.length > 0 && macExpanded && (
+                              <div className="border-t px-3 pb-3 pt-2 space-y-2 bg-muted/20">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Input
+                                    value={macSearch[item.id] || ''}
+                                    onChange={(e) =>
+                                      setMacSearch((p) => ({ ...p, [item.id]: e.target.value }))
+                                    }
+                                    placeholder="Filter MAC / serial…"
+                                    className="h-8 flex-1 min-w-[140px] text-xs font-mono"
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 text-xs"
+                                    onClick={() => selectAllMacs(item)}
+                                  >
+                                    Select all ({visibleMacs.length})
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 text-xs"
+                                    onClick={() => clearItemSelection(item.id)}
+                                  >
+                                    Clear
+                                  </Button>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 max-h-36 overflow-y-auto">
+                                  {visibleMacs.map((u) => {
+                                    const checked = sel.routerUnitIds.includes(u.id);
+                                    return (
+                                      <label
+                                        key={u.id}
+                                        className={cn(
+                                          'flex items-center gap-2 rounded-md border px-2 py-1.5 cursor-pointer text-xs font-mono transition-colors',
+                                          checked
+                                            ? 'border-primary bg-primary/10'
+                                            : 'bg-background hover:bg-muted/50'
+                                        )}
+                                      >
+                                        <Checkbox
+                                          checked={checked}
+                                          onCheckedChange={(c) => toggleMacUnit(item.id, u.id, !!c)}
+                                        />
+                                        <span className="truncate">{unitLabel(u)}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             )}
                           </div>
-                          {hasUnits && (
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <Label className="text-xs font-medium">Serial / MAC — select units</Label>
-                                <Badge variant="secondary">{line.routerUnitIds.length} selected</Badge>
-                              </div>
-                              <div className="grid gap-1.5 max-h-32 overflow-y-auto rounded-lg border p-2 bg-muted/20">
-                                {units.map((u) => (
-                                  <label
-                                    key={u.id}
-                                    className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm cursor-pointer hover:bg-background"
-                                  >
-                                    <Checkbox
-                                      checked={line.routerUnitIds.includes(u.id)}
-                                      onCheckedChange={(c) =>
-                                        setForm((f) => ({
-                                          ...f,
-                                          lines: f.lines.map((row, i) => {
-                                            if (i !== idx) return row;
-                                            const ids = c
-                                              ? [...row.routerUnitIds, u.id]
-                                              : row.routerUnitIds.filter((id) => id !== u.id);
-                                            return { ...row, routerUnitIds: ids };
-                                          }),
-                                        }))
-                                      }
-                                    />
-                                    <span className="font-mono text-xs">
-                                      {u.serialNumber || u.macAddress}
-                                    </span>
-                                  </label>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </SectionCard>
+
+              {lineSummary.length > 0 && (
+                <div className="rounded-xl border bg-muted/30 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Selected for issue ({lineSummary.length})
+                  </p>
+                  <ul className="space-y-1.5">
+                    {lineSummary.map((row) => (
+                      <li key={row.name} className="text-sm flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                        <span className="font-medium">{row.name}</span>
+                        <span className={softBadgeClass(unitBadgeClasses(row.unit === 'm' ? 'm' : 'pcs'))}>
+                          {row.qty} {row.unit}
+                        </span>
+                        {row.macs && row.macs.length > 0 && (
+                          <span className="text-[11px] font-mono text-muted-foreground w-full">
+                            {row.macs.join(' · ')}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <SectionCard title="Return & notes" description="Optional tracking details">
                 <div className="grid sm:grid-cols-2 gap-4">
@@ -796,12 +1090,6 @@ export function IssueEquipmentDialog({
                       <p>
                         <span className="text-muted-foreground">Shared:</span>{' '}
                         <strong>{primaryName} + {sharedNames.join(', ')}</strong>
-                      </p>
-                    )}
-                    {lineSummary.length > 0 && (
-                      <p>
-                        <span className="text-muted-foreground">Items:</span>{' '}
-                        {lineSummary.map((l) => `${l.qty} ${l.unit} ${l.name}`).join(', ')}
                       </p>
                     )}
                   </div>
