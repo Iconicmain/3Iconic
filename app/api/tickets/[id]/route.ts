@@ -11,6 +11,13 @@ const NO_CACHE_HEADERS = {
 import { ObjectId } from 'mongodb';
 import { hasPagePermission } from '@/lib/permissions';
 import { sendTicketResolvedSMS, sendTechnicianAssignmentSMS, sendCategoryChangeSMS } from '@/lib/sms';
+import { ticketEquipmentUsagePayloadSchema } from '@/lib/tickets/equipment-usage-validation';
+import {
+  applyTicketEquipmentUsage,
+  appendTicketActivityLogs,
+  buildEquipmentSummaryMessage,
+} from '@/lib/tickets/equipment-usage-service';
+import type { TicketEquipmentUsageRecord } from '@/lib/tickets/equipment-usage-types';
 
 export async function GET(
   request: NextRequest,
@@ -56,6 +63,8 @@ export async function PATCH(
       technicians, // New field for multiple technicians
       resolvedAt,
       resolutionNotes,
+      equipmentUsedEnabled,
+      equipmentUsed,
     } = body;
 
     // Check permissions based on what's being updated
@@ -143,9 +152,66 @@ export async function PATCH(
       updateData.resolutionNotes = resolutionNotes;
     }
 
+    const isResolving = status === 'resolved' || status === 'closed';
+    let equipmentUsageRecords: TicketEquipmentUsageRecord[] | undefined;
+
+    if (equipmentUsedEnabled === true && equipmentUsed !== undefined) {
+      const parsedEquipment = ticketEquipmentUsagePayloadSchema.safeParse({
+        equipmentUsedEnabled: true,
+        equipmentUsed,
+      });
+      if (!parsedEquipment.success) {
+        return NextResponse.json(
+          { error: parsedEquipment.error.errors[0]?.message || 'Invalid equipment usage data' },
+          { status: 400 }
+        );
+      }
+      equipmentUsageRecords = parsedEquipment.data.equipmentUsed as TicketEquipmentUsageRecord[];
+      updateData.equipmentUsedEnabled = true;
+      updateData.equipmentUsed = equipmentUsageRecords;
+    } else if (equipmentUsedEnabled === false) {
+      updateData.equipmentUsedEnabled = false;
+    }
+
     // If status is being set to 'closed' or 'resolved', automatically set resolvedAt if not provided
     if ((status === 'closed' || status === 'resolved') && !resolvedAt) {
       updateData.resolvedAt = new Date();
+    }
+
+    let equipmentActivityMessages: string[] = [];
+
+    if (
+      isResolving &&
+      equipmentUsageRecords &&
+      equipmentUsageRecords.length > 0 &&
+      currentTicket
+    ) {
+      const { auth } = await import('@/auth');
+      const session = await auth();
+      const userId = session?.user?.id || session?.user?.email || 'system';
+
+      try {
+        const { activityMessages } = await applyTicketEquipmentUsage({
+          ticket: {
+            ticketId: currentTicket.ticketId,
+            _id: currentTicket._id,
+            station: currentTicket.station,
+          },
+          rows: equipmentUsageRecords,
+          userId,
+          userEmail: session?.user?.email,
+        });
+        equipmentActivityMessages = activityMessages;
+      } catch (equipErr) {
+        console.error('[Ticket Equipment Usage]', equipErr);
+        return NextResponse.json(
+          {
+            error:
+              equipErr instanceof Error ? equipErr.message : 'Equipment usage validation failed',
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const result = await ticketsCollection.updateOne(
@@ -161,6 +227,30 @@ export async function PATCH(
     }
 
     const updatedTicket = await ticketsCollection.findOne({ _id: new ObjectId(id) });
+
+    if (equipmentActivityMessages.length > 0 && updatedTicket && equipmentUsageRecords) {
+      const { auth } = await import('@/auth');
+      const session = await auth();
+      const summary = await buildEquipmentSummaryMessage(
+        equipmentUsageRecords,
+        updatedTicket.technicians?.[0] || updatedTicket.technician
+      );
+
+      await appendTicketActivityLogs(id, [
+        {
+          action: 'TICKET_RESOLVED_EQUIPMENT',
+          message: summary,
+          createdBy: session?.user?.email || null,
+          meta: { ticketId: updatedTicket.ticketId, equipmentCount: equipmentUsageRecords.length },
+        },
+        ...equipmentActivityMessages.map((message) => ({
+          action: 'TICKET_EQUIPMENT_USAGE',
+          message,
+          createdBy: session?.user?.email || null,
+          meta: { ticketId: updatedTicket.ticketId },
+        })),
+      ]);
+    }
 
     console.log(`[Ticket Update] Status: ${status}, Ticket ID: ${updatedTicket?.ticketId}`);
     console.log(`[Ticket Update] Updated ticket:`, {

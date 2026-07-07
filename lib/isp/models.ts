@@ -71,9 +71,11 @@ export interface RouterUnit {
   itemName: string;
   serialNumber?: string | null;
   macAddress?: string | null;
-  status: 'available' | 'issued' | 'returned' | 'damaged';
+  status: 'available' | 'issued' | 'returned' | 'damaged' | 'installed';
   technicianId?: string | null;
   jobReference?: string | null;
+  issueItemId?: string | null;
+  ticketId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
