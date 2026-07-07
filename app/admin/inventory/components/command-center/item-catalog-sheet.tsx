@@ -24,7 +24,7 @@ import {
   Box,
   GitBranch,
   Package,
-  X,
+  ChevronLeft,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -206,157 +206,54 @@ export function ItemCatalogSheet({ open, onOpenChange, onUpdated }: ItemCatalogS
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl p-0 gap-0 max-h-[88vh] flex flex-col overflow-hidden">
+      <DialogContent className="sm:max-w-xl p-0 gap-0 max-h-[min(90vh,100dvh)] h-auto flex flex-col overflow-hidden">
         {/* Header */}
         <DialogHeader className="px-5 pt-5 pb-4 border-b shrink-0 space-y-0">
           <div className="flex items-center justify-between gap-3 pr-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <BookMarked className="h-4 w-4" />
-              </div>
-              <div>
-                <DialogTitle className="text-base leading-tight">Item Catalog</DialogTitle>
+            <div className="flex items-center gap-3 min-w-0">
+              {showAdd ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 shrink-0 -ml-1"
+                  onClick={() => {
+                    setShowAdd(false);
+                    resetForm();
+                  }}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+              ) : (
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <BookMarked className="h-4 w-4" />
+                </div>
+              )}
+              <div className="min-w-0">
+                <DialogTitle className="text-base leading-tight truncate">
+                  {showAdd ? 'New catalog item' : 'Item Catalog'}
+                </DialogTitle>
                 <DialogDescription className="text-xs mt-0.5">
-                  Saved names for quick stock entry
+                  {showAdd
+                    ? 'Choose type and enter name'
+                    : 'Saved names for quick stock entry'}
                 </DialogDescription>
               </div>
             </div>
-            <Badge variant="secondary" className="shrink-0 tabular-nums">
-              {templates.length} saved
-            </Badge>
+            {!showAdd && (
+              <Badge variant="secondary" className="shrink-0 tabular-nums">
+                {templates.length} saved
+              </Badge>
+            )}
           </div>
         </DialogHeader>
 
-        {/* Search + filters */}
-        <div className="px-5 py-3 border-b space-y-2.5 shrink-0 bg-muted/20">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search items…"
-              className="h-9 pl-8 text-sm bg-background"
-            />
-          </div>
-          <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
-            <button
-              type="button"
-              onClick={() => setFilterType('all')}
-              className={cn(
-                'shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
-                filterType === 'all'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-background border text-muted-foreground hover:text-foreground'
-              )}
-            >
-              All {typeCounts.all > 0 && `(${typeCounts.all})`}
-            </button>
-            {INVENTORY_ITEM_TYPES.filter((t) => typeCounts[t.id]).map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setFilterType(t.id)}
-                className={cn(
-                  'shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
-                  filterType === t.id
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-background border text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {t.label} ({typeCounts[t.id]})
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* List */}
-        <div className="flex-1 overflow-y-auto min-h-[200px]">
-          {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-14 px-6 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted mb-4">
-                <Package className="h-7 w-7 text-muted-foreground/60" />
-              </div>
-              <p className="text-sm font-medium">
-                {templates.length === 0 ? 'No saved items yet' : 'No matches'}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-[240px]">
-                {templates.length === 0
-                  ? 'Save routers, cables, splitters and more for one-click add stock'
-                  : 'Try a different search or filter'}
-              </p>
-              {templates.length === 0 && !showAdd && (
-                <Button size="sm" className="mt-4" onClick={() => setShowAdd(true)}>
-                  <Plus className="h-4 w-4 mr-1.5" />
-                  Add first item
-                </Button>
-              )}
-            </div>
-          ) : (
-            <ul className="divide-y">
-              {filtered.map((tpl) => {
-                const typeLabel = getItemTypeConfig(tpl.itemTypeId as InventoryItemTypeId).label;
-                return (
-                  <li
-                    key={tpl.id}
-                    className="group flex items-center gap-3 px-5 py-3 hover:bg-muted/40 transition-colors"
-                  >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                      <TypeIcon typeId={tpl.itemTypeId} className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">{tpl.itemName}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[11px] text-muted-foreground">{typeLabel}</span>
-                        {tpl.itemCode && (
-                          <>
-                            <span className="text-muted-foreground/40">·</span>
-                            <span className="text-[11px] font-mono text-muted-foreground truncate">
-                              {tpl.itemCode}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
-                      onClick={() => handleDelete(tpl.id, tpl.itemName)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-
-        {/* Add panel — slides up from footer */}
         {showAdd ? (
-          <div className="shrink-0 border-t bg-card">
-            <div className="flex items-center justify-between px-5 py-3 border-b bg-muted/30">
-              <p className="text-sm font-semibold">New catalog item</p>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => {
-                  setShowAdd(false);
-                  resetForm();
-                }}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="px-5 py-4 space-y-4 max-h-[40vh] overflow-y-auto">
+          <>
+            {/* Add form — full body, scrollable */}
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-4 space-y-4">
               <div>
                 <Label className="text-xs text-muted-foreground mb-2 block">Type</Label>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-3 sm:grid-cols-3 gap-1.5">
                   {INVENTORY_ITEM_TYPES.map((t) => {
                     const Icon = TYPE_ICONS[t.id] || Package;
                     const selected = form.itemTypeId === t.id;
@@ -401,8 +298,8 @@ export function ItemCatalogSheet({ open, onOpenChange, onUpdated }: ItemCatalogS
               )}
 
               {showNameFields ? (
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <div className="space-y-1.5 sm:col-span-2">
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
                     <Label className="text-xs">Name</Label>
                     <Input
                       value={form.itemName}
@@ -412,7 +309,7 @@ export function ItemCatalogSheet({ open, onOpenChange, onUpdated }: ItemCatalogS
                       autoFocus
                     />
                   </div>
-                  <div className="space-y-1.5 sm:col-span-2">
+                  <div className="space-y-1.5">
                     <Label className="text-xs">
                       Code <span className="text-muted-foreground font-normal">optional</span>
                     </Label>
@@ -433,7 +330,9 @@ export function ItemCatalogSheet({ open, onOpenChange, onUpdated }: ItemCatalogS
                 </div>
               )}
             </div>
-            <div className="px-5 py-3 border-t flex gap-2">
+
+            {/* Sticky footer — always visible */}
+            <div className="shrink-0 border-t bg-background px-5 py-3 flex gap-2 safe-area-pb">
               <Button
                 variant="outline"
                 className="flex-1"
@@ -449,14 +348,125 @@ export function ItemCatalogSheet({ open, onOpenChange, onUpdated }: ItemCatalogS
                 Save
               </Button>
             </div>
-          </div>
+          </>
         ) : (
-          <div className="shrink-0 border-t px-5 py-3 bg-muted/20">
-            <Button className="w-full" variant="outline" onClick={() => setShowAdd(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add to catalog
-            </Button>
-          </div>
+          <>
+            {/* Search + filters */}
+            <div className="px-5 py-3 border-b space-y-2.5 shrink-0 bg-muted/20">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search items…"
+                  className="h-9 pl-8 text-sm bg-background"
+                />
+              </div>
+              <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+                <button
+                  type="button"
+                  onClick={() => setFilterType('all')}
+                  className={cn(
+                    'shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                    filterType === 'all'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-background border text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  All {typeCounts.all > 0 && `(${typeCounts.all})`}
+                </button>
+                {INVENTORY_ITEM_TYPES.filter((t) => typeCounts[t.id]).map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setFilterType(t.id)}
+                    className={cn(
+                      'shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                      filterType === t.id
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-background border text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    {t.label} ({typeCounts[t.id]})
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* List */}
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+              {loading ? (
+                <div className="flex items-center justify-center py-16">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-14 px-6 text-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted mb-4">
+                    <Package className="h-7 w-7 text-muted-foreground/60" />
+                  </div>
+                  <p className="text-sm font-medium">
+                    {templates.length === 0 ? 'No saved items yet' : 'No matches'}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-[240px]">
+                    {templates.length === 0
+                      ? 'Save routers, cables, splitters and more for one-click add stock'
+                      : 'Try a different search or filter'}
+                  </p>
+                  {templates.length === 0 && (
+                    <Button size="sm" className="mt-4" onClick={() => setShowAdd(true)}>
+                      <Plus className="h-4 w-4 mr-1.5" />
+                      Add first item
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <ul className="divide-y">
+                  {filtered.map((tpl) => {
+                    const typeLabel = getItemTypeConfig(tpl.itemTypeId as InventoryItemTypeId).label;
+                    return (
+                      <li
+                        key={tpl.id}
+                        className="group flex items-center gap-3 px-5 py-3 hover:bg-muted/40 transition-colors"
+                      >
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                          <TypeIcon typeId={tpl.itemTypeId} className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{tpl.itemName}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[11px] text-muted-foreground">{typeLabel}</span>
+                            {tpl.itemCode && (
+                              <>
+                                <span className="text-muted-foreground/40">·</span>
+                                <span className="text-[11px] font-mono text-muted-foreground truncate">
+                                  {tpl.itemCode}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0 opacity-60 sm:opacity-0 sm:group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                          onClick={() => handleDelete(tpl.id, tpl.itemName)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            <div className="shrink-0 border-t px-5 py-3 bg-muted/20">
+              <Button className="w-full" variant="outline" onClick={() => setShowAdd(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add to catalog
+              </Button>
+            </div>
+          </>
         )}
       </DialogContent>
     </Dialog>

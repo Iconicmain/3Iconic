@@ -476,7 +476,7 @@ export function AddStockModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl p-0 gap-0 max-h-[90vh] flex flex-col overflow-hidden">
+      <DialogContent className="sm:max-w-xl p-0 gap-0 max-h-[min(90vh,100dvh)] flex flex-col overflow-hidden">
         {/* Header */}
         <DialogHeader className="px-5 pt-5 pb-4 border-b shrink-0 space-y-3">
           <div className="flex items-center gap-3 pr-6">
@@ -505,7 +505,7 @@ export function AddStockModal({
         </DialogHeader>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-4">
           {/* STEP 1 — Category */}
           {step === 1 && !isExisting && (
             <div className="space-y-4">
