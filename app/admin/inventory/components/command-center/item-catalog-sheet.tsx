@@ -1,23 +1,31 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { BookMarked, Loader2, Plus, Trash2 } from 'lucide-react';
+  BookMarked,
+  Loader2,
+  Plus,
+  Trash2,
+  Search,
+  Wifi,
+  Cable,
+  Plug,
+  Box,
+  GitBranch,
+  Package,
+  X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import {
   INVENTORY_ITEM_TYPES,
@@ -25,6 +33,7 @@ import {
   getItemTypeConfig,
   type InventoryItemTypeId,
 } from './inventory-item-types';
+import { cn } from '@/lib/utils';
 
 export interface ItemTemplate {
   id: string;
@@ -42,16 +51,35 @@ interface ItemCatalogSheetProps {
   onUpdated?: () => void;
 }
 
+const TYPE_ICONS: Partial<Record<InventoryItemTypeId, typeof Package>> = {
+  router: Wifi,
+  access_point: Wifi,
+  bridge: Wifi,
+  onu: Box,
+  cable: Cable,
+  patch_cord: Plug,
+  splitter: GitBranch,
+  socket: Plug,
+  other: Package,
+};
+
+function TypeIcon({ typeId, className }: { typeId: string; className?: string }) {
+  const Icon = TYPE_ICONS[typeId as InventoryItemTypeId] || Package;
+  return <Icon className={className} />;
+}
+
 export function ItemCatalogSheet({ open, onOpenChange, onUpdated }: ItemCatalogSheetProps) {
   const [templates, setTemplates] = useState<ItemTemplate[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
+  const [filterType, setFilterType] = useState<InventoryItemTypeId | 'all'>('all');
+  const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({
     itemTypeId: 'router' as InventoryItemTypeId,
     itemName: '',
     itemCode: '',
     splitterPreset: '1x8',
-    minimumLevel: '0',
   });
 
   const loadTemplates = () => {
@@ -64,8 +92,18 @@ export function ItemCatalogSheet({ open, onOpenChange, onUpdated }: ItemCatalogS
   };
 
   useEffect(() => {
-    if (open) loadTemplates();
+    if (open) {
+      loadTemplates();
+      setSearch('');
+      setFilterType('all');
+      setShowAdd(false);
+      resetForm();
+    }
   }, [open]);
+
+  const resetForm = () => {
+    setForm({ itemTypeId: 'router', itemName: '', itemCode: '', splitterPreset: '1x8' });
+  };
 
   const applySplitterToForm = (presetId: string) => {
     const preset = SPLITTER_PRESETS.find((p) => p.id === presetId);
@@ -82,15 +120,29 @@ export function ItemCatalogSheet({ open, onOpenChange, onUpdated }: ItemCatalogS
   };
 
   const handleTypeChange = (typeId: InventoryItemTypeId) => {
-    setForm((f) => ({
-      ...f,
-      itemTypeId: typeId,
-      itemName: '',
-      itemCode: '',
-      splitterPreset: '1x8',
-    }));
+    setForm((f) => ({ ...f, itemTypeId: typeId, itemName: '', itemCode: '', splitterPreset: '1x8' }));
     if (typeId === 'splitter') applySplitterToForm('1x8');
   };
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return templates.filter((t) => {
+      if (filterType !== 'all' && t.itemTypeId !== filterType) return false;
+      if (!q) return true;
+      return (
+        t.itemName.toLowerCase().includes(q) ||
+        (t.itemCode?.toLowerCase().includes(q) ?? false)
+      );
+    });
+  }, [templates, search, filterType]);
+
+  const typeCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: templates.length };
+    for (const t of templates) {
+      counts[t.itemTypeId] = (counts[t.itemTypeId] || 0) + 1;
+    }
+    return counts;
+  }, [templates]);
 
   const handleSave = async () => {
     const cfg = getItemTypeConfig(form.itemTypeId);
@@ -118,13 +170,14 @@ export function ItemCatalogSheet({ open, onOpenChange, onUpdated }: ItemCatalogS
           itemTypeId: form.itemTypeId,
           category: cfg.category,
           splitterPreset: form.itemTypeId === 'splitter' ? form.splitterPreset : undefined,
-          defaultMinimumLevel: parseInt(form.minimumLevel, 10) || 0,
+          defaultMinimumLevel: 0,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save');
-      toast.success(`Added "${itemName}" to catalog`);
-      setForm({ itemTypeId: 'router', itemName: '', itemCode: '', splitterPreset: '1x8', minimumLevel: '0' });
+      toast.success(`"${itemName}" saved`);
+      resetForm();
+      setShowAdd(false);
       loadTemplates();
       onUpdated?.();
     } catch (e) {
@@ -140,7 +193,7 @@ export function ItemCatalogSheet({ open, onOpenChange, onUpdated }: ItemCatalogS
       const res = await fetch(`/api/isp/item-templates?id=${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to delete');
-      toast.success('Removed from catalog');
+      toast.success('Removed');
       loadTemplates();
       onUpdated?.();
     } catch (e) {
@@ -148,130 +201,264 @@ export function ItemCatalogSheet({ open, onOpenChange, onUpdated }: ItemCatalogS
     }
   };
 
-  const grouped = INVENTORY_ITEM_TYPES.map((t) => ({
-    type: t,
-    items: templates.filter((tpl) => tpl.itemTypeId === t.id),
-  })).filter((g) => g.items.length > 0);
+  const showNameFields = form.itemTypeId !== 'splitter' || form.splitterPreset === 'custom';
+  const typeConfig = getItemTypeConfig(form.itemTypeId);
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <BookMarked className="h-5 w-5" />
-            Common Item Names
-          </SheetTitle>
-        </SheetHeader>
-
-        <p className="text-sm text-muted-foreground mt-2 mb-4">
-          Save items you add often. They appear as quick picks when adding stock.
-        </p>
-
-        <div className="rounded-lg border p-3 space-y-3 mb-5">
-          <p className="text-sm font-medium">Add to catalog</p>
-          <div className="space-y-2">
-            <Label>Item type</Label>
-            <Select value={form.itemTypeId} onValueChange={(v) => handleTypeChange(v as InventoryItemTypeId)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {INVENTORY_ITEM_TYPES.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {form.itemTypeId === 'splitter' && (
-            <div className="flex flex-wrap gap-1.5">
-              {SPLITTER_PRESETS.filter((p) => p.id !== 'custom').map((p) => (
-                <Button
-                  key={p.id}
-                  type="button"
-                  size="sm"
-                  variant={form.splitterPreset === p.id ? 'default' : 'outline'}
-                  className="h-7 text-xs px-2"
-                  onClick={() => applySplitterToForm(p.id)}
-                >
-                  {p.label}
-                </Button>
-              ))}
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-xl p-0 gap-0 max-h-[88vh] flex flex-col overflow-hidden">
+        {/* Header */}
+        <DialogHeader className="px-5 pt-5 pb-4 border-b shrink-0 space-y-0">
+          <div className="flex items-center justify-between gap-3 pr-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <BookMarked className="h-4 w-4" />
+              </div>
+              <div>
+                <DialogTitle className="text-base leading-tight">Item Catalog</DialogTitle>
+                <DialogDescription className="text-xs mt-0.5">
+                  Saved names for quick stock entry
+                </DialogDescription>
+              </div>
             </div>
-          )}
+            <Badge variant="secondary" className="shrink-0 tabular-nums">
+              {templates.length} saved
+            </Badge>
+          </div>
+        </DialogHeader>
 
-          {(form.itemTypeId !== 'splitter' || form.splitterPreset === 'custom') && (
-            <>
-              <div className="space-y-2">
-                <Label>Item name</Label>
-                <Input
-                  value={form.itemName}
-                  onChange={(e) => setForm({ ...form, itemName: e.target.value })}
-                  placeholder={getItemTypeConfig(form.itemTypeId).namePlaceholder}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Item code (optional)</Label>
-                <Input
-                  value={form.itemCode}
-                  onChange={(e) => setForm({ ...form, itemCode: e.target.value.toUpperCase() })}
-                />
-              </div>
-            </>
-          )}
-
-          {form.itemTypeId === 'splitter' && form.splitterPreset !== 'custom' && form.itemName && (
-            <p className="text-sm bg-muted/50 rounded px-2 py-1.5">
-              Will save as <strong>{form.itemName}</strong>
-            </p>
-          )}
-
-          <Button size="sm" onClick={handleSave} disabled={saving} className="w-full">
-            {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
-            Add to Catalog
-          </Button>
+        {/* Search + filters */}
+        <div className="px-5 py-3 border-b space-y-2.5 shrink-0 bg-muted/20">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search items…"
+              className="h-9 pl-8 text-sm bg-background"
+            />
+          </div>
+          <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+            <button
+              type="button"
+              onClick={() => setFilterType('all')}
+              className={cn(
+                'shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                filterType === 'all'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-background border text-muted-foreground hover:text-foreground'
+              )}
+            >
+              All {typeCounts.all > 0 && `(${typeCounts.all})`}
+            </button>
+            {INVENTORY_ITEM_TYPES.filter((t) => typeCounts[t.id]).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setFilterType(t.id)}
+                className={cn(
+                  'shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                  filterType === t.id
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-background border text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {t.label} ({typeCounts[t.id]})
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="space-y-3">
-          <p className="text-sm font-medium">Saved items ({templates.length})</p>
+        {/* List */}
+        <div className="flex-1 overflow-y-auto min-h-[200px]">
           {loading ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>
-          ) : templates.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">
-              No saved names yet. Add routers, splitters, cables, etc. above.
-            </p>
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-14 px-6 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted mb-4">
+                <Package className="h-7 w-7 text-muted-foreground/60" />
+              </div>
+              <p className="text-sm font-medium">
+                {templates.length === 0 ? 'No saved items yet' : 'No matches'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-[240px]">
+                {templates.length === 0
+                  ? 'Save routers, cables, splitters and more for one-click add stock'
+                  : 'Try a different search or filter'}
+              </p>
+              {templates.length === 0 && !showAdd && (
+                <Button size="sm" className="mt-4" onClick={() => setShowAdd(true)}>
+                  <Plus className="h-4 w-4 mr-1.5" />
+                  Add first item
+                </Button>
+              )}
+            </div>
           ) : (
-            grouped.map(({ type, items }) => (
-              <div key={type.id}>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
-                  {type.label}
-                </p>
-                <ul className="space-y-1">
-                  {items.map((tpl) => (
-                    <li
-                      key={tpl.id}
-                      className="flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-sm"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{tpl.itemName}</p>
+            <ul className="divide-y">
+              {filtered.map((tpl) => {
+                const typeLabel = getItemTypeConfig(tpl.itemTypeId as InventoryItemTypeId).label;
+                return (
+                  <li
+                    key={tpl.id}
+                    className="group flex items-center gap-3 px-5 py-3 hover:bg-muted/40 transition-colors"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                      <TypeIcon typeId={tpl.itemTypeId} className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">{tpl.itemName}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[11px] text-muted-foreground">{typeLabel}</span>
                         {tpl.itemCode && (
-                          <p className="text-xs text-muted-foreground font-mono">{tpl.itemCode}</p>
+                          <>
+                            <span className="text-muted-foreground/40">·</span>
+                            <span className="text-[11px] font-mono text-muted-foreground truncate">
+                              {tpl.itemCode}
+                            </span>
+                          </>
                         )}
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
-                        onClick={() => handleDelete(tpl.id, tpl.itemName)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                      onClick={() => handleDelete(tpl.id, tpl.itemName)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+
+        {/* Add panel — slides up from footer */}
+        {showAdd ? (
+          <div className="shrink-0 border-t bg-card">
+            <div className="flex items-center justify-between px-5 py-3 border-b bg-muted/30">
+              <p className="text-sm font-semibold">New catalog item</p>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => {
+                  setShowAdd(false);
+                  resetForm();
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="px-5 py-4 space-y-4 max-h-[40vh] overflow-y-auto">
+              <div>
+                <Label className="text-xs text-muted-foreground mb-2 block">Type</Label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {INVENTORY_ITEM_TYPES.map((t) => {
+                    const Icon = TYPE_ICONS[t.id] || Package;
+                    const selected = form.itemTypeId === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => handleTypeChange(t.id)}
+                        className={cn(
+                          'flex flex-col items-center gap-1 rounded-lg border px-1.5 py-2 text-center transition-colors',
+                          selected
+                            ? 'border-primary bg-primary/5 text-primary ring-1 ring-primary/30'
+                            : 'border-border hover:bg-muted/50 text-muted-foreground'
+                        )}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        <span className="text-[10px] font-medium leading-tight">{t.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {form.itemTypeId === 'splitter' && (
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1.5 block">Splitter size</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {SPLITTER_PRESETS.map((p) => (
+                      <Button
+                        key={p.id}
+                        type="button"
+                        size="sm"
+                        variant={form.splitterPreset === p.id ? 'default' : 'outline'}
+                        className="h-7 text-xs px-2.5"
+                        onClick={() => applySplitterToForm(p.id)}
+                      >
+                        {p.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {showNameFields ? (
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label className="text-xs">Name</Label>
+                    <Input
+                      value={form.itemName}
+                      onChange={(e) => setForm({ ...form, itemName: e.target.value })}
+                      placeholder={typeConfig.namePlaceholder}
+                      className="h-9"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label className="text-xs">
+                      Code <span className="text-muted-foreground font-normal">optional</span>
+                    </Label>
+                    <Input
+                      value={form.itemCode}
+                      onChange={(e) => setForm({ ...form, itemCode: e.target.value.toUpperCase() })}
+                      placeholder={`${typeConfig.codePrefix}-001`}
+                      className="h-9 font-mono text-sm"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg bg-primary/5 border border-primary/20 px-3 py-2 text-sm">
+                  Saving as <strong>{form.itemName}</strong>
+                  {form.itemCode && (
+                    <span className="text-muted-foreground font-mono text-xs ml-2">{form.itemCode}</span>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setShowAdd(false);
+                  resetForm();
+                }}
+              >
+                Cancel
+              </Button>
+              <Button className="flex-1" onClick={handleSave} disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
+                Save
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="shrink-0 border-t px-5 py-3 bg-muted/20">
+            <Button className="w-full" variant="outline" onClick={() => setShowAdd(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add to catalog
+            </Button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
