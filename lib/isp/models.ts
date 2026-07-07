@@ -172,6 +172,19 @@ export interface AuditLog {
   createdAt: Date;
 }
 
+export interface ItemTemplate {
+  _id?: string;
+  id: string;
+  itemName: string;
+  itemCode?: string;
+  itemTypeId: string;
+  category?: string;
+  splitterPreset?: string | null;
+  defaultMinimumLevel?: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export const ISP_DB = 'tixmgmt';
 // Use existing 'stations' collection from /admin/stations (stationId, name, location, region)
 export const ISP_STATIONS_COLLECTION = 'stations';
@@ -186,6 +199,7 @@ export const ISP_COLLECTIONS = {
   cableRolls: 'isp_cable_rolls',
   cableUsageLogs: 'isp_cable_usage_logs',
   auditLogs: 'isp_audit_logs',
+  itemTemplates: 'isp_item_templates',
 } as const;
 
 export const UNIT_TYPES = ['pcs', 'meters', 'rolls', 'boxes', 'units'] as const;

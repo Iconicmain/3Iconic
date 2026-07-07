@@ -87,3 +87,12 @@ export const transferStockSchema = z.object({
   reason: z.string().min(1, 'Reason is required'),
   notes: z.string().optional(),
 });
+
+export const itemTemplateSchema = z.object({
+  itemName: z.string().min(1, 'Item name is required'),
+  itemCode: z.string().optional(),
+  itemTypeId: z.string().min(1, 'Item type is required'),
+  category: z.string().optional(),
+  splitterPreset: z.string().optional().nullable(),
+  defaultMinimumLevel: z.number().min(0).optional(),
+});

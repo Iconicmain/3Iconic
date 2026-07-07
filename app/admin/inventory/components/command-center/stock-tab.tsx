@@ -18,10 +18,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Plus, MoreHorizontal, Loader2, History, PackagePlus } from 'lucide-react';
+import { Plus, MoreHorizontal, Loader2, History, PackagePlus, BookMarked } from 'lucide-react';
 import { toast } from 'sonner';
 import { AddStockModal } from './add-stock-modal';
 import { CableRollDrawer } from './cable-roll-drawer';
+import { ItemCatalogSheet, type ItemTemplate } from './item-catalog-sheet';
 
 interface Station {
   id: string;
@@ -117,8 +118,21 @@ export function StockTab({
   const [items, setItems] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const [cableItem, setCableItem] = useState<StockItem | null>(null);
   const [addToItem, setAddToItem] = useState<StockItem | null>(null);
+  const [templates, setTemplates] = useState<ItemTemplate[]>([]);
+
+  const fetchTemplates = () => {
+    fetch('/api/isp/item-templates', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => setTemplates(d.templates || []))
+      .catch(() => setTemplates([]));
+  };
+
+  useEffect(() => {
+    if (!isAllStations) fetchTemplates();
+  }, [isAllStations, refreshKey]);
 
   const fetchItems = () => {
     setLoading(true);
@@ -162,10 +176,16 @@ export function StockTab({
           {isAllStations && ' · Select a station to add stock or manage rolls'}
         </p>
         {!isAllStations && (
-          <Button size="sm" onClick={() => { setAddToItem(null); setAddOpen(true); }}>
-            <Plus className="h-4 w-4 mr-1.5" />
-            Add Stock
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setCatalogOpen(true)}>
+              <BookMarked className="h-4 w-4 mr-1.5" />
+              Item Catalog
+            </Button>
+            <Button size="sm" onClick={() => { setAddToItem(null); setAddOpen(true); }}>
+              <Plus className="h-4 w-4 mr-1.5" />
+              Add Stock
+            </Button>
+          </div>
         )}
       </div>
 
@@ -282,10 +302,16 @@ export function StockTab({
             stationId={stationId}
             stations={stations}
             existingItem={addToItem}
+            templates={templates}
             onSuccess={() => {
               fetchItems();
               onRefresh();
             }}
+          />
+          <ItemCatalogSheet
+            open={catalogOpen}
+            onOpenChange={setCatalogOpen}
+            onUpdated={fetchTemplates}
           />
           <CableRollDrawer
             open={!!cableItem}

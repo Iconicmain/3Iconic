@@ -14,7 +14,9 @@ import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -36,6 +38,7 @@ import {
   type InventoryItemTypeId,
 } from './inventory-item-types';
 import { cn } from '@/lib/utils';
+import type { ItemTemplate } from './item-catalog-sheet';
 
 interface Station {
   id: string;
@@ -48,6 +51,7 @@ interface AddStockModalProps {
   stationId: string;
   stations: Station[];
   existingItem?: StockItem | null;
+  templates?: ItemTemplate[];
   onSuccess: () => void;
 }
 
@@ -62,6 +66,7 @@ export function AddStockModal({
   onOpenChange,
   stationId,
   existingItem,
+  templates = [],
   onSuccess,
 }: AddStockModalProps) {
   const isExisting = !!existingItem;
@@ -185,6 +190,25 @@ export function AddStockModal({
       ...form,
       unitIdsText: idType === 'mac' ? formatMacLinesText(text) : text,
     });
+  };
+
+  const applyTemplate = (templateId: string) => {
+    if (!templateId || templateId === '_none') return;
+    const tpl = templates.find((t) => t.id === templateId);
+    if (!tpl) return;
+    const typeId = tpl.itemTypeId as InventoryItemTypeId;
+    const cfg = getItemTypeConfig(typeId);
+    setItemTypeId(typeId);
+    if (typeId === 'splitter') {
+      setSplitterPreset(tpl.splitterPreset || inferSplitterPresetId(tpl.itemName));
+    }
+    setForm((f) => ({
+      ...f,
+      itemName: tpl.itemName,
+      itemCode: tpl.itemCode || '',
+      category: tpl.category || cfg.category,
+      minimumLevel: String(tpl.defaultMinimumLevel ?? 0),
+    }));
   };
 
   const handleNameChange = (name: string) => {
@@ -335,6 +359,34 @@ export function AddStockModal({
             <p className="text-sm rounded-md bg-muted/50 px-3 py-2">
               Adding to <strong>{typeConfig.label}</strong>
             </p>
+          )}
+
+          {!isExisting && templates.length > 0 && (
+            <div className="space-y-2">
+              <Label>Quick pick from catalog</Label>
+              <Select onValueChange={applyTemplate}>
+                <SelectTrigger className="bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200">
+                  <SelectValue placeholder="Select a saved item name…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {INVENTORY_ITEM_TYPES.map((type) => {
+                    const group = templates.filter((t) => t.itemTypeId === type.id);
+                    if (group.length === 0) return null;
+                    return (
+                      <SelectGroup key={type.id}>
+                        <SelectLabel>{type.label}</SelectLabel>
+                        {group.map((tpl) => (
+                          <SelectItem key={tpl.id} value={tpl.id}>
+                            {tpl.itemName}
+                            {tpl.itemCode ? ` · ${tpl.itemCode}` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
           )}
 
           {!isExisting && (
