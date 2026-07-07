@@ -13,6 +13,12 @@ export type TransactionType =
 
 export type TechnicianIssueStatus = 'OPEN' | 'PARTIAL_RETURN' | 'CLOSED';
 
+export type IssueType =
+  | 'TECHNICIAN_ONLY'
+  | 'SINGLE_STATION'
+  | 'SHARED_STATIONS'
+  | 'PROJECT';
+
 export type CableRollStatus = 'ACTIVE' | 'FINISHED' | 'DAMAGED';
 
 export interface IspStation {
@@ -92,7 +98,14 @@ export interface InventoryTransaction {
 export interface TechnicianIssue {
   _id?: string;
   id: string;
+  /** Legacy — same as sourceStationId for older records */
   stationId: string;
+  sourceStationId?: string;
+  primaryStationId?: string;
+  issueType?: IssueType;
+  sharedStationIds?: string[];
+  projectCustomer?: string | null;
+  expectedReturnDate?: Date | null;
   technicianId: string;
   issueDate: Date;
   jobReference?: string | null;
@@ -139,6 +152,11 @@ export interface CableUsageLog {
   _id?: string;
   id: string;
   stationId: string;
+  sourceStationId?: string;
+  primaryStationId?: string;
+  issueType?: IssueType;
+  sharedStationIds?: string[];
+  expectedReturnDate?: Date | null;
   rollId: string;
   rollCode?: string;
   cableType?: string;

@@ -8,6 +8,7 @@ import { createAuditLog } from '@/lib/isp/audit';
 import { cableIssueSchema } from '@/lib/isp/validation';
 import { ISP_COLLECTIONS, ISP_DB } from '@/lib/isp/models';
 import { syncInventoryItemMeters } from '@/lib/isp/inventory-roll-stats';
+import { normalizeIssuePayload } from '@/lib/isp/issue-types';
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,6 +22,19 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.errors[0]?.message || 'Validation failed' }, { status: 400 });
     }
+
+    const meta = normalizeIssuePayload({
+      ...body,
+      stationId: body.sourceStationId || body.stationId,
+    });
+    if (meta.issueType === 'SHARED_STATIONS' && meta.sharedStationIds.length === 0) {
+      return NextResponse.json({ error: 'Select at least one station to share with' }, { status: 400 });
+    }
+
+    const expectedReturnDate = parsed.data.expectedReturnDate
+      ? new Date(parsed.data.expectedReturnDate)
+      : null;
+    const jobRef = parsed.data.projectCustomer || parsed.data.jobReference || null;
 
     const client = await clientPromise;
     const db = client.db(ISP_DB);
@@ -70,11 +84,16 @@ export async function POST(request: NextRequest) {
     const log = {
       id: generateUUID(),
       stationId: roll.stationId,
+      sourceStationId: meta.sourceStationId || roll.stationId,
+      primaryStationId: meta.primaryStationId || roll.stationId,
+      issueType: meta.issueType,
+      sharedStationIds: meta.sharedStationIds,
+      expectedReturnDate,
       rollId: roll.id,
       rollCode: roll.rollCode,
       cableType: roll.cableType,
       technicianId: parsed.data.technicianId,
-      jobReference: parsed.data.jobReference || null,
+      jobReference: jobRef,
       openingMeters,
       metersIssued: parsed.data.metersIssued,
       metersReturned: 0,
@@ -86,10 +105,12 @@ export async function POST(request: NextRequest) {
     };
     await logsCol.insertOne(log);
 
+    const auditAction = meta.issueType === 'SHARED_STATIONS' ? 'SHARED_CABLE_ISSUE' : 'CABLE_ISSUE';
+
     await createAuditLog({
       userId: ctx.userId,
       stationId: roll.stationId,
-      action: 'CABLE_ISSUE',
+      action: auditAction,
       entityType: 'cableUsageLog',
       entityId: log.id,
       afterData: log,

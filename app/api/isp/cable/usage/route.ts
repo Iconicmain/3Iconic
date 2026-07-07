@@ -5,6 +5,7 @@ import { NO_CACHE_HEADERS } from '@/lib/isp/no-cache';
 export const dynamic = 'force-dynamic';
 import { canAccessStation, getIspUserContext } from '@/lib/isp/permissions';
 import { ISP_COLLECTIONS, ISP_DB } from '@/lib/isp/models';
+import { stationVisibilityFilter } from '@/lib/isp/issue-types';
 
 export async function GET(request: NextRequest) {
   try {
@@ -36,7 +37,12 @@ export async function GET(request: NextRequest) {
       if (!(await canAccessStation(stationIdParam))) {
         return NextResponse.json({ error: 'Access denied to this station' }, { status: 403 });
       }
-      query.stationId = stationId;
+      query.$or = [
+        { stationId: stationId },
+        { sourceStationId: stationId },
+        { primaryStationId: stationId },
+        { sharedStationIds: stationId },
+      ];
     }
     if (rollId) query.rollId = rollId;
     if (technicianId) query.technicianId = technicianId;
@@ -61,6 +67,18 @@ export async function GET(request: NextRequest) {
 
     const rollIds = [...new Set(logs.map((l: { rollId: string }) => l.rollId))];
     const techIds = [...new Set(logs.map((l: { technicianId: string }) => l.technicianId))];
+    const stationIds = new Set<string>();
+    for (const log of logs as {
+      stationId?: string;
+      sourceStationId?: string;
+      primaryStationId?: string;
+      sharedStationIds?: string[];
+    }[]) {
+      if (log.stationId) stationIds.add(log.stationId);
+      if (log.sourceStationId) stationIds.add(log.sourceStationId);
+      if (log.primaryStationId) stationIds.add(log.primaryStationId);
+      for (const sid of log.sharedStationIds || []) stationIds.add(sid);
+    }
 
     const rolls =
       rollIds.length > 0 ? await rollsCol.find({ id: { $in: rollIds } }).toArray() : [];
@@ -72,14 +90,47 @@ export async function GET(request: NextRequest) {
         : [];
     const nameMap = new Map(users.map((u: { id: string; name?: string }) => [u.id, u.name]));
 
-    const enriched = logs.map((log: { rollId: string; technicianId: string; metersIssued: number; metersReturned: number; wasteMeters?: number }) => {
+    const stations =
+      stationIds.size > 0
+        ? await db
+            .collection('stations')
+            .find({
+              $or: [
+                { stationId: { $in: [...stationIds] } },
+                { _id: { $in: [...stationIds].filter((id) => id.length === 24) } },
+              ],
+            })
+            .toArray()
+        : [];
+    const stationNameMap = new Map<string, string>();
+    for (const s of stations as { stationId?: string; _id?: { toString(): string }; name?: string }[]) {
+      if (s.stationId) stationNameMap.set(s.stationId, s.name || s.stationId);
+      if (s._id) stationNameMap.set(s._id.toString(), s.name || s.stationId || s._id.toString());
+    }
+
+    const enriched = logs.map((log: {
+      rollId: string;
+      technicianId: string;
+      metersIssued: number;
+      metersReturned: number;
+      metersUsed?: number;
+      wasteMeters?: number;
+      sourceStationId?: string;
+      primaryStationId?: string;
+      sharedStationIds?: string[];
+      stationId?: string;
+    }) => {
       const roll = rollMap.get(log.rollId) as { rollCode?: string; cableType?: string } | undefined;
       const outstanding = log.metersIssued - (log.metersReturned || 0) - (log.metersUsed || 0) - (log.wasteMeters || 0);
+      const sourceId = log.sourceStationId || log.stationId;
       return {
         ...log,
         rollCode: roll?.rollCode || null,
         cableType: roll?.cableType || null,
         technicianName: nameMap.get(log.technicianId) || null,
+        sourceStationName: sourceId ? stationNameMap.get(sourceId) || null : null,
+        primaryStationName: log.primaryStationId ? stationNameMap.get(log.primaryStationId) || null : null,
+        sharedStationNames: (log.sharedStationIds || []).map((id) => stationNameMap.get(id) || id),
         outstandingMeters: Math.max(0, outstanding),
       };
     });

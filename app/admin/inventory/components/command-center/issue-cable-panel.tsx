@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -12,8 +13,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Cable, ArrowUpCircle, Loader2 } from 'lucide-react';
+import { Cable, ArrowUpCircle, Loader2, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { ISSUE_TYPE_OPTIONS, type IssueType } from '@/lib/isp/issue-types';
+import { softBadgeClass } from './inventory-colors';
+
+interface Station {
+  id: string;
+  stationName: string;
+}
 
 interface Technician {
   id: string;
@@ -35,31 +44,48 @@ interface CableItem {
 
 interface IssueCablePanelProps {
   stationId: string;
+  stations?: Station[];
   refreshKey?: number;
   onRefresh: () => void;
 }
 
-export function IssueCablePanel({ stationId, refreshKey = 0, onRefresh }: IssueCablePanelProps) {
+export function IssueCablePanel({
+  stationId,
+  stations = [],
+  refreshKey = 0,
+  onRefresh,
+}: IssueCablePanelProps) {
+  const stationOptions = stations.length > 0 ? stations : [{ id: stationId, stationName: stationId }];
+
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [rolls, setRolls] = useState<CableRoll[]>([]);
   const [cableItems, setCableItems] = useState<CableItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
+    issueType: 'SINGLE_STATION' as IssueType,
+    sourceStationId: stationId,
+    primaryStationId: stationId,
+    sharedStationIds: [] as string[],
     technicianId: '',
     cableItemId: '',
     rollId: '',
     meters: '',
-    jobReference: '',
+    projectCustomer: '',
+    expectedReturnDate: '',
     notes: '',
   });
 
-  const loadData = () => {
+  const showShared = form.issueType === 'SHARED_STATIONS';
+  const showProject = form.issueType === 'PROJECT';
+  const otherStations = stationOptions.filter((s) => s.id !== form.primaryStationId);
+
+  const loadData = (sourceId: string) => {
     setLoading(true);
     Promise.all([
-      fetch(`/api/isp/technicians?stationId=${stationId}`, { cache: 'no-store' }).then((r) => r.json()),
-      fetch(`/api/isp/cable?stationId=${stationId}`, { cache: 'no-store' }).then((r) => r.json()),
-      fetch(`/api/isp/inventory?stationId=${stationId}&unitType=m`, { cache: 'no-store' }).then((r) => r.json()),
+      fetch(`/api/isp/technicians?stationId=${sourceId}`, { cache: 'no-store' }).then((r) => r.json()),
+      fetch(`/api/isp/cable?stationId=${sourceId}`, { cache: 'no-store' }).then((r) => r.json()),
+      fetch(`/api/isp/inventory?stationId=${sourceId}&unitType=m`, { cache: 'no-store' }).then((r) => r.json()),
     ])
       .then(([tech, cable, inv]) => {
         setTechnicians(tech.technicians || []);
@@ -75,8 +101,18 @@ export function IssueCablePanel({ stationId, refreshKey = 0, onRefresh }: IssueC
   };
 
   useEffect(() => {
-    loadData();
-  }, [stationId, refreshKey]);
+    loadData(form.sourceStationId);
+  }, [form.sourceStationId, refreshKey]);
+
+  useEffect(() => {
+    setForm((f) => ({
+      ...f,
+      sourceStationId: stationId,
+      primaryStationId: stationId,
+      sharedStationIds: [],
+      rollId: '',
+    }));
+  }, [stationId]);
 
   const selectedRoll = rolls.find((r) => r.id === form.rollId);
   const filteredRolls = form.cableItemId
@@ -86,9 +122,21 @@ export function IssueCablePanel({ stationId, refreshKey = 0, onRefresh }: IssueC
       })
     : rolls;
 
+  const toggleShared = (id: string, checked: boolean) => {
+    setForm((f) => ({
+      ...f,
+      sharedStationIds: checked
+        ? [...f.sharedStationIds, id]
+        : f.sharedStationIds.filter((s) => s !== id),
+    }));
+  };
+
   const handleIssue = async () => {
     if (!form.technicianId) return toast.error('Select a technician');
     if (!form.rollId) return toast.error('Select a cable roll');
+    if (showShared && form.sharedStationIds.length === 0) {
+      return toast.error('Select at least one shared station');
+    }
     const meters = parseFloat(form.meters);
     if (!meters || meters <= 0) return toast.error('Enter meters to issue');
     if (selectedRoll && meters > selectedRoll.currentRemainingMeters) {
@@ -104,17 +152,37 @@ export function IssueCablePanel({ stationId, refreshKey = 0, onRefresh }: IssueC
           rollId: form.rollId,
           technicianId: form.technicianId,
           metersIssued: meters,
-          jobReference: form.jobReference || undefined,
+          issueType: form.issueType,
+          sourceStationId: form.sourceStationId,
+          primaryStationId: form.primaryStationId,
+          sharedStationIds: showShared ? form.sharedStationIds : undefined,
+          projectCustomer: showProject ? form.projectCustomer : form.projectCustomer || undefined,
+          jobReference: form.projectCustomer || undefined,
+          expectedReturnDate: form.expectedReturnDate || undefined,
           notes: form.notes || undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to issue cable');
       toast.success(
-        `Issued ${meters}m from roll ${selectedRoll?.rollCode} to technician`
+        showShared
+          ? `Issued ${meters}m for shared station use`
+          : `Issued ${meters}m from roll ${selectedRoll?.rollCode}`
       );
-      setForm({ technicianId: '', cableItemId: '', rollId: '', meters: '', jobReference: '', notes: '' });
-      loadData();
+      setForm({
+        issueType: 'SINGLE_STATION',
+        sourceStationId: stationId,
+        primaryStationId: stationId,
+        sharedStationIds: [],
+        technicianId: '',
+        cableItemId: '',
+        rollId: '',
+        meters: '',
+        projectCustomer: '',
+        expectedReturnDate: '',
+        notes: '',
+      });
+      loadData(stationId);
       onRefresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Issue failed');
@@ -140,12 +208,56 @@ export function IssueCablePanel({ stationId, refreshKey = 0, onRefresh }: IssueC
         ) : (
           <>
             <p className="text-sm text-muted-foreground">
-              Select the exact roll and meters issued. Returns are tracked per roll — used vs returned unused.
+              Select roll and meters. Use <strong>Shared stations</strong> when cable serves co-located sites — stock deducts from source station.
             </p>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Issue type</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {ISSUE_TYPE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() =>
+                      setForm((f) => ({
+                        ...f,
+                        issueType: opt.value,
+                        sharedStationIds: opt.value === 'SHARED_STATIONS' ? f.sharedStationIds : [],
+                      }))
+                    }
+                    className={cn(
+                      'rounded-lg border px-2 py-2 text-left transition-colors',
+                      form.issueType === opt.value
+                        ? 'border-primary bg-primary/5 ring-1 ring-primary/25'
+                        : 'hover:bg-muted/50'
+                    )}
+                  >
+                    <p className="text-xs font-medium">{opt.label}</p>
+                    <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{opt.description}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Technician</Label>
+                <Label className="text-xs">Source station (roll from)</Label>
+                <Select
+                  value={form.sourceStationId}
+                  onValueChange={(v) =>
+                    setForm((f) => ({ ...f, sourceStationId: v, rollId: '', cableItemId: '' }))
+                  }
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {stationOptions.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.stationName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Technician responsible</Label>
                 <Select value={form.technicianId} onValueChange={(v) => setForm({ ...form, technicianId: v })}>
                   <SelectTrigger><SelectValue placeholder="Select technician" /></SelectTrigger>
                   <SelectContent>
@@ -155,6 +267,60 @@ export function IssueCablePanel({ stationId, refreshKey = 0, onRefresh }: IssueC
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {showShared && (
+              <div className="rounded-xl border border-indigo-200/80 bg-indigo-50/40 dark:bg-indigo-950/20 p-3 space-y-3">
+                <div className="flex items-center gap-2 text-indigo-800 dark:text-indigo-300">
+                  <Share2 className="h-4 w-4" />
+                  <span className="text-xs font-semibold">Shared station details</span>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Primary station</Label>
+                  <Select
+                    value={form.primaryStationId}
+                    onValueChange={(v) =>
+                      setForm((f) => ({
+                        ...f,
+                        primaryStationId: v,
+                        sharedStationIds: f.sharedStationIds.filter((id) => id !== v),
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="h-9 bg-background"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {stationOptions.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.stationName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Shared with station(s)</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {otherStations.map((s) => (
+                      <label
+                        key={s.id}
+                        className={cn(
+                          'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs cursor-pointer',
+                          form.sharedStationIds.includes(s.id)
+                            ? 'border-indigo-400 bg-indigo-100 text-indigo-900'
+                            : 'bg-background'
+                        )}
+                      >
+                        <Checkbox
+                          checked={form.sharedStationIds.includes(s.id)}
+                          onCheckedChange={(c) => toggleShared(s.id, !!c)}
+                        />
+                        {s.stationName}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Cable item</Label>
                 <Select
@@ -169,30 +335,30 @@ export function IssueCablePanel({ stationId, refreshKey = 0, onRefresh }: IssueC
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label>Roll</Label>
+                <Select value={form.rollId} onValueChange={(v) => setForm({ ...form, rollId: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select roll" /></SelectTrigger>
+                  <SelectContent>
+                    {filteredRolls.length === 0 ? (
+                      <SelectItem value="_none" disabled>No active rolls</SelectItem>
+                    ) : (
+                      filteredRolls.map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.rollCode} — {r.cableType} — {r.currentRemainingMeters}m left
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Roll</Label>
-              <Select value={form.rollId} onValueChange={(v) => setForm({ ...form, rollId: v })}>
-                <SelectTrigger><SelectValue placeholder="Select roll" /></SelectTrigger>
-                <SelectContent>
-                  {filteredRolls.length === 0 ? (
-                    <SelectItem value="_none" disabled>No active rolls</SelectItem>
-                  ) : (
-                    filteredRolls.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {r.rollCode} — {r.cableType} — {r.currentRemainingMeters}m left
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              {selectedRoll && (
-                <p className="text-xs text-muted-foreground">
-                  Roll <strong>{selectedRoll.rollCode}</strong> · {selectedRoll.currentRemainingMeters}m remaining on spool
-                </p>
-              )}
-            </div>
+            {selectedRoll && (
+              <p className="text-xs text-muted-foreground">
+                Roll <strong>{selectedRoll.rollCode}</strong> · {selectedRoll.currentRemainingMeters}m remaining on spool
+              </p>
+            )}
 
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-2">
@@ -207,14 +373,42 @@ export function IssueCablePanel({ stationId, refreshKey = 0, onRefresh }: IssueC
                 />
               </div>
               <div className="space-y-2">
-                <Label>Project / customer</Label>
+                <Label>Expected return date</Label>
                 <Input
-                  value={form.jobReference}
-                  onChange={(e) => setForm({ ...form, jobReference: e.target.value })}
-                  placeholder="Optional"
+                  type="date"
+                  value={form.expectedReturnDate}
+                  onChange={(e) => setForm({ ...form, expectedReturnDate: e.target.value })}
                 />
               </div>
             </div>
+
+            {(showProject || form.issueType === 'TECHNICIAN_ONLY') && (
+              <div className="space-y-2">
+                <Label>Project / customer {showProject ? '' : '(optional)'}</Label>
+                <Input
+                  value={form.projectCustomer}
+                  onChange={(e) => setForm({ ...form, projectCustomer: e.target.value })}
+                  placeholder="Optional"
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Input
+                value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                placeholder="Optional"
+              />
+            </div>
+
+            {showShared && form.sharedStationIds.length > 0 && (
+              <p className={softBadgeClass('bg-indigo-100 text-indigo-800 border-indigo-200 text-xs')}>
+                Deducts from {stationOptions.find((s) => s.id === form.sourceStationId)?.stationName} · For{' '}
+                {stationOptions.find((s) => s.id === form.primaryStationId)?.stationName} +{' '}
+                {form.sharedStationIds.map((id) => stationOptions.find((s) => s.id === id)?.stationName).join(', ')}
+              </p>
+            )}
 
             <Button onClick={handleIssue} disabled={submitting || filteredRolls.length === 0} className="w-full sm:w-auto">
               {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ArrowUpCircle className="h-4 w-4 mr-2" />}

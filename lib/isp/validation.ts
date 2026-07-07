@@ -34,6 +34,12 @@ export const adjustStockSchema = z.object({
 });
 
 export const issueItemSchema = z.object({
+  issueType: z.enum(['TECHNICIAN_ONLY', 'SINGLE_STATION', 'SHARED_STATIONS', 'PROJECT']).optional(),
+  sourceStationId: z.string().optional(),
+  primaryStationId: z.string().optional(),
+  sharedStationIds: z.array(z.string()).optional(),
+  projectCustomer: z.string().optional(),
+  expectedReturnDate: z.string().optional(),
   technicianId: z.string().min(1, 'Technician is required'),
   jobReference: z.string().optional(),
   items: z.array(
@@ -52,6 +58,7 @@ export const returnItemSchema = z.object({
   quantityReturned: z.number().min(0, 'Quantity cannot be negative'),
   routerUnitIds: z.array(z.string().min(1)).optional(),
   returnCondition: z.string().optional(),
+  returnStationId: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -67,7 +74,13 @@ export const cableIssueSchema = z.object({
   rollId: z.string().min(1),
   technicianId: z.string().min(1, 'Technician is required'),
   jobReference: z.string().optional(),
+  projectCustomer: z.string().optional(),
   metersIssued: z.number().min(0.01, 'Meters must be positive'),
+  issueType: z.enum(['TECHNICIAN_ONLY', 'SINGLE_STATION', 'SHARED_STATIONS', 'PROJECT']).optional(),
+  sourceStationId: z.string().optional(),
+  primaryStationId: z.string().optional(),
+  sharedStationIds: z.array(z.string()).optional(),
+  expectedReturnDate: z.string().optional(),
   notes: z.string().optional(),
 });
 

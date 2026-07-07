@@ -8,6 +8,7 @@ import { getIspUserContext, canAccessStation } from '@/lib/isp/permissions';
 import { createAuditLog } from '@/lib/isp/audit';
 import { issueItemSchema } from '@/lib/isp/validation';
 import { ISP_COLLECTIONS, ISP_DB } from '@/lib/isp/models';
+import { stationVisibilityFilter, normalizeIssuePayload } from '@/lib/isp/issue-types';
 import type { Db } from 'mongodb';
 
 async function enrichIssueItems(
@@ -45,6 +46,45 @@ async function enrichIssueItems(
     })
   );
 }
+
+async function attachStationNames<T extends { stationId?: unknown; sourceStationId?: unknown; primaryStationId?: unknown; sharedStationIds?: unknown[] }>(
+  db: Db,
+  issues: T[]
+): Promise<(T & { sourceStationName?: string; primaryStationName?: string; sharedStationNames?: string[] })[]> {
+  const stationIds = new Set<string>();
+  for (const i of issues) {
+    if (i.stationId) stationIds.add(String(i.stationId));
+    if (i.sourceStationId) stationIds.add(String(i.sourceStationId));
+    if (i.primaryStationId) stationIds.add(String(i.primaryStationId));
+    for (const sid of (i.sharedStationIds as string[]) || []) stationIds.add(sid);
+  }
+  if (stationIds.size === 0) return issues;
+
+  const stations = await db
+    .collection(ISP_STATIONS_COLLECTION)
+    .find({
+      $or: [
+        { stationId: { $in: [...stationIds] } },
+        { _id: { $in: [...stationIds].filter((id) => id.length === 24) } },
+      ],
+    })
+    .toArray();
+
+  const nameMap = new Map<string, string>();
+  for (const s of stations as { stationId?: string; _id?: { toString(): string }; name?: string }[]) {
+    if (s.stationId) nameMap.set(s.stationId, s.name || s.stationId);
+    if (s._id) nameMap.set(s._id.toString(), s.name || s.stationId || s._id.toString());
+  }
+
+  return issues.map((i) => ({
+    ...i,
+    sourceStationName: nameMap.get(String(i.sourceStationId || i.stationId || '')),
+    primaryStationName: nameMap.get(String(i.primaryStationId || i.stationId || '')),
+    sharedStationNames: ((i.sharedStationIds as string[]) || []).map((id) => nameMap.get(id) || id),
+  }));
+}
+
+const ISP_STATIONS_COLLECTION = 'stations';
 
 async function attachTechnicianNames<T extends { technicianId?: unknown }>(
   db: Db,
@@ -109,7 +149,8 @@ export async function GET(request: NextRequest) {
         })
       );
       const enriched = await attachTechnicianNames(db, issuesWithItems);
-      return NextResponse.json({ issues: enriched }, { headers: NO_CACHE_HEADERS });
+      const withStations = await attachStationNames(db, enriched);
+      return NextResponse.json({ issues: withStations }, { headers: NO_CACHE_HEADERS });
     }
 
     const stationId = await (await import('@/lib/isp/station-resolve')).resolveStationId(stationIdParam);
@@ -120,7 +161,7 @@ export async function GET(request: NextRequest) {
 
     const txCol = db.collection(ISP_COLLECTIONS.inventoryTransactions);
 
-    const query: Record<string, unknown> = { stationId };
+    const query: Record<string, unknown> = stationVisibilityFilter(stationId);
     if (technicianId) query.technicianId = technicianId;
     if (status) query.status = status;
     if (date) {
@@ -142,7 +183,8 @@ export async function GET(request: NextRequest) {
     );
 
     const enrichedIssues = await attachTechnicianNames(db, issuesWithItems);
-    return NextResponse.json({ issues: enrichedIssues }, { headers: NO_CACHE_HEADERS });
+    const withStations = await attachStationNames(db, enrichedIssues);
+    return NextResponse.json({ issues: withStations }, { headers: NO_CACHE_HEADERS });
   } catch (error) {
     console.error('[ISP Technician Issues GET]', error);
     return NextResponse.json({ error: 'Failed to fetch issues' }, { status: 500 });
@@ -157,20 +199,32 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const stationId = body.stationId;
-    if (!stationId || !(await canAccessStation(stationId))) {
+    const uiStationId = body.stationId || body.sourceStationId;
+    if (!uiStationId || !(await canAccessStation(uiStationId))) {
       return NextResponse.json({ error: 'Access denied to this station' }, { status: 403 });
     }
 
-    const parsed = issueItemSchema.safeParse({
-      technicianId: body.technicianId,
-      jobReference: body.jobReference,
-      items: body.items,
-      notes: body.notes,
-    });
+    const parsed = issueItemSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.errors[0]?.message || 'Validation failed' }, { status: 400 });
     }
+
+    const meta = normalizeIssuePayload({ ...body, stationId: uiStationId });
+    if (!meta.sourceStationId || !(await canAccessStation(meta.sourceStationId))) {
+      return NextResponse.json({ error: 'Access denied to source station' }, { status: 403 });
+    }
+    if (meta.issueType === 'SHARED_STATIONS' && meta.sharedStationIds.length === 0) {
+      return NextResponse.json({ error: 'Select at least one station to share with' }, { status: 400 });
+    }
+    for (const sid of meta.sharedStationIds) {
+      if (!(await canAccessStation(sid))) {
+        return NextResponse.json({ error: `Access denied to shared station ${sid}` }, { status: 403 });
+      }
+    }
+
+    const expectedReturnDate = parsed.data.expectedReturnDate
+      ? new Date(parsed.data.expectedReturnDate)
+      : null;
 
     const client = await clientPromise;
     const db = client.db(ISP_DB);
@@ -211,12 +265,19 @@ export async function POST(request: NextRequest) {
     }
 
     const issueDate = new Date();
+    const jobRef = parsed.data.projectCustomer || parsed.data.jobReference || null;
     const issue = {
       id: generateUUID(),
-      stationId,
+      stationId: meta.sourceStationId,
+      sourceStationId: meta.sourceStationId,
+      primaryStationId: meta.primaryStationId,
+      issueType: meta.issueType,
+      sharedStationIds: meta.sharedStationIds,
+      projectCustomer: meta.projectCustomer,
+      expectedReturnDate,
       technicianId: parsed.data.technicianId,
       issueDate,
-      jobReference: parsed.data.jobReference || null,
+      jobReference: jobRef,
       status: 'OPEN' as const,
       approvedBy: ctx.userId,
       notes: parsed.data.notes || null,
@@ -224,6 +285,8 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date(),
     };
     await issuesCol.insertOne(issue);
+
+    const deductStationId = meta.sourceStationId;
 
     for (const it of parsed.data.items) {
       const item = await itemsCol.findOne({ id: it.itemId });
@@ -257,7 +320,7 @@ export async function POST(request: NextRequest) {
             $set: {
               status: 'issued',
               technicianId: parsed.data.technicianId,
-              jobReference: parsed.data.jobReference || null,
+              jobReference: jobRef,
               issueItemId: issueItem.id,
               updatedAt: new Date(),
             },
@@ -267,14 +330,14 @@ export async function POST(request: NextRequest) {
 
       await txCol.insertOne({
         id: generateUUID(),
-        stationId,
+        stationId: deductStationId,
         itemId: it.itemId,
         transactionType: 'ISSUE',
         quantity: -it.quantityTaken,
         balanceBefore,
         balanceAfter,
         technicianId: parsed.data.technicianId,
-        jobReference: parsed.data.jobReference || null,
+        jobReference: jobRef,
         approvedBy: ctx.userId,
         notes: parsed.data.notes || null,
         createdBy: ctx.userId,
@@ -282,10 +345,13 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const auditAction =
+      meta.issueType === 'SHARED_STATIONS' ? 'SHARED_ISSUE' : meta.issueType === 'PROJECT' ? 'PROJECT_ISSUE' : 'ISSUE';
+
     await createAuditLog({
       userId: ctx.userId,
-      stationId,
-      action: 'ISSUE',
+      stationId: deductStationId,
+      action: auditAction,
       entityType: 'technicianIssue',
       entityId: issue.id,
       afterData: issue,

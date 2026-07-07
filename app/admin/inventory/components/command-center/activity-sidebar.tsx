@@ -31,7 +31,13 @@ function fmtAction(action: string): string {
     ADJUST_STOCK: 'Adjusted stock',
     ISSUE: 'Issued items',
     RETURN: 'Processed return',
+    SHARED_ISSUE: 'Shared equipment issued',
+    SHARED_RETURN: 'Shared equipment returned',
+    SHARED_PARTIAL_RETURN: 'Shared equipment partially returned',
+    SHARED_DAMAGED: 'Shared equipment marked damaged',
+    PROJECT_ISSUE: 'Project equipment issued',
     CABLE_ISSUE: 'Issued cable',
+    SHARED_CABLE_ISSUE: 'Shared cable issued',
     CABLE_RETURN: 'Returned cable',
     TRANSFER_STOCK: 'Transferred stock',
   };

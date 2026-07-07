@@ -7,6 +7,7 @@ import { getIspUserContext, canAccessStation } from '@/lib/isp/permissions';
 import { createAuditLog } from '@/lib/isp/audit';
 import { returnItemSchema } from '@/lib/isp/validation';
 import { ISP_COLLECTIONS, ISP_DB } from '@/lib/isp/models';
+import { allowedReturnStationIds } from '@/lib/isp/issue-types';
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,7 +36,12 @@ export async function POST(request: NextRequest) {
     }
 
     const issue = await issuesCol.findOne({ id: issueItem.technicianIssueId });
-    if (!issue || !(await canAccessStation(issue.stationId))) {
+    if (!issue) {
+      return NextResponse.json({ error: 'Issue not found' }, { status: 404 });
+    }
+
+    const accessStation = issue.sourceStationId || issue.stationId;
+    if (!(await canAccessStation(accessStation))) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
@@ -61,9 +67,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const allowedStations = allowedReturnStationIds(issue as Parameters<typeof allowedReturnStationIds>[0]);
+    const defaultReturnStation = issue.sourceStationId || issue.stationId;
+    const returnStationId = parsed.data.returnStationId || defaultReturnStation;
+
+    if (!allowedStations.includes(returnStationId)) {
+      return NextResponse.json({ error: 'Invalid return station for this issue' }, { status: 400 });
+    }
+    if (!(await canAccessStation(returnStationId))) {
+      return NextResponse.json({ error: 'Access denied to return station' }, { status: 403 });
+    }
+
     const qtyReturned = parsed.data.routerUnitIds?.length || parsed.data.quantityReturned;
     const newReturned = issueItem.quantityReturned + qtyReturned;
     const newUsed = issueItem.quantityTaken - newReturned;
+    const condition = parsed.data.returnCondition || 'Good';
+    const isDamagedOrLost = condition === 'Damaged' || condition === 'Lost' || condition === 'Repair';
 
     await issueItemsCol.updateOne(
       { id: parsed.data.issueItemId },
@@ -71,7 +90,7 @@ export async function POST(request: NextRequest) {
         $set: {
           quantityReturned: newReturned,
           quantityUsed: newUsed,
-          returnCondition: parsed.data.returnCondition || null,
+          returnCondition: condition,
           returnTime: new Date(),
           updatedAt: new Date(),
         },
@@ -83,7 +102,7 @@ export async function POST(request: NextRequest) {
         { id: { $in: parsed.data.routerUnitIds } },
         {
           $set: {
-            status: parsed.data.returnCondition === 'Damaged' || parsed.data.returnCondition === 'Lost' ? 'damaged' : 'available',
+            status: isDamagedOrLost ? 'damaged' : 'available',
             technicianId: null,
             jobReference: null,
             issueItemId: null,
@@ -94,7 +113,7 @@ export async function POST(request: NextRequest) {
     }
 
     const item = await itemsCol.findOne({ id: issueItem.itemId });
-    if (item) {
+    if (item && !isDamagedOrLost && qtyReturned > 0) {
       const balanceBefore = item.quantityAvailable;
       const balanceAfter = balanceBefore + qtyReturned;
       await itemsCol.updateOne(
@@ -104,7 +123,7 @@ export async function POST(request: NextRequest) {
 
       await txCol.insertOne({
         id: generateUUID(),
-        stationId: issue.stationId,
+        stationId: returnStationId,
         itemId: issueItem.itemId,
         transactionType: 'RETURN',
         quantity: qtyReturned,
@@ -113,7 +132,23 @@ export async function POST(request: NextRequest) {
         technicianId: issue.technicianId,
         jobReference: issue.jobReference || null,
         approvedBy: ctx.userId,
-        notes: parsed.data.notes || null,
+        notes: parsed.data.notes || (returnStationId !== defaultReturnStation ? `Returned to alternate station` : undefined),
+        createdBy: ctx.userId,
+        createdAt: new Date(),
+      });
+    } else if (item && isDamagedOrLost) {
+      await txCol.insertOne({
+        id: generateUUID(),
+        stationId: defaultReturnStation,
+        itemId: issueItem.itemId,
+        transactionType: 'DAMAGE',
+        quantity: qtyReturned,
+        balanceBefore: item.quantityAvailable,
+        balanceAfter: item.quantityAvailable,
+        technicianId: issue.technicianId,
+        jobReference: issue.jobReference || null,
+        approvedBy: ctx.userId,
+        notes: parsed.data.notes || condition,
         createdBy: ctx.userId,
         createdAt: new Date(),
       });
@@ -131,17 +166,34 @@ export async function POST(request: NextRequest) {
       { $set: { status: finalStatus, updatedAt: new Date() } }
     );
 
+    const isShared = issue.issueType === 'SHARED_STATIONS';
+    const auditAction = isShared
+      ? condition === 'Partial' || newReturned < issueItem.quantityTaken
+        ? 'SHARED_PARTIAL_RETURN'
+        : isDamagedOrLost
+          ? 'SHARED_DAMAGED'
+          : 'SHARED_RETURN'
+      : 'RETURN';
+
     await createAuditLog({
       userId: ctx.userId,
-      stationId: issue.stationId,
-      action: 'RETURN',
+      stationId: returnStationId,
+      action: auditAction,
       entityType: 'technicianIssueItem',
       entityId: parsed.data.issueItemId,
-      afterData: { quantityReturned: newReturned, quantityUsed: newUsed, routerUnitIds: parsed.data.routerUnitIds },
+      afterData: {
+        quantityReturned: newReturned,
+        quantityUsed: newUsed,
+        routerUnitIds: parsed.data.routerUnitIds,
+        returnStationId,
+        returnCondition: condition,
+        issueType: issue.issueType,
+        sharedStationIds: issue.sharedStationIds,
+      },
     });
 
     const updated = await issueItemsCol.findOne({ id: parsed.data.issueItemId });
-    return NextResponse.json({ success: true, issueItem: updated, status: finalStatus });
+    return NextResponse.json({ success: true, issueItem: updated, status: finalStatus, returnStationId });
   } catch (error) {
     console.error('[ISP Return]', error);
     return NextResponse.json({ error: 'Failed to process return' }, { status: 500 });

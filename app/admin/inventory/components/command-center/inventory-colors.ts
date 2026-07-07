@@ -101,6 +101,15 @@ export type ActivityAction =
 
 export function activityStyle(action: ActivityAction): { dot: string; bg: string; label: string } {
   const a = action.toUpperCase();
+  if (a.includes('SHARED') && (a.includes('RETURN') || a.includes('DAMAGED') || a.includes('PARTIAL'))) {
+    return { dot: 'bg-violet-500', bg: 'bg-violet-50/80 dark:bg-violet-950/20', label: 'text-violet-800 dark:text-violet-300' };
+  }
+  if (a.includes('SHARED') && a.includes('CABLE')) {
+    return { dot: 'bg-indigo-500', bg: 'bg-indigo-50/80 dark:bg-indigo-950/20', label: 'text-indigo-800 dark:text-indigo-300' };
+  }
+  if (a.includes('SHARED') || a === 'PROJECT_ISSUE') {
+    return { dot: 'bg-indigo-500', bg: 'bg-indigo-50/80 dark:bg-indigo-950/20', label: 'text-indigo-800 dark:text-indigo-300' };
+  }
   if (a.includes('CABLE') && a.includes('RETURN')) {
     return { dot: 'bg-teal-500', bg: 'bg-teal-50/80 dark:bg-teal-950/20', label: 'text-teal-800 dark:text-teal-300' };
   }

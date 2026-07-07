@@ -28,9 +28,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowUpCircle, ArrowDownCircle, Plus } from 'lucide-react';
+import { ArrowUpCircle, ArrowDownCircle, Plus, Share2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+import { IssueEquipmentDialog } from './command-center/issue-equipment-dialog';
+import { issueTypeLabel } from '@/lib/isp/issue-types';
+import { softBadgeClass } from './command-center/inventory-colors';
 
 interface SerializedUnit {
   id: string;
@@ -53,14 +56,6 @@ interface Technician {
   email: string;
 }
 
-interface InventoryItem {
-  id: string;
-  itemName: string;
-  itemCode: string;
-  unitType: string;
-  quantityAvailable: number;
-}
-
 interface IssueItem {
   id: string;
   itemId: string;
@@ -81,6 +76,15 @@ interface Issue {
   technicianId: string;
   technicianName?: string;
   jobReference?: string;
+  issueType?: string;
+  sourceStationId?: string;
+  sourceStationName?: string;
+  primaryStationId?: string;
+  primaryStationName?: string;
+  sharedStationIds?: string[];
+  sharedStationNames?: string[];
+  projectCustomer?: string;
+  expectedReturnDate?: string | null;
   status: string;
   issueDate: string;
   items: IssueItem[];
@@ -115,8 +119,26 @@ function daysOut(from?: string | null): number {
   return Math.max(0, Math.floor((Date.now() - start) / (1000 * 60 * 60 * 24)));
 }
 
+function sharedForLabel(issue: Issue): string | null {
+  if (issue.issueType !== 'SHARED_STATIONS') return null;
+  const primary = issue.primaryStationName || issue.primaryStationId;
+  const shared = issue.sharedStationNames?.length
+    ? issue.sharedStationNames.join(', ')
+    : issue.sharedStationIds?.join(', ');
+  if (primary && shared) return `${primary} + ${shared}`;
+  return primary || shared || null;
+}
+
+function isOverdue(issue: Issue, item: IssueItem): boolean {
+  if (issue.expectedReturnDate) {
+    return new Date(issue.expectedReturnDate).getTime() < Date.now();
+  }
+  return daysOut(item.timeOut || issue.issueDate) >= 3;
+}
+
 interface IssueReturnSectionProps {
   stationId: string;
+  stations?: { id: string; stationName: string }[];
   onRefresh: () => void;
   refreshKey?: number;
   hideHeader?: boolean;
@@ -127,6 +149,7 @@ interface IssueReturnSectionProps {
 
 export function IssueReturnSection({
   stationId,
+  stations = [],
   onRefresh,
   refreshKey = 0,
   hideHeader = false,
@@ -135,7 +158,6 @@ export function IssueReturnSection({
   onOpenDialogHandled,
 }: IssueReturnSectionProps) {
   const [issues, setIssues] = useState<Issue[]>([]);
-  const [items, setItems] = useState<InventoryItem[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [loading, setLoading] = useState(true);
   const [issueOpen, setIssueOpen] = useState(false);
@@ -144,43 +166,46 @@ export function IssueReturnSection({
   const [returnQty, setReturnQty] = useState('');
   const [returnCondition, setReturnCondition] = useState('');
   const [returnUnitIds, setReturnUnitIds] = useState<string[]>([]);
-  const [availableUnits, setAvailableUnits] = useState<Record<number, RouterUnitOption[]>>({});
-  const [issueForm, setIssueForm] = useState({
-    technicianId: '',
-    jobReference: '',
-    items: [] as { itemId: string; quantityTaken: number; unitType: string; routerUnitIds: string[] }[],
-  });
-
-  const fetchAvailableUnits = (idx: number, itemId: string) => {
-    const item = items.find((i) => i.id === itemId);
-    if (!item) {
-      setAvailableUnits((p) => ({ ...p, [idx]: [] }));
-      return;
-    }
-    fetch(
-      `/api/isp/routers?stationId=${stationId}&itemName=${encodeURIComponent(item.itemName)}&status=available`,
-      { cache: 'no-store' }
-    )
-      .then((r) => r.json())
-      .then((d) => setAvailableUnits((p) => ({ ...p, [idx]: d.routers || [] })))
-      .catch(() => setAvailableUnits((p) => ({ ...p, [idx]: [] })));
-  };
+  const [returnStationId, setReturnStationId] = useState('');
 
   const unitLabel = (u: RouterUnitOption | SerializedUnit) =>
     u.serialNumber || u.macAddress || u.id;
+
+  const stationOptions = stations.length > 0 ? stations : [{ id: stationId, stationName: stationId }];
+
+  const allowedReturnStations = (issue: Issue) => {
+    const ids = new Set<string>();
+    if (issue.sourceStationId) ids.add(issue.sourceStationId);
+    if (issue.stationId) ids.add(issue.stationId);
+    if (issue.primaryStationId) ids.add(issue.primaryStationId);
+    for (const sid of issue.sharedStationIds || []) ids.add(sid);
+    return [...ids].map((id) => ({
+      id,
+      name:
+        stations.find((s) => s.id === id)?.stationName ||
+        (id === issue.sourceStationId ? issue.sourceStationName : undefined) ||
+        (id === issue.primaryStationId ? issue.primaryStationName : undefined) ||
+        id,
+    }));
+  };
 
   const loadData = () => {
     setLoading(true);
     Promise.all([
       fetch(`/api/isp/technician-issues?stationId=${stationId}`, { cache: 'no-store' }).then((r) => r.json()),
-      fetch(`/api/isp/inventory?stationId=${stationId}`, { cache: 'no-store' }).then((r) => r.json()),
       fetch(`/api/isp/technicians?stationId=${stationId}`, { cache: 'no-store' }).then((r) => r.json()),
-    ]).then(([issuesRes, itemsRes, techRes]) => {
-      setIssues(issuesRes.issues || []);
-      setItems((itemsRes.items || []).filter((i: InventoryItem & { isCable?: boolean; category?: string }) => !i.isCable && i.category !== 'Drop Cable'));
-      setTechnicians(techRes.technicians || []);
-    }).catch(() => {}).finally(() => setLoading(false));
+    ])
+      .then(([issuesRes, techRes]) => {
+        setIssues(issuesRes.issues || []);
+        setTechnicians(techRes.technicians || []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   };
+
+  const ledgerRows = issues.flatMap((issue) =>
+    issue.items.map((item) => ({ issue, item }))
+  ).slice(0, 15);
 
   const pendingItems = issues.flatMap((issue) =>
     issue.items
@@ -208,90 +233,13 @@ export function IssueReturnSection({
     onOpenDialogHandled?.();
   }, [openDialog, onOpenDialogHandled]);
 
-  const addIssueItem = () => {
-    if (issueForm.items.length >= 10) return;
-    setIssueForm((p) => ({
-      ...p,
-      items: [...p.items, { itemId: '', quantityTaken: 1, unitType: 'pcs', routerUnitIds: [] }],
-    }));
-  };
-
-  const toggleIssueUnit = (idx: number, unitId: string, checked: boolean) => {
-    setIssueForm((p) => ({
-      ...p,
-      items: p.items.map((it, i) => {
-        if (i !== idx) return it;
-        const ids = checked
-          ? [...it.routerUnitIds, unitId]
-          : it.routerUnitIds.filter((id) => id !== unitId);
-        return { ...it, routerUnitIds: ids, quantityTaken: ids.length || it.quantityTaken };
-      }),
-    }));
-  };
-
-  const updateIssueItem = (idx: number, field: string, value: string | number | string[]) => {
-    setIssueForm((p) => ({
-      ...p,
-      items: p.items.map((it, i) =>
-        i === idx ? { ...it, [field]: value } : it
-      ),
-    }));
-  };
-
-  const removeIssueItem = (idx: number) => {
-    setIssueForm((p) => ({
-      ...p,
-      items: p.items.filter((_, i) => i !== idx),
-    }));
-  };
-
-  const handleIssue = () => {
-    if (!issueForm.technicianId || issueForm.items.length === 0) {
-      toast.error('Select technician and add at least one item');
-      return;
-    }
-    const validItems = issueForm.items
-      .map((it, idx) => ({ ...it, idx }))
-      .filter(({ itemId, quantityTaken, routerUnitIds, idx }) => {
-        if (!itemId) return false;
-        const units = availableUnits[idx] || [];
-        if (units.length > 0) return routerUnitIds.length > 0;
-        return quantityTaken > 0;
-      });
-    if (validItems.length === 0) {
-      toast.error('Add valid items or select specific serial/MAC units');
-      return;
-    }
-    fetch('/api/isp/technician-issues', {
-      method: 'POST',
-      cache: 'no-store',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        stationId,
-        technicianId: issueForm.technicianId,
-        jobReference: issueForm.jobReference || undefined,
-        items: validItems.map((it) => {
-          const units = availableUnits[it.idx] || [];
-          return {
-            itemId: it.itemId,
-            quantityTaken: units.length > 0 ? it.routerUnitIds.length : it.quantityTaken,
-            unitType: items.find((i) => i.id === it.itemId)?.unitType || 'pcs',
-            routerUnitIds: it.routerUnitIds.length > 0 ? it.routerUnitIds : undefined,
-          };
-        }),
-      }),
-    })
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.error) throw new Error(d.error);
-        toast.success('Items issued');
-        setIssueOpen(false);
-        setIssueForm({ technicianId: '', jobReference: '', items: [] });
-        setAvailableUnits({});
-        loadData();
-        onRefresh();
-      })
-      .catch((e) => toast.error(e.message));
+  const openReturnDialog = (issue: Issue, item: IssueItem) => {
+    setSelectedIssueItem({ issue, item });
+    setReturnQty(String(item.quantityTaken - item.quantityReturned));
+    setReturnUnitIds([]);
+    setReturnCondition('');
+    setReturnStationId(issue.sourceStationId || issue.stationId);
+    setReturnOpen(true);
   };
 
   const handleReturn = () => {
@@ -312,6 +260,7 @@ export function IssueReturnSection({
           quantityReturned: returnUnitIds.length,
           routerUnitIds: returnUnitIds,
           returnCondition: returnCondition || undefined,
+          returnStationId: returnStationId || undefined,
         }),
       })
         .then((r) => r.json())
@@ -346,6 +295,7 @@ export function IssueReturnSection({
         issueItemId: selectedIssueItem.item.id,
         quantityReturned: qty,
         returnCondition: returnCondition || undefined,
+        returnStationId: returnStationId || undefined,
       }),
     })
       .then((r) => r.json())
@@ -394,9 +344,63 @@ export function IssueReturnSection({
           ) : (
             <div className="space-y-4">
               {showIssue && mode === 'issue' && (
+                <>
                 <p className="text-sm text-muted-foreground">
-                  Select exact serial/MAC for routers and ONUs. Use the cable panel below to issue from a specific roll.
+                  Issue to a technician — use <strong>Shared stations</strong> when equipment serves co-located sites. Stock always deducts from the source station.
                 </p>
+                {ledgerRows.length > 0 && (
+                  <div className="rounded-lg border overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Item</TableHead>
+                          <TableHead>Qty</TableHead>
+                          <TableHead>From</TableHead>
+                          <TableHead>For / Shared</TableHead>
+                          <TableHead>Technician</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {ledgerRows.map(({ issue, item }) => {
+                          const shared = sharedForLabel(issue);
+                          return (
+                            <TableRow key={`${issue.id}-${item.id}`}>
+                              <TableCell>
+                                <span className={softBadgeClass(
+                                  issue.issueType === 'SHARED_STATIONS'
+                                    ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                                    : 'bg-blue-100 text-blue-800 border-blue-200'
+                                )}>
+                                  {issueTypeLabel(issue.issueType)}
+                                </span>
+                              </TableCell>
+                              <TableCell className="font-medium">{item.itemName || item.itemId}</TableCell>
+                              <TableCell>{item.quantityTaken} {item.unitType}</TableCell>
+                              <TableCell className="text-sm">{issue.sourceStationName || issue.sourceStationId || issue.stationId}</TableCell>
+                              <TableCell className="text-sm max-w-[160px] truncate" title={shared || undefined}>
+                                {shared ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <Share2 className="h-3 w-3 text-indigo-600 shrink-0" />
+                                    {shared}
+                                  </span>
+                                ) : (
+                                  issue.projectCustomer || issue.jobReference || '—'
+                                )}
+                              </TableCell>
+                              <TableCell className="text-sm">{issue.technicianName || issue.technicianId}</TableCell>
+                              <TableCell>
+                                <Badge variant={issue.status === 'CLOSED' ? 'secondary' : 'default'}>{issue.status}</Badge>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+                </>
               )}
               {showReturn && (
               <>
@@ -415,20 +419,31 @@ export function IssueReturnSection({
                   <div className="md:hidden space-y-3">
                     {pendingItems.map(({ issue, item }) => {
                       const days = daysOut(item.timeOut || issue.issueDate);
+                      const overdue = isOverdue(issue, item);
+                      const shared = sharedForLabel(issue);
                       return (
                         <div key={item.id} className="rounded-lg border p-3 space-y-2">
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <p className="font-medium">{item.itemName || item.itemId}</p>
                               <p className="text-xs text-muted-foreground">{issue.technicianName || issue.technicianId}</p>
+                              {shared && (
+                                <p className="text-[11px] text-indigo-700 flex items-center gap-1 mt-0.5">
+                                  <Share2 className="h-3 w-3" /> {shared}
+                                </p>
+                              )}
                             </div>
-                            <Badge variant={days >= 3 ? 'destructive' : item.quantityReturned > 0 ? 'secondary' : 'default'}>
-                              {days >= 3 ? 'Overdue' : item.quantityReturned > 0 ? 'Partial' : 'Pending'}
+                            <Badge variant={overdue ? 'destructive' : item.quantityReturned > 0 ? 'secondary' : 'default'}>
+                              {overdue ? 'Overdue' : item.quantityReturned > 0 ? 'Partial' : 'Pending'}
                             </Badge>
                           </div>
                           <div className="text-xs text-muted-foreground space-y-0.5">
+                            <p>From: {issue.sourceStationName || issue.stationId}</p>
                             <p>Picked up: {fmtDateTime(item.timeOut || issue.issueDate)}</p>
-                            <p>Out: {item.quantityTaken - item.quantityReturned} {item.unitType} · {days} day{days === 1 ? '' : 's'} out</p>
+                            {issue.expectedReturnDate && (
+                              <p>Expected: {fmtDateTime(issue.expectedReturnDate)}</p>
+                            )}
+                            <p>Out: {item.quantityTaken - item.quantityReturned} {item.unitType} · {days} day{days === 1 ? '' : 's'}</p>
                             {unitsStillOut(item).length > 0 && (
                               <p className="font-mono text-[11px] break-all">
                                 Units: {formatUnitList(unitsStillOut(item))}
@@ -439,12 +454,7 @@ export function IssueReturnSection({
                             variant="outline"
                             size="sm"
                             className="w-full"
-                            onClick={() => {
-                              setSelectedIssueItem({ issue, item });
-                              setReturnQty(String(item.quantityTaken - item.quantityReturned));
-                              setReturnUnitIds([]);
-                              setReturnOpen(true);
-                            }}
+                            onClick={() => openReturnDialog(issue, item)}
                           >
                             Return
                           </Button>
@@ -459,15 +469,17 @@ export function IssueReturnSection({
                           <TableHead>Technician</TableHead>
                           <TableHead>Item</TableHead>
                           <TableHead>Out</TableHead>
+                          <TableHead>From</TableHead>
+                          <TableHead>Shared</TableHead>
                           <TableHead>Picked Up</TableHead>
-                          <TableHead>Days Out</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead className="text-right">Action</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {pendingItems.map(({ issue, item }) => {
-                          const days = daysOut(item.timeOut || issue.issueDate);
+                          const overdue = isOverdue(issue, item);
+                          const shared = sharedForLabel(issue);
                           return (
                             <TableRow key={item.id}>
                               <TableCell className="font-medium">{issue.technicianName || issue.technicianId}</TableCell>
@@ -480,24 +492,18 @@ export function IssueReturnSection({
                                 )}
                               </TableCell>
                               <TableCell>{item.quantityTaken - item.quantityReturned} {item.unitType}</TableCell>
+                              <TableCell className="text-sm">{issue.sourceStationName || issue.stationId}</TableCell>
+                              <TableCell className="text-xs text-indigo-700 max-w-[140px] truncate" title={shared || undefined}>
+                                {shared || '—'}
+                              </TableCell>
                               <TableCell className="text-sm whitespace-nowrap">{fmtDateTime(item.timeOut || issue.issueDate)}</TableCell>
-                              <TableCell>{days}</TableCell>
                               <TableCell>
-                                <Badge variant={days >= 3 ? 'destructive' : item.quantityReturned > 0 ? 'secondary' : 'default'}>
-                                  {days >= 3 ? 'Overdue' : item.quantityReturned > 0 ? 'Partial' : 'Pending'}
+                                <Badge variant={overdue ? 'destructive' : item.quantityReturned > 0 ? 'secondary' : 'default'}>
+                                  {overdue ? 'Overdue' : item.quantityReturned > 0 ? 'Partial' : 'Pending'}
                                 </Badge>
                               </TableCell>
                               <TableCell className="text-right">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedIssueItem({ issue, item });
-                                    setReturnQty(String(item.quantityTaken - item.quantityReturned));
-                                    setReturnUnitIds([]);
-                                    setReturnOpen(true);
-                                  }}
-                                >
+                                <Button variant="ghost" size="sm" onClick={() => openReturnDialog(issue, item)}>
                                   Return
                                 </Button>
                               </TableCell>
@@ -579,133 +585,17 @@ export function IssueReturnSection({
       </Card>
 
       {showIssue && (
-      <Dialog open={issueOpen} onOpenChange={setIssueOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Issue Items to Technician</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Technician</Label>
-              <Select
-                value={issueForm.technicianId}
-                onValueChange={(v) => setIssueForm((p) => ({ ...p, technicianId: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select technician" />
-                </SelectTrigger>
-                <SelectContent>
-                  {technicians.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Job Reference (optional)</Label>
-              <Input
-                value={issueForm.jobReference}
-                onChange={(e) => setIssueForm((p) => ({ ...p, jobReference: e.target.value }))}
-                placeholder="Work ticket / job ID"
-              />
-            </div>
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <Label>Items</Label>
-                <Button variant="ghost" size="sm" onClick={addIssueItem}>
-                  + Add item
-                </Button>
-              </div>
-              <div className="space-y-3 max-h-[50vh] overflow-y-auto">
-                {issueForm.items.map((it, idx) => {
-                  const units = availableUnits[idx] || [];
-                  const hasUnits = units.length > 0;
-                  return (
-                    <div key={idx} className="rounded-lg border p-3 space-y-2">
-                      <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                        <Select
-                          value={it.itemId}
-                          onValueChange={(v) => {
-                            const item = items.find((i) => i.id === v);
-                            setIssueForm((p) => ({
-                              ...p,
-                              items: p.items.map((row, i) =>
-                                i === idx
-                                  ? { ...row, itemId: v, routerUnitIds: [], unitType: item?.unitType || row.unitType }
-                                  : row
-                              ),
-                            }));
-                            fetchAvailableUnits(idx, v);
-                          }}
-                        >
-                          <SelectTrigger className="flex-1">
-                            <SelectValue placeholder="Select item" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {items.map((i) => (
-                              <SelectItem key={i.id} value={i.id}>
-                                {i.itemName} ({i.quantityAvailable} avail)
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {!hasUnits && (
-                          <Input
-                            type="number"
-                            min="1"
-                            className="w-full sm:w-20"
-                            value={it.quantityTaken}
-                            onChange={(e) =>
-                              updateIssueItem(idx, 'quantityTaken', parseInt(e.target.value) || 0)
-                            }
-                          />
-                        )}
-                        {hasUnits && (
-                          <Badge variant="secondary" className="shrink-0 self-center">
-                            {it.routerUnitIds.length} selected
-                          </Badge>
-                        )}
-                        <Button variant="ghost" size="icon-sm" onClick={() => removeIssueItem(idx)}>
-                          ×
-                        </Button>
-                      </div>
-                      {hasUnits && (
-                        <div className="space-y-1.5 pl-1">
-                          <p className="text-xs font-medium text-muted-foreground">
-                            Select exact units (serial / MAC):
-                          </p>
-                          <div className="grid gap-1.5 max-h-32 overflow-y-auto">
-                            {units.map((u) => (
-                              <label
-                                key={u.id}
-                                className="flex items-center gap-2 text-sm cursor-pointer rounded px-1 py-0.5 hover:bg-muted/50"
-                              >
-                                <Checkbox
-                                  checked={it.routerUnitIds.includes(u.id)}
-                                  onCheckedChange={(c) => toggleIssueUnit(idx, u.id, !!c)}
-                                />
-                                <span className="font-mono text-xs">
-                                  {u.serialNumber ? `SN: ${u.serialNumber}` : `MAC: ${u.macAddress}`}
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIssueOpen(false)}>Cancel</Button>
-            <Button onClick={handleIssue}>Issue</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        <IssueEquipmentDialog
+          open={issueOpen}
+          onOpenChange={setIssueOpen}
+          stationId={stationId}
+          stations={stationOptions}
+          technicians={technicians}
+          onSuccess={() => {
+            loadData();
+            onRefresh();
+          }}
+        />
       )}
 
       {showReturn && (
@@ -722,8 +612,15 @@ export function IssueReturnSection({
                   {selectedIssueItem.item.quantityTaken - selectedIssueItem.item.quantityReturned}{' '}
                   {selectedIssueItem.item.unitType}
                 </p>
+                {sharedForLabel(selectedIssueItem.issue) && (
+                  <p className="text-xs text-indigo-700 flex items-center gap-1">
+                    <Share2 className="h-3 w-3" />
+                    Shared: {sharedForLabel(selectedIssueItem.issue)}
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground">
-                  Picked up {fmtDateTime(selectedIssueItem.item.timeOut || selectedIssueItem.issue.issueDate)} by{' '}
+                  From {selectedIssueItem.issue.sourceStationName || selectedIssueItem.issue.stationId} · Picked up{' '}
+                  {fmtDateTime(selectedIssueItem.item.timeOut || selectedIssueItem.issue.issueDate)} by{' '}
                   {selectedIssueItem.issue.technicianName || selectedIssueItem.issue.technicianId}. Drop-off time is recorded automatically when you save.
                 </p>
               </div>
@@ -760,6 +657,20 @@ export function IssueReturnSection({
               </div>
               )}
               <div>
+                <Label>Return to station</Label>
+                <Select value={returnStationId} onValueChange={setReturnStationId}>
+                  <SelectTrigger><SelectValue placeholder="Select station" /></SelectTrigger>
+                  <SelectContent>
+                    {allowedReturnStations(selectedIssueItem.issue).map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Defaults to source station · change if item returns elsewhere
+                </p>
+              </div>
+              <div>
                 <Label>Return condition</Label>
                 <Select value={returnCondition} onValueChange={setReturnCondition}>
                   <SelectTrigger>
@@ -769,6 +680,7 @@ export function IssueReturnSection({
                     <SelectItem value="Good">Returned good condition</SelectItem>
                     <SelectItem value="Damaged">Returned damaged</SelectItem>
                     <SelectItem value="Lost">Lost</SelectItem>
+                    <SelectItem value="Repair">Send to repair</SelectItem>
                     <SelectItem value="Partial">Partial return</SelectItem>
                   </SelectContent>
                 </Select>

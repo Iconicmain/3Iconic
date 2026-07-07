@@ -298,12 +298,14 @@ export function InventoryStationPage({
                     <>
                       <IssueReturnSection
                         stationId={stationId}
+                        stations={stationList}
                         mode="issue"
                         onRefresh={refresh}
                         refreshKey={refreshKey}
                       />
                       <IssueCablePanel
                         stationId={stationId}
+                        stations={stationList}
                         refreshKey={refreshKey}
                         onRefresh={refresh}
                       />
@@ -322,6 +324,7 @@ export function InventoryStationPage({
                     <>
                       <IssueReturnSection
                         stationId={stationId}
+                        stations={stationList}
                         mode="return"
                         onRefresh={refresh}
                         refreshKey={refreshKey}

@@ -17,6 +17,40 @@ function todayRange() {
   return { todayStart, todayEnd };
 }
 
+function issueVisibleAtStation(
+  issue: {
+    stationId?: string;
+    sourceStationId?: string;
+    primaryStationId?: string;
+    sharedStationIds?: string[];
+  },
+  stationId: string
+): boolean {
+  return (
+    issue.stationId === stationId ||
+    issue.sourceStationId === stationId ||
+    issue.primaryStationId === stationId ||
+    (issue.sharedStationIds || []).includes(stationId)
+  );
+}
+
+function cableLogVisibleAtStation(
+  log: {
+    stationId?: string;
+    sourceStationId?: string;
+    primaryStationId?: string;
+    sharedStationIds?: string[];
+  },
+  stationId: string
+): boolean {
+  return (
+    log.stationId === stationId ||
+    log.sourceStationId === stationId ||
+    log.primaryStationId === stationId ||
+    (log.sharedStationIds || []).includes(stationId)
+  );
+}
+
 async function buildStationStats(
   db: Db,
   stationId: string,
@@ -34,9 +68,15 @@ async function buildStationStats(
     (i) => itemBelongsToStation(i, stationId)
   );
 
-  const stIssues = (technicianIssues as { id: string; stationId: string; issueDate: Date; technicianId: string }[]).filter(
-    (i) => i.stationId === stationId
-  );
+  const stIssues = (technicianIssues as {
+    id: string;
+    stationId: string;
+    sourceStationId?: string;
+    primaryStationId?: string;
+    sharedStationIds?: string[];
+    issueDate: Date;
+    technicianId: string;
+  }[]).filter((i) => issueVisibleAtStation(i, stationId));
   const stTodayIssues = stIssues.filter((i) => i.issueDate >= todayStart && i.issueDate < todayEnd);
   const stTodayIds = new Set(stTodayIssues.map((i) => i.id));
 
@@ -55,9 +95,16 @@ async function buildStationStats(
   );
   const stCableRemaining = stCable.reduce((s, r) => s + r.currentRemainingMeters, 0);
 
-  const stCableLogs = (cableLogs as { stationId: string; metersIssued: number; metersReturned: number; metersUsed: number; wasteMeters?: number }[]).filter(
-    (l) => l.stationId === stationId
-  );
+  const stCableLogs = (cableLogs as {
+    stationId: string;
+    sourceStationId?: string;
+    primaryStationId?: string;
+    sharedStationIds?: string[];
+    metersIssued: number;
+    metersReturned: number;
+    metersUsed: number;
+    wasteMeters?: number;
+  }[]).filter((l) => cableLogVisibleAtStation(l, stationId));
 
   const lastActivity = await db
     .collection(ISP_COLLECTIONS.auditLogs)
