@@ -38,6 +38,7 @@ import {
   Trash2,
   User,
   Wifi,
+  Clock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -105,8 +106,39 @@ interface IssueEquipmentDialogProps {
   onSuccess: () => void;
 }
 
+type ReturnPreset = 'same_day_6pm' | 'custom' | 'none';
+
+function sameDay6pmLocal(): string {
+  const d = new Date();
+  d.setHours(18, 0, 0, 0);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T18:00`;
+}
+
+function formatReturnDisplay(value: string): string {
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return value;
+  return d.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function unitDisplayParts(u: RouterUnitOption): { serial?: string; mac?: string; fallback: string } {
+  return {
+    serial: u.serialNumber || undefined,
+    mac: u.macAddress || undefined,
+    fallback: u.serialNumber || u.macAddress || u.id,
+  };
+}
+
 function unitLabel(u: RouterUnitOption): string {
-  return u.serialNumber || u.macAddress || u.id;
+  const p = unitDisplayParts(u);
+  if (p.serial && p.mac) return `${p.serial} · ${p.mac}`;
+  return p.fallback;
 }
 
 function getUnitsForItem(
@@ -235,7 +267,6 @@ export function IssueEquipmentDialog({
   const [loadingUnits, setLoadingUnits] = useState(false);
   const [unitsByItemName, setUnitsByItemName] = useState<Map<string, RouterUnitOption[]>>(new Map());
   const [selections, setSelections] = useState<Record<string, ItemSelection>>({});
-  const [expandedMac, setExpandedMac] = useState<Set<string>>(new Set());
   const [itemSearch, setItemSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('All');
   const [macSearch, setMacSearch] = useState<Record<string, string>>({});
@@ -246,7 +277,8 @@ export function IssueEquipmentDialog({
     sharedStationIds: [] as string[],
     technicianId: '',
     projectCustomer: '',
-    expectedReturnDate: '',
+    returnPreset: 'same_day_6pm' as ReturnPreset,
+    expectedReturnDate: sameDay6pmLocal(),
     notes: '',
   });
 
@@ -260,11 +292,11 @@ export function IssueEquipmentDialog({
       sharedStationIds: [],
       technicianId: '',
       projectCustomer: '',
-      expectedReturnDate: '',
+      returnPreset: 'same_day_6pm',
+      expectedReturnDate: sameDay6pmLocal(),
       notes: '',
     });
     setSelections({});
-    setExpandedMac(new Set());
     setUnitsByItemName(new Map());
     setItemSearch('');
     setCategoryFilter('All');
@@ -289,7 +321,6 @@ export function IssueEquipmentDialog({
 
   useEffect(() => {
     setSelections({});
-    setExpandedMac(new Set());
     setMacSearch({});
   }, [form.sourceStationId]);
 
@@ -417,7 +448,6 @@ export function IssueEquipmentDialog({
       }
       return copy;
     });
-    setExpandedMac((prev) => new Set(prev).add(itemId));
   };
 
   const selectAllMacs = (item: InventoryItem) => {
@@ -433,7 +463,6 @@ export function IssueEquipmentDialog({
         routerUnitIds: filtered.map((u) => u.id),
       },
     }));
-    setExpandedMac((prev) => new Set(prev).add(item.id));
   };
 
   const clearItemSelection = (itemId: string) => {
@@ -441,15 +470,6 @@ export function IssueEquipmentDialog({
       const copy = { ...prev };
       delete copy[itemId];
       return copy;
-    });
-  };
-
-  const toggleMacExpanded = (itemId: string) => {
-    setExpandedMac((prev) => {
-      const next = new Set(prev);
-      if (next.has(itemId)) next.delete(itemId);
-      else next.add(itemId);
-      return next;
     });
   };
 
@@ -484,7 +504,34 @@ export function IssueEquipmentDialog({
 
   const goNext = () => {
     if (!validateStep(step)) return;
+    if (step === 2 && form.returnPreset === 'same_day_6pm' && !form.expectedReturnDate) {
+      setForm((f) => ({ ...f, expectedReturnDate: sameDay6pmLocal() }));
+    }
     setStep((s) => Math.min(3, s + 1));
+  };
+
+  const setReturnPreset = (preset: ReturnPreset) => {
+    if (preset === 'same_day_6pm') {
+      setForm((f) => ({
+        ...f,
+        returnPreset: 'same_day_6pm',
+        expectedReturnDate: sameDay6pmLocal(),
+      }));
+    } else if (preset === 'custom') {
+      setForm((f) => ({
+        ...f,
+        returnPreset: 'custom',
+        expectedReturnDate: f.expectedReturnDate || sameDay6pmLocal(),
+      }));
+    } else {
+      setForm((f) => ({ ...f, returnPreset: 'none', expectedReturnDate: '' }));
+    }
+  };
+
+  const resolvedReturnDate = (): string | undefined => {
+    if (form.returnPreset === 'none' || !form.expectedReturnDate) return undefined;
+    const d = new Date(form.expectedReturnDate);
+    return isNaN(d.getTime()) ? undefined : d.toISOString();
   };
 
   const goBack = () => setStep((s) => Math.max(1, s - 1));
@@ -533,7 +580,7 @@ export function IssueEquipmentDialog({
           issueType: form.issueType,
           sharedStationIds: showShared ? form.sharedStationIds : undefined,
           projectCustomer: showProject ? form.projectCustomer : form.projectCustomer || undefined,
-          expectedReturnDate: form.expectedReturnDate || undefined,
+          expectedReturnDate: resolvedReturnDate(),
           technicianId: form.technicianId,
           jobReference: form.projectCustomer || undefined,
           notes: form.notes || undefined,
@@ -846,7 +893,6 @@ export function IssueEquipmentDialog({
                           serialized
                             ? sel.routerUnitIds.length > 0
                             : sel.quantityTaken > 0;
-                        const macExpanded = expandedMac.has(item.id) || isActive;
 
                         const macFilter = (macSearch[item.id] || '').toLowerCase();
                         const visibleMacs = macFilter
@@ -880,10 +926,23 @@ export function IssueEquipmentDialog({
                                   </span>
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-0.5">
-                                  {serialized && macUnits.length > 0
-                                    ? `${macUnits.length} units with MAC · ${item.quantityAvailable} ${item.unitType} in stock`
-                                    : `${item.quantityAvailable} ${item.unitType} available`}
+                                  {serialized && macUnits.length > 0 ? (
+                                    <>
+                                      <span className="font-medium text-violet-700 dark:text-violet-300">
+                                        Pick exact unit from shelf
+                                      </span>
+                                      {' · '}{macUnits.length} with MAC/serial · {item.quantityAvailable}{' '}
+                                      {item.unitType} in stock
+                                    </>
+                                  ) : (
+                                    `${item.quantityAvailable} ${item.unitType} available`
+                                  )}
                                 </p>
+                                {serialized && macUnits.length > 0 && (
+                                  <p className="text-[10px] font-mono text-muted-foreground mt-1 truncate">
+                                    In stock: {macUnits.map((u) => unitLabel(u)).join(' · ')}
+                                  </p>
+                                )}
                               </div>
 
                               {!serialized || macUnits.length === 0 ? (
@@ -937,15 +996,6 @@ export function IssueEquipmentDialog({
                                       {sel.routerUnitIds.length} picked
                                     </Badge>
                                   )}
-                                  <Button
-                                    type="button"
-                                    variant={macExpanded ? 'secondary' : 'outline'}
-                                    size="sm"
-                                    className="h-8 text-xs"
-                                    onClick={() => toggleMacExpanded(item.id)}
-                                  >
-                                    {macExpanded ? 'Hide MACs' : 'Pick MACs'}
-                                  </Button>
                                   {isActive && (
                                     <Button
                                       type="button"
@@ -961,15 +1011,18 @@ export function IssueEquipmentDialog({
                               )}
                             </div>
 
-                            {serialized && macUnits.length > 0 && macExpanded && (
-                              <div className="border-t px-3 pb-3 pt-2 space-y-2 bg-muted/20">
+                            {serialized && macUnits.length > 0 && (
+                              <div className="border-t px-3 pb-3 pt-2 space-y-2 bg-violet-50/40 dark:bg-violet-950/15">
+                                <p className="text-[11px] font-semibold text-violet-800 dark:text-violet-300 uppercase tracking-wide">
+                                  Select unit — match MAC or serial on device
+                                </p>
                                 <div className="flex flex-wrap items-center gap-2">
                                   <Input
                                     value={macSearch[item.id] || ''}
                                     onChange={(e) =>
                                       setMacSearch((p) => ({ ...p, [item.id]: e.target.value }))
                                     }
-                                    placeholder="Filter MAC / serial…"
+                                    placeholder="Search MAC or serial…"
                                     className="h-8 flex-1 min-w-[140px] text-xs font-mono"
                                   />
                                   <Button
@@ -981,34 +1034,58 @@ export function IssueEquipmentDialog({
                                   >
                                     Select all ({visibleMacs.length})
                                   </Button>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 text-xs"
-                                    onClick={() => clearItemSelection(item.id)}
-                                  >
-                                    Clear
-                                  </Button>
+                                  {isActive && (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 text-xs"
+                                      onClick={() => clearItemSelection(item.id)}
+                                    >
+                                      Clear
+                                    </Button>
+                                  )}
                                 </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 max-h-36 overflow-y-auto">
+                                <div className="grid grid-cols-1 gap-1.5 max-h-44 overflow-y-auto">
                                   {visibleMacs.map((u) => {
                                     const checked = sel.routerUnitIds.includes(u.id);
+                                    const parts = unitDisplayParts(u);
                                     return (
                                       <label
                                         key={u.id}
                                         className={cn(
-                                          'flex items-center gap-2 rounded-md border px-2 py-1.5 cursor-pointer text-xs font-mono transition-colors',
+                                          'flex items-start gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-colors',
                                           checked
-                                            ? 'border-primary bg-primary/10'
-                                            : 'bg-background hover:bg-muted/50'
+                                            ? 'border-primary bg-primary/10 ring-1 ring-primary/20'
+                                            : 'bg-background hover:bg-muted/50 border-border'
                                         )}
                                       >
                                         <Checkbox
                                           checked={checked}
+                                          className="mt-0.5"
                                           onCheckedChange={(c) => toggleMacUnit(item.id, u.id, !!c)}
                                         />
-                                        <span className="truncate">{unitLabel(u)}</span>
+                                        <div className="min-w-0 flex-1 font-mono text-xs space-y-0.5">
+                                          {parts.serial && (
+                                            <p>
+                                              <span className="text-muted-foreground font-sans text-[10px] uppercase mr-1.5">
+                                                Serial
+                                              </span>
+                                              <span className="font-semibold">{parts.serial}</span>
+                                            </p>
+                                          )}
+                                          {parts.mac && (
+                                            <p>
+                                              <span className="text-muted-foreground font-sans text-[10px] uppercase mr-1.5">
+                                                MAC
+                                              </span>
+                                              <span className="font-semibold">{parts.mac}</span>
+                                            </p>
+                                          )}
+                                          {!parts.serial && !parts.mac && (
+                                            <p className="font-semibold">{parts.fallback}</p>
+                                          )}
+                                        </div>
                                       </label>
                                     );
                                   })}
@@ -1036,9 +1113,16 @@ export function IssueEquipmentDialog({
                           {row.qty} {row.unit}
                         </span>
                         {row.macs && row.macs.length > 0 && (
-                          <span className="text-[11px] font-mono text-muted-foreground w-full">
-                            {row.macs.join(' · ')}
-                          </span>
+                          <ul className="w-full mt-1 space-y-0.5">
+                            {row.macs.map((mac) => (
+                              <li
+                                key={mac}
+                                className="text-xs font-mono bg-violet-50 dark:bg-violet-950/30 border border-violet-200/80 rounded px-2 py-1 text-violet-900 dark:text-violet-200"
+                              >
+                                {mac}
+                              </li>
+                            ))}
+                          </ul>
                         )}
                       </li>
                     ))}
@@ -1046,18 +1130,73 @@ export function IssueEquipmentDialog({
                 </div>
               )}
 
-              <SectionCard title="Return & notes" description="Optional tracking details">
-                <div className="grid sm:grid-cols-2 gap-4">
+              <SectionCard title="Return & notes" description="When should equipment come back?">
+                <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Expected return date</Label>
-                    <Input
-                      type="date"
-                      value={form.expectedReturnDate}
-                      onChange={(e) => setForm((f) => ({ ...f, expectedReturnDate: e.target.value }))}
-                      className="h-10"
-                    />
+                    <Label className="text-sm font-medium">Expected return</Label>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setReturnPreset('same_day_6pm')}
+                        className={cn(
+                          'inline-flex items-center gap-2 rounded-xl border-2 px-4 py-2.5 text-sm font-semibold transition-all',
+                          form.returnPreset === 'same_day_6pm'
+                            ? 'border-orange-400 bg-orange-50 text-orange-900 ring-2 ring-orange-300/40 dark:bg-orange-950/30 dark:text-orange-200'
+                            : 'border-border bg-background hover:bg-muted/50'
+                        )}
+                      >
+                        <Clock className="h-4 w-4 shrink-0" />
+                        Same day by 6 PM
+                        {form.returnPreset === 'same_day_6pm' && (
+                          <Check className="h-4 w-4 shrink-0 text-orange-600" />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setReturnPreset('custom')}
+                        className={cn(
+                          'inline-flex items-center gap-2 rounded-xl border-2 px-4 py-2.5 text-sm font-medium transition-all',
+                          form.returnPreset === 'custom'
+                            ? 'border-primary bg-primary/5 ring-2 ring-primary/25'
+                            : 'border-border bg-background hover:bg-muted/50'
+                        )}
+                      >
+                        Custom date & time
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setReturnPreset('none')}
+                        className={cn(
+                          'inline-flex items-center rounded-xl border px-3 py-2.5 text-sm transition-all',
+                          form.returnPreset === 'none'
+                            ? 'border-muted-foreground/40 bg-muted'
+                            : 'border-border bg-background hover:bg-muted/50 text-muted-foreground'
+                        )}
+                      >
+                        No return date
+                      </button>
+                    </div>
+                    {form.returnPreset === 'same_day_6pm' && form.expectedReturnDate && (
+                      <p className={softBadgeClass('bg-orange-100 text-orange-900 border-orange-200 text-xs')}>
+                        Due back {formatReturnDisplay(form.expectedReturnDate)} — same day by 6:00 PM
+                      </p>
+                    )}
+                    {form.returnPreset === 'custom' && (
+                      <Input
+                        type="datetime-local"
+                        value={form.expectedReturnDate}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            expectedReturnDate: e.target.value,
+                            returnPreset: 'custom',
+                          }))
+                        }
+                        className="h-10 max-w-xs"
+                      />
+                    )}
                   </div>
-                  <div className="space-y-2 sm:col-span-2">
+                  <div className="space-y-2">
                     <Label className="text-sm font-medium">Notes</Label>
                     <Textarea
                       value={form.notes}
@@ -1090,6 +1229,16 @@ export function IssueEquipmentDialog({
                       <p>
                         <span className="text-muted-foreground">Shared:</span>{' '}
                         <strong>{primaryName} + {sharedNames.join(', ')}</strong>
+                      </p>
+                    )}
+                    {form.returnPreset !== 'none' && form.expectedReturnDate && (
+                      <p>
+                        <span className="text-muted-foreground">Return by:</span>{' '}
+                        <strong className="text-orange-700 dark:text-orange-300">
+                          {form.returnPreset === 'same_day_6pm'
+                            ? 'Same day by 6 PM'
+                            : formatReturnDisplay(form.expectedReturnDate)}
+                        </strong>
                       </p>
                     )}
                   </div>
