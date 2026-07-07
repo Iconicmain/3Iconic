@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Plus, Edit, Trash2, Save, X, UserPlus, Users, ChevronDown, ChevronUp, CheckCircle, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { useSession } from 'next-auth/react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   ACCOUNT_TYPE_OPTIONS,
@@ -73,6 +74,7 @@ interface AvailablePage {
 const PERMISSION_TYPES = ['view', 'add', 'edit', 'delete'] as const;
 
 export function UserManagement() {
+  const { update: refreshSession } = useSession();
   const [users, setUsers] = useState<User[]>([]);
   const [availablePages, setAvailablePages] = useState<AvailablePage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -313,21 +315,21 @@ export function UserManagement() {
       const result = await response.json();
       
       // If permissions, role, or approval changed, refresh session
-      if (result.requiresSessionRefresh) {
-        // Refresh session to update JWT token with new permissions
-        const { update } = await import('next-auth/react');
-        await update(); // Trigger session refresh
-        
+      if (result.requiresSessionRefresh && typeof refreshSession === 'function') {
+        await refreshSession();
+
         // If updating current user, reload page to reflect changes immediately
         if (editingUser && typeof window !== 'undefined') {
-          const currentSession = await fetch('/api/users/me', { 
+          const meResponse = await fetch('/api/users/me', {
             cache: 'no-store',
             headers: { 'Cache-Control': 'no-cache' },
-          }).then(r => r.json());
-          if (currentSession.email === editingUser.email) {
-            // Current user was updated, reload to reflect changes
-            window.location.reload();
-            return;
+          });
+          if (meResponse.ok) {
+            const currentSession = await meResponse.json();
+            if (currentSession.email === editingUser.email) {
+              window.location.reload();
+              return;
+            }
           }
         }
       }
