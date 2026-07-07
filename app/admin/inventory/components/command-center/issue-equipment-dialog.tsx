@@ -30,12 +30,8 @@ import {
   ChevronRight,
   Loader2,
   MapPin,
-  Minus,
   Package,
-  Plus,
-  Search,
   Share2,
-  Trash2,
   User,
   Wifi,
   Clock,
@@ -46,9 +42,11 @@ import { ISSUE_TYPE_OPTIONS, type IssueType } from '@/lib/isp/issue-types';
 import {
   inferItemTypeFromItem,
   getItemTypeConfig,
+  INVENTORY_ITEM_TYPES,
   type InventoryItemTypeId,
 } from './inventory-item-types';
-import { categoryBadgeClasses, softBadgeClass, unitBadgeClasses } from './inventory-colors';
+import { softBadgeClass, unitBadgeClasses } from './inventory-colors';
+import { IssuePickerStep } from './issue-picker-step';
 
 interface Station {
   id: string;
@@ -84,18 +82,47 @@ export interface IssueLineItem {
   routerUnitIds: string[];
 }
 
-const CATEGORY_FILTERS = ['All', 'Equipment', 'Materials', 'Accessories', 'Other'] as const;
-type CategoryFilter = (typeof CATEGORY_FILTERS)[number];
+interface ConsolidatedItem {
+  id: string;
+  itemName: string;
+  unitType: string;
+  quantityAvailable: number;
+  category?: string;
+  typeId: InventoryItemTypeId;
+  itemKey: string;
+}
 
-const TYPE_ICONS: Partial<Record<InventoryItemTypeId, typeof Package>> = {
-  router: Wifi,
-  access_point: Wifi,
-  bridge: Wifi,
-  onu: Package,
-  patch_cord: Package,
-  splitter: Package,
-  socket: Package,
-};
+function consolidateInventoryItems(raw: InventoryItem[]): ConsolidatedItem[] {
+  const map = new Map<string, ConsolidatedItem & { bestQty: number }>();
+  for (const item of raw) {
+    const itemKey = item.itemName.trim().toLowerCase();
+    if (!itemKey) continue;
+    const existing = map.get(itemKey);
+    if (existing) {
+      existing.quantityAvailable += item.quantityAvailable;
+      if (item.quantityAvailable >= existing.bestQty) {
+        existing.id = item.id;
+        existing.bestQty = item.quantityAvailable;
+      }
+    } else {
+      map.set(itemKey, {
+        id: item.id,
+        itemName: item.itemName,
+        unitType: item.unitType,
+        quantityAvailable: item.quantityAvailable,
+        category: item.category,
+        typeId: inferItemTypeFromItem(item),
+        itemKey,
+        bestQty: item.quantityAvailable,
+      });
+    }
+  }
+  return [...map.values()]
+    .filter((i) => i.quantityAvailable > 0)
+    .map(({ bestQty: _, ...rest }) => rest);
+}
+
+type PickerLevel = 'types' | 'items' | 'units';
 
 interface IssueEquipmentDialogProps {
   open: boolean;
@@ -142,13 +169,16 @@ function unitLabel(u: RouterUnitOption): string {
 }
 
 function getUnitsForItem(
-  item: InventoryItem,
+  item: Pick<ConsolidatedItem, 'itemName'>,
   unitsByItemName: Map<string, RouterUnitOption[]>
 ): RouterUnitOption[] {
   return unitsByItemName.get(item.itemName.toLowerCase()) || [];
 }
 
-function isSerializedItem(item: InventoryItem, units: RouterUnitOption[]): boolean {
+function isSerializedItem(
+  item: Pick<ConsolidatedItem, 'itemName' | 'category' | 'unitType'>,
+  units: RouterUnitOption[]
+): boolean {
   if (units.length > 0) return true;
   const typeId = inferItemTypeFromItem(item);
   return getItemTypeConfig(typeId).tracking === 'serialized';
@@ -268,7 +298,9 @@ export function IssueEquipmentDialog({
   const [unitsByItemName, setUnitsByItemName] = useState<Map<string, RouterUnitOption[]>>(new Map());
   const [selections, setSelections] = useState<Record<string, ItemSelection>>({});
   const [itemSearch, setItemSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('All');
+  const [pickerLevel, setPickerLevel] = useState<PickerLevel>('types');
+  const [activeTypeId, setActiveTypeId] = useState<InventoryItemTypeId | null>(null);
+  const [activeItemKey, setActiveItemKey] = useState<string | null>(null);
   const [macSearch, setMacSearch] = useState<Record<string, string>>({});
   const [form, setForm] = useState({
     issueType: 'SINGLE_STATION' as IssueType,
@@ -299,7 +331,9 @@ export function IssueEquipmentDialog({
     setSelections({});
     setUnitsByItemName(new Map());
     setItemSearch('');
-    setCategoryFilter('All');
+    setPickerLevel('types');
+    setActiveTypeId(null);
+    setActiveItemKey(null);
     setMacSearch({});
   }, [open, stationId]);
 
@@ -322,7 +356,64 @@ export function IssueEquipmentDialog({
   useEffect(() => {
     setSelections({});
     setMacSearch({});
+    setPickerLevel('types');
+    setActiveTypeId(null);
+    setActiveItemKey(null);
   }, [form.sourceStationId]);
+
+  const consolidatedItems = useMemo(
+    () => consolidateInventoryItems(items),
+    [items]
+  );
+
+  const searchQuery = itemSearch.trim().toLowerCase();
+
+  const typeGroups = useMemo(() => {
+    return INVENTORY_ITEM_TYPES.filter((t) => t.id !== 'cable').map((config) => {
+      const typeItems = consolidatedItems.filter((item) => {
+        if (item.typeId !== config.id) return false;
+        if (!searchQuery) return true;
+        return item.itemName.toLowerCase().includes(searchQuery);
+      });
+      const selectedInType = typeItems.filter((item) => {
+        const sel = selections[item.id];
+        if (!sel) return false;
+        const macUnits = getUnitsForItem(item, unitsByItemName);
+        return macUnits.length > 0
+          ? sel.routerUnitIds.length > 0
+          : sel.quantityTaken > 0;
+      }).length;
+      const totalUnits = typeItems.reduce((s, item) => {
+        const macUnits = getUnitsForItem(item, unitsByItemName);
+        const sel = selections[item.id];
+        if (sel) {
+          return s + (macUnits.length > 0 ? sel.routerUnitIds.length : sel.quantityTaken);
+        }
+        return s;
+      }, 0);
+      return {
+        config,
+        items: typeItems,
+        stockUnits: typeItems.reduce((s, i) => s + i.quantityAvailable, 0),
+        selectedInType,
+        pickedUnits: totalUnits,
+      };
+    }).filter((g) => g.items.length > 0);
+  }, [consolidatedItems, searchQuery, selections, unitsByItemName]);
+
+  const activeTypeConfig = activeTypeId ? getItemTypeConfig(activeTypeId) : null;
+  const activeTypeGroup = typeGroups.find((g) => g.config.id === activeTypeId);
+  const activeItem = activeItemKey
+    ? consolidatedItems.find((i) => i.itemKey === activeItemKey) || null
+    : null;
+
+  const filteredItems = useMemo(() => {
+    if (!activeTypeId) return [];
+    return (activeTypeGroup?.items || []).filter((item) => {
+      if (!searchQuery) return true;
+      return item.itemName.toLowerCase().includes(searchQuery);
+    });
+  }, [activeTypeId, activeTypeGroup, searchQuery]);
 
   useEffect(() => {
     if (!open || !form.sourceStationId) return;
@@ -354,26 +445,10 @@ export function IssueEquipmentDialog({
     .map((id) => stations.find((s) => s.id === id)?.stationName)
     .filter(Boolean);
 
-  const filteredItems = useMemo(() => {
-    const q = itemSearch.trim().toLowerCase();
-    return items.filter((item) => {
-      if (item.quantityAvailable <= 0) return false;
-      if (categoryFilter !== 'All') {
-        const cat = item.category || 'Other';
-        if (cat !== categoryFilter) return false;
-      }
-      if (!q) return true;
-      return (
-        item.itemName.toLowerCase().includes(q) ||
-        (item.category || '').toLowerCase().includes(q)
-      );
-    });
-  }, [items, itemSearch, categoryFilter]);
-
   const selectedCount = useMemo(() => {
     let lines = 0;
     let units = 0;
-    for (const item of items) {
+    for (const item of consolidatedItems) {
       const sel = selections[item.id];
       if (!sel) continue;
       const macUnits = getUnitsForItem(item, unitsByItemName);
@@ -386,11 +461,11 @@ export function IssueEquipmentDialog({
       }
     }
     return { lines, units };
-  }, [items, selections, unitsByItemName]);
+  }, [consolidatedItems, selections, unitsByItemName]);
 
   const lineSummary = useMemo(() => {
     const rows: { name: string; qty: number; unit: string; macs?: string[] }[] = [];
-    for (const item of items) {
+    for (const item of consolidatedItems) {
       const sel = selections[item.id];
       if (!sel) continue;
       const macUnits = getUnitsForItem(item, unitsByItemName);
@@ -410,12 +485,12 @@ export function IssueEquipmentDialog({
       }
     }
     return rows;
-  }, [items, selections, unitsByItemName]);
+  }, [consolidatedItems, selections, unitsByItemName]);
 
   const getSelection = (itemId: string): ItemSelection =>
     selections[itemId] || { quantityTaken: 0, routerUnitIds: [] };
 
-  const setBulkQty = (item: InventoryItem, qty: number) => {
+  const setBulkQty = (item: ConsolidatedItem, qty: number) => {
     const max = item.quantityAvailable;
     const next = Math.max(0, Math.min(max, qty));
     setSelections((prev) => {
@@ -429,7 +504,7 @@ export function IssueEquipmentDialog({
     });
   };
 
-  const adjustBulkQty = (item: InventoryItem, delta: number) => {
+  const adjustBulkQty = (item: ConsolidatedItem, delta: number) => {
     const current = getSelection(item.id).quantityTaken;
     setBulkQty(item, current + delta);
   };
@@ -450,7 +525,7 @@ export function IssueEquipmentDialog({
     });
   };
 
-  const selectAllMacs = (item: InventoryItem) => {
+  const selectAllMacs = (item: ConsolidatedItem) => {
     const units = getUnitsForItem(item, unitsByItemName);
     const filter = (macSearch[item.id] || '').toLowerCase();
     const filtered = filter
@@ -463,6 +538,28 @@ export function IssueEquipmentDialog({
         routerUnitIds: filtered.map((u) => u.id),
       },
     }));
+  };
+
+  const openType = (typeId: InventoryItemTypeId) => {
+    setActiveTypeId(typeId);
+    setActiveItemKey(null);
+    setPickerLevel('items');
+  };
+
+  const openItemUnits = (item: ConsolidatedItem) => {
+    setActiveTypeId(item.typeId);
+    setActiveItemKey(item.itemKey);
+    setPickerLevel('units');
+  };
+
+  const pickerBack = () => {
+    if (pickerLevel === 'units') {
+      setActiveItemKey(null);
+      setPickerLevel('items');
+    } else if (pickerLevel === 'items') {
+      setActiveTypeId(null);
+      setPickerLevel('types');
+    }
   };
 
   const clearItemSelection = (itemId: string) => {
@@ -542,8 +639,8 @@ export function IssueEquipmentDialog({
       return;
     }
 
-    const validLines: { item: InventoryItem; sel: ItemSelection }[] = [];
-    for (const item of items) {
+    const validLines: { item: ConsolidatedItem; sel: ItemSelection }[] = [];
+    for (const item of consolidatedItems) {
       const sel = selections[item.id];
       if (!sel) continue;
       const macUnits = getUnitsForItem(item, unitsByItemName);
@@ -826,278 +923,38 @@ export function IssueEquipmentDialog({
           {step === 3 && (
             <>
               <SectionCard
-                title="Quick pick — select multiple items"
-                description={`Tap qty for patch cords, splitters, sockets · pick MAC for routers & ONUs · From ${sourceName || 'source station'}`}
+                title="Select equipment"
+                description={`Choose category → item → MAC if needed · From ${sourceName || 'source station'}`}
                 icon={Package}
               >
-                <div className="space-y-3">
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <div className="relative flex-1">
-                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        value={itemSearch}
-                        onChange={(e) => setItemSearch(e.target.value)}
-                        placeholder="Search routers, patch cords, splitters…"
-                        className="pl-9 h-9"
-                      />
-                    </div>
-                    {selectedCount.lines > 0 && (
-                      <Badge className="self-start sm:self-center bg-primary/10 text-primary border-primary/20 shrink-0">
-                        {selectedCount.lines} type{selectedCount.lines !== 1 ? 's' : ''} · {selectedCount.units} unit{selectedCount.units !== 1 ? 's' : ''}
-                      </Badge>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5">
-                    {CATEGORY_FILTERS.map((cat) => (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => setCategoryFilter(cat)}
-                        className={cn(
-                          'rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
-                          categoryFilter === cat
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-background hover:bg-muted/60'
-                        )}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-
-                  {(loadingItems || loadingUnits) ? (
-                    <div className="py-12 text-center">
-                      <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground mb-2" />
-                      <p className="text-sm text-muted-foreground">Loading stock & serial units…</p>
-                    </div>
-                  ) : filteredItems.length === 0 ? (
-                    <div className="rounded-xl border border-dashed py-10 px-4 text-center">
-                      <Package className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                      <p className="text-sm font-medium">No items in stock</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {items.length === 0
-                          ? `Nothing available at ${sourceName || 'this station'} — add stock first`
-                          : 'Try a different search or category filter'}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-[min(42vh,360px)] overflow-y-auto pr-0.5">
-                      {filteredItems.map((item) => {
-                        const typeId = inferItemTypeFromItem(item);
-                        const TypeIcon = TYPE_ICONS[typeId] || Package;
-                        const macUnits = getUnitsForItem(item, unitsByItemName);
-                        const serialized = isSerializedItem(item, macUnits);
-                        const sel = getSelection(item.id);
-                        const isActive =
-                          serialized
-                            ? sel.routerUnitIds.length > 0
-                            : sel.quantityTaken > 0;
-
-                        const macFilter = (macSearch[item.id] || '').toLowerCase();
-                        const visibleMacs = macFilter
-                          ? macUnits.filter((u) => unitLabel(u).toLowerCase().includes(macFilter))
-                          : macUnits;
-
-                        return (
-                          <div
-                            key={item.id}
-                            className={cn(
-                              'rounded-xl border transition-colors',
-                              isActive
-                                ? 'border-primary/40 bg-primary/[0.03] shadow-sm'
-                                : 'bg-background hover:border-muted-foreground/25'
-                            )}
-                          >
-                            <div className="flex items-center gap-2 p-3">
-                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                                <TypeIcon className="h-4 w-4 text-muted-foreground" />
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <p className="text-sm font-semibold truncate">{item.itemName}</p>
-                                  {serialized && macUnits.length > 0 && (
-                                    <span className={softBadgeClass('bg-violet-100 text-violet-800 border-violet-200 text-[10px]')}>
-                                      MAC / Serial
-                                    </span>
-                                  )}
-                                  <span className={softBadgeClass(categoryBadgeClasses(item.category))}>
-                                    {item.category || 'Other'}
-                                  </span>
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                  {serialized && macUnits.length > 0 ? (
-                                    <>
-                                      <span className="font-medium text-violet-700 dark:text-violet-300">
-                                        Pick exact unit from shelf
-                                      </span>
-                                      {' · '}{macUnits.length} with MAC/serial · {item.quantityAvailable}{' '}
-                                      {item.unitType} in stock
-                                    </>
-                                  ) : (
-                                    `${item.quantityAvailable} ${item.unitType} available`
-                                  )}
-                                </p>
-                                {serialized && macUnits.length > 0 && (
-                                  <p className="text-[10px] font-mono text-muted-foreground mt-1 truncate">
-                                    In stock: {macUnits.map((u) => unitLabel(u)).join(' · ')}
-                                  </p>
-                                )}
-                              </div>
-
-                              {!serialized || macUnits.length === 0 ? (
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                    disabled={sel.quantityTaken <= 0}
-                                    onClick={() => adjustBulkQty(item, -1)}
-                                  >
-                                    <Minus className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Input
-                                    type="number"
-                                    min={0}
-                                    max={item.quantityAvailable}
-                                    className="h-8 w-14 text-center px-1 tabular-nums"
-                                    value={sel.quantityTaken || ''}
-                                    placeholder="0"
-                                    onChange={(e) =>
-                                      setBulkQty(item, parseInt(e.target.value, 10) || 0)
-                                    }
-                                  />
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                    disabled={sel.quantityTaken >= item.quantityAvailable}
-                                    onClick={() => adjustBulkQty(item, 1)}
-                                  >
-                                    <Plus className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="secondary"
-                                    size="sm"
-                                    className="h-8 px-2 text-[11px] hidden sm:inline-flex"
-                                    disabled={sel.quantityTaken + 5 > item.quantityAvailable}
-                                    onClick={() => adjustBulkQty(item, 5)}
-                                  >
-                                    +5
-                                  </Button>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  {isActive && (
-                                    <Badge variant="secondary" className="tabular-nums">
-                                      {sel.routerUnitIds.length} picked
-                                    </Badge>
-                                  )}
-                                  {isActive && (
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 text-muted-foreground"
-                                      onClick={() => clearItemSelection(item.id)}
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </Button>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-
-                            {serialized && macUnits.length > 0 && (
-                              <div className="border-t px-3 pb-3 pt-2 space-y-2 bg-violet-50/40 dark:bg-violet-950/15">
-                                <p className="text-[11px] font-semibold text-violet-800 dark:text-violet-300 uppercase tracking-wide">
-                                  Select unit — match MAC or serial on device
-                                </p>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <Input
-                                    value={macSearch[item.id] || ''}
-                                    onChange={(e) =>
-                                      setMacSearch((p) => ({ ...p, [item.id]: e.target.value }))
-                                    }
-                                    placeholder="Search MAC or serial…"
-                                    className="h-8 flex-1 min-w-[140px] text-xs font-mono"
-                                  />
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 text-xs"
-                                    onClick={() => selectAllMacs(item)}
-                                  >
-                                    Select all ({visibleMacs.length})
-                                  </Button>
-                                  {isActive && (
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 text-xs"
-                                      onClick={() => clearItemSelection(item.id)}
-                                    >
-                                      Clear
-                                    </Button>
-                                  )}
-                                </div>
-                                <div className="grid grid-cols-1 gap-1.5 max-h-44 overflow-y-auto">
-                                  {visibleMacs.map((u) => {
-                                    const checked = sel.routerUnitIds.includes(u.id);
-                                    const parts = unitDisplayParts(u);
-                                    return (
-                                      <label
-                                        key={u.id}
-                                        className={cn(
-                                          'flex items-start gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-colors',
-                                          checked
-                                            ? 'border-primary bg-primary/10 ring-1 ring-primary/20'
-                                            : 'bg-background hover:bg-muted/50 border-border'
-                                        )}
-                                      >
-                                        <Checkbox
-                                          checked={checked}
-                                          className="mt-0.5"
-                                          onCheckedChange={(c) => toggleMacUnit(item.id, u.id, !!c)}
-                                        />
-                                        <div className="min-w-0 flex-1 font-mono text-xs space-y-0.5">
-                                          {parts.serial && (
-                                            <p>
-                                              <span className="text-muted-foreground font-sans text-[10px] uppercase mr-1.5">
-                                                Serial
-                                              </span>
-                                              <span className="font-semibold">{parts.serial}</span>
-                                            </p>
-                                          )}
-                                          {parts.mac && (
-                                            <p>
-                                              <span className="text-muted-foreground font-sans text-[10px] uppercase mr-1.5">
-                                                MAC
-                                              </span>
-                                              <span className="font-semibold">{parts.mac}</span>
-                                            </p>
-                                          )}
-                                          {!parts.serial && !parts.mac && (
-                                            <p className="font-semibold">{parts.fallback}</p>
-                                          )}
-                                        </div>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                <IssuePickerStep
+                  sourceName={sourceName}
+                  loading={loadingItems || loadingUnits}
+                  itemSearch={itemSearch}
+                  onItemSearchChange={setItemSearch}
+                  selectedCount={selectedCount}
+                  pickerLevel={pickerLevel}
+                  typeGroups={typeGroups}
+                  activeTypeConfig={activeTypeConfig}
+                  filteredItems={filteredItems}
+                  activeItem={activeItem}
+                  unitsByItemName={unitsByItemName}
+                  selections={selections}
+                  macSearch={macSearch}
+                  onMacSearchChange={(itemId, v) => setMacSearch((p) => ({ ...p, [itemId]: v }))}
+                  onBack={pickerBack}
+                  onOpenType={openType}
+                  onOpenItemUnits={openItemUnits}
+                  getSelection={getSelection}
+                  adjustBulkQty={adjustBulkQty}
+                  setBulkQty={setBulkQty}
+                  toggleMacUnit={toggleMacUnit}
+                  selectAllMacs={selectAllMacs}
+                  clearItemSelection={clearItemSelection}
+                  isSerializedItem={isSerializedItem}
+                  getUnitsForItem={getUnitsForItem}
+                  hasStock={consolidatedItems.length > 0}
+                />
               </SectionCard>
 
               {lineSummary.length > 0 && (

@@ -135,13 +135,17 @@ export function AddStockModal({
   open,
   onOpenChange,
   stationId,
+  stations,
   existingItem,
   templates = [],
   onSuccess,
 }: AddStockModalProps) {
   const isExisting = !!existingItem;
+  const needsStationPick = stationId === 'all' && !isExisting;
 
   const [step, setStep] = useState(1);
+  const [targetStationId, setTargetStationId] = useState(stations[0]?.id || '');
+  const effectiveStationId = needsStationPick ? targetStationId : stationId;
   const [itemTypeId, setItemTypeId] = useState<InventoryItemTypeId>('router');
   const [splitterPreset, setSplitterPreset] = useState('1x8');
   const [idType, setIdType] = useState<'serial' | 'mac'>('serial');
@@ -227,6 +231,9 @@ export function AddStockModal({
 
   useEffect(() => {
     if (!open) return;
+    if (needsStationPick && stations.length > 0 && !targetStationId) {
+      setTargetStationId(stations[0].id);
+    }
     setStep(isExisting ? 3 : 1);
     setAdvancedOpen(false);
     setBulkPaste(false);
@@ -328,6 +335,10 @@ export function AddStockModal({
   };
 
   const validateStep = (s: number): boolean => {
+    if (needsStationPick && !effectiveStationId) {
+      toast.error('Select a station to add stock to');
+      return false;
+    }
     if (s === 1) return true;
     if (s === 2) {
       if (!form.itemName.trim()) {
@@ -365,7 +376,7 @@ export function AddStockModal({
     const res = await fetch('/api/isp/routers/bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stationIds: [stationId], itemName, units }),
+      body: JSON.stringify({ stationIds: [effectiveStationId], itemName, units }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to add units');
@@ -388,7 +399,7 @@ export function AddStockModal({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        stationId,
+        stationId: effectiveStationId,
         itemName: form.itemName.trim(),
         itemCode,
         category: form.category,
@@ -414,7 +425,7 @@ export function AddStockModal({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            stationId,
+            stationId: effectiveStationId,
             itemName: form.itemName.trim(),
             itemCode: form.itemCode || undefined,
             category: form.category,
@@ -446,7 +457,7 @@ export function AddStockModal({
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              stationId,
+              stationId: effectiveStationId,
               itemName: form.itemName.trim(),
               itemCode,
               category: form.category,
@@ -506,6 +517,27 @@ export function AddStockModal({
 
         {/* Body */}
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-4">
+          {needsStationPick && (
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 mb-4 space-y-2">
+              <Label className="text-sm font-medium">Add stock to station</Label>
+              <Select value={targetStationId} onValueChange={setTargetStationId}>
+                <SelectTrigger className="h-10 bg-background">
+                  <SelectValue placeholder="Choose station…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stations.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.stationName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                Stock will be added to the selected station inventory
+              </p>
+            </div>
+          )}
+
           {/* STEP 1 — Category */}
           {step === 1 && !isExisting && (
             <div className="space-y-4">

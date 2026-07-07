@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -58,6 +58,72 @@ export interface StockItem {
   rollSummary?: RollSummary | null;
   lastMovement?: string | null;
   updatedAt?: string;
+}
+
+/** Display row after merging duplicate catalog entries (same category + name). */
+export interface MergedStockItem extends StockItem {
+  mergedIds: string[];
+  mergedCount: number;
+  stationLabels: string[];
+}
+
+function mergeStockItems(items: StockItem[], stations: Station[]): MergedStockItem[] {
+  const map = new Map<string, MergedStockItem>();
+
+  for (const item of items) {
+    const category = (item.category || 'Other').trim();
+    const nameKey = item.itemName.trim().toLowerCase();
+    const codeKey = (item.itemCode || '').trim().toLowerCase();
+    const key = `${category}::${nameKey}::${codeKey}`;
+    const stationLabel = coverageLabel(item, stations);
+
+    const existing = map.get(key);
+    if (existing) {
+      existing.quantityAvailable += item.quantityAvailable;
+      existing.minimumLevel = Math.max(existing.minimumLevel, item.minimumLevel);
+      existing.mergedIds.push(item.id);
+      existing.mergedCount += 1;
+      existing.stationLabels.push(stationLabel);
+      const itemLm = item.lastMovement || item.updatedAt;
+      const existingLm = existing.lastMovement;
+      if (itemLm && (!existingLm || new Date(itemLm) > new Date(String(existingLm)))) {
+        existing.lastMovement = itemLm;
+      }
+      if (item.rollSummary) {
+        if (existing.rollSummary) {
+          existing.rollSummary = {
+            rollCount: existing.rollSummary.rollCount + item.rollSummary.rollCount,
+            activeRolls: existing.rollSummary.activeRolls + item.rollSummary.activeRolls,
+            finishedRolls: existing.rollSummary.finishedRolls + item.rollSummary.finishedRolls,
+            damagedRolls: existing.rollSummary.damagedRolls + item.rollSummary.damagedRolls,
+          };
+        } else {
+          existing.rollSummary = { ...item.rollSummary };
+        }
+      }
+    } else {
+      map.set(key, {
+        ...item,
+        mergedIds: [item.id],
+        mergedCount: 1,
+        stationLabels: [stationLabel],
+      });
+    }
+  }
+
+  return [...map.values()].sort((a, b) =>
+    a.itemName.localeCompare(b.itemName, undefined, { sensitivity: 'base' })
+  );
+}
+
+function mergedCoverageLabel(labels: string[]): string {
+  if (labels.length === 0) return '—';
+  const counts = new Map<string, number>();
+  for (const label of labels) {
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+  const parts = [...counts.entries()].map(([name, n]) => (n > 1 ? `${name} (${n})` : name));
+  return parts.join(' · ');
 }
 
 function fmtDateTime(value?: string | null): string {
@@ -139,8 +205,8 @@ export function StockTab({
   };
 
   useEffect(() => {
-    if (!isAllStations) fetchTemplates();
-  }, [isAllStations, refreshKey]);
+    fetchTemplates();
+  }, [refreshKey]);
 
   const fetchItems = () => {
     setLoading(true);
@@ -172,7 +238,12 @@ export function StockTab({
     );
   });
 
-  const handleRowClick = (item: StockItem) => {
+  const displayItems = useMemo(
+    () => mergeStockItems(filtered, stations),
+    [filtered, stations]
+  );
+
+  const handleRowClick = (item: MergedStockItem) => {
     if (isMeterItem(item) && !isAllStations) setCableItem(item);
   };
 
@@ -180,21 +251,32 @@ export function StockTab({
     <>
       <div className="flex items-center justify-between gap-2 mb-3">
         <p className="text-sm text-muted-foreground">
-          {filtered.length} item{filtered.length !== 1 ? 's' : ''}
-          {isAllStations && ' · Select a station to add stock or manage rolls'}
-        </p>
+          {displayItems.length} item{displayItems.length !== 1 ? 's' : ''}
+          {filtered.length !== displayItems.length && (
+            <span className="text-muted-foreground/80">
+              {' '}
+              ({filtered.length - displayItems.length} duplicate row
+              {filtered.length - displayItems.length !== 1 ? 's' : ''} merged)
+            </span>
+          )}
         {!isAllStations && (
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => setCatalogOpen(true)}>
-              <BookMarked className="h-4 w-4 mr-1.5" />
-              Item Catalog
-            </Button>
-            <Button size="sm" onClick={() => { setAddToItem(null); setAddOpen(true); }}>
-              <Plus className="h-4 w-4 mr-1.5" />
-              Add Stock
-            </Button>
-          </div>
+          <span className="hidden sm:inline text-muted-foreground/80">
+            {' '}
+            · Select a station to manage rolls from a row
+          </span>
         )}
+        </p>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button size="sm" variant="outline" onClick={() => setCatalogOpen(true)}>
+            <BookMarked className="h-4 w-4 mr-1.5" />
+            <span className="hidden sm:inline">Item Catalog</span>
+            <span className="sm:hidden">Catalog</span>
+          </Button>
+          <Button size="sm" onClick={() => { setAddToItem(null); setAddOpen(true); }}>
+            <Plus className="h-4 w-4 mr-1.5" />
+            Add Stock
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -203,7 +285,7 @@ export function StockTab({
             <div className="py-16 text-center">
               <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
             </div>
-          ) : filtered.length === 0 ? (
+          ) : displayItems.length === 0 ? (
             <p className="text-center text-muted-foreground py-16 text-sm">
               No inventory items found.
             </p>
@@ -224,13 +306,14 @@ export function StockTab({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((item) => {
+                  {displayItems.map((item) => {
                     const status = stockStatus(item);
                     const meter = isMeterItem(item);
                     const unit = displayUnit(item) as 'pcs' | 'm';
+                    const coverage = mergedCoverageLabel(item.stationLabels);
                     return (
                       <TableRow
-                        key={item.id}
+                        key={`${item.category}-${item.itemName}-${item.itemCode || ''}`}
                         className={cn(
                           meter && !isAllStations ? 'cursor-pointer hover:bg-muted/50' : '',
                           rowHighlightForItem(item.quantityAvailable, item.minimumLevel)
@@ -241,6 +324,12 @@ export function StockTab({
                           <p className="font-medium">{item.itemName}</p>
                           {item.itemCode && (
                             <p className="text-xs text-muted-foreground font-mono">{item.itemCode}</p>
+                          )}
+                          {item.mergedCount > 1 && (
+                            <p className="text-[10px] text-blue-700 dark:text-blue-400 mt-0.5">
+                              {item.mergedCount} stock entries merged · {item.quantityAvailable}{' '}
+                              {meter ? 'm' : 'pcs'} total
+                            </p>
                           )}
                           {meter && item.rollSummary && (
                             <p className="text-xs text-cyan-700/80 dark:text-cyan-400/80 mt-0.5">
@@ -269,7 +358,7 @@ export function StockTab({
                           {meter ? `${item.minimumLevel}m` : `${item.minimumLevel} pcs`}
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-muted-foreground text-sm">
-                          {coverageLabel(item, stations)}
+                          {coverage}
                         </TableCell>
                         <TableCell>
                           <span className={softBadgeClass(stockStatusStyle(status.status))}>
@@ -316,36 +405,34 @@ export function StockTab({
         </CardContent>
       </Card>
 
+      <AddStockModal
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        stationId={stationId}
+        stations={stations}
+        existingItem={addToItem}
+        templates={templates}
+        onSuccess={() => {
+          fetchItems();
+          onRefresh();
+        }}
+      />
+      <ItemCatalogSheet
+        open={catalogOpen}
+        onOpenChange={setCatalogOpen}
+        onUpdated={fetchTemplates}
+      />
       {!isAllStations && (
-        <>
-          <AddStockModal
-            open={addOpen}
-            onOpenChange={setAddOpen}
-            stationId={stationId}
-            stations={stations}
-            existingItem={addToItem}
-            templates={templates}
-            onSuccess={() => {
-              fetchItems();
-              onRefresh();
-            }}
-          />
-          <ItemCatalogSheet
-            open={catalogOpen}
-            onOpenChange={setCatalogOpen}
-            onUpdated={fetchTemplates}
-          />
-          <CableRollDrawer
-            open={!!cableItem}
-            onOpenChange={(o) => !o && setCableItem(null)}
-            item={cableItem}
-            stationId={stationId}
-            onRefresh={() => {
-              fetchItems();
-              onRefresh();
-            }}
-          />
-        </>
+        <CableRollDrawer
+          open={!!cableItem}
+          onOpenChange={(o) => !o && setCableItem(null)}
+          item={cableItem}
+          stationId={stationId}
+          onRefresh={() => {
+            fetchItems();
+            onRefresh();
+          }}
+        />
       )}
     </>
   );
