@@ -44,8 +44,11 @@ export function ActivityFeed({ stationId, refreshKey }: ActivityFeedProps) {
       RETURN: 'Processed return',
       CABLE_ISSUE: 'Issued cable',
       CABLE_RETURN: 'Returned cable',
+<<<<<<< HEAD
       BULK_ADD_ROUTERS: 'Added routers',
       TRANSFER_STOCK: 'Stock transferred',
+=======
+>>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
     };
     return map[action] || action;
   };

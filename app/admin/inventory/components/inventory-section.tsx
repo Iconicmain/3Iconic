@@ -56,10 +56,13 @@ interface InventorySectionProps {
   filterCategory: string;
   filterLowStock: boolean;
   onRefresh: () => void;
+<<<<<<< HEAD
   refreshKey?: number;
   hideHeader?: boolean;
   openDialog?: 'add-item' | 'add-routers' | null;
   onOpenDialogHandled?: () => void;
+=======
+>>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
 }
 
 export function InventorySection({
@@ -69,10 +72,13 @@ export function InventorySection({
   filterCategory,
   filterLowStock,
   onRefresh,
+<<<<<<< HEAD
   refreshKey = 0,
   hideHeader = false,
   openDialog = null,
   onOpenDialogHandled,
+=======
+>>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
 }: InventorySectionProps) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [routers, setRouters] = useState<{ id: string; itemName: string; serialNumber?: string; macAddress?: string; status: string }[]>([]);
@@ -119,6 +125,7 @@ export function InventorySection({
 
   useEffect(() => {
     fetchItems();
+<<<<<<< HEAD
   }, [stationId, filterCategory, filterLowStock, refreshKey]);
 
   useEffect(() => {
@@ -134,6 +141,9 @@ export function InventorySection({
     }
     onOpenDialogHandled?.();
   }, [openDialog, stationId, onOpenDialogHandled]);
+=======
+  }, [stationId, filterCategory, filterLowStock]);
+>>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
 
   const fetchRouters = () => {
     fetch(`/api/isp/routers?stationId=${stationId}`, { cache: 'no-store' })
@@ -144,7 +154,11 @@ export function InventorySection({
 
   useEffect(() => {
     fetchRouters();
+<<<<<<< HEAD
   }, [stationId, refreshKey]);
+=======
+  }, [stationId]);
+>>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
 
   const filteredItems = items.filter(
     (i) =>
@@ -336,7 +350,10 @@ export function InventorySection({
   return (
     <>
       <Card>
+<<<<<<< HEAD
         {!hideHeader && (
+=======
+>>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2">
           <CardTitle className="text-base sm:text-lg flex items-center gap-2">
             <Package className="h-5 w-5 shrink-0" />
@@ -353,13 +370,20 @@ export function InventorySection({
             </Button>
           </div>
         </CardHeader>
+<<<<<<< HEAD
         )}
+=======
+>>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
         <CardContent>
           {loading ? (
             <div className="py-8 text-center text-muted-foreground text-sm">Loading...</div>
           ) : filteredItems.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground text-sm">
+<<<<<<< HEAD
               No inventory items found. Add your first item or router to begin tracking.
+=======
+              No items match your filters
+>>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
             </div>
           ) : (
             <>
