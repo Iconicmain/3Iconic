@@ -55,13 +55,9 @@ export default async function InventoryPage() {
 
   const stationIds = mappedStations.map((s) => s.id);
   let defaultStationId: string | null = null;
-<<<<<<< HEAD
   if (isSuperAdmin) {
     defaultStationId = 'all';
   } else if (assignedStationId && stationIds.includes(assignedStationId)) {
-=======
-  if (assignedStationId && stationIds.includes(assignedStationId)) {
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
     defaultStationId = assignedStationId;
   } else if (mappedStations.length > 0) {
     defaultStationId = mappedStations[0].id;

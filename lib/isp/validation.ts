@@ -75,7 +75,6 @@ export const cableReturnSchema = z.object({
   wasteMeters: z.number().min(0).optional(),
   notes: z.string().optional(),
 });
-<<<<<<< HEAD
 
 export const transferStockSchema = z.object({
   fromStationId: z.string().min(1, 'Source station is required'),
@@ -85,5 +84,3 @@ export const transferStockSchema = z.object({
   reason: z.string().min(1, 'Reason is required'),
   notes: z.string().optional(),
 });
-=======
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c

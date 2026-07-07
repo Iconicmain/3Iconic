@@ -67,7 +67,6 @@ interface Issue {
 interface IssueReturnSectionProps {
   stationId: string;
   onRefresh: () => void;
-<<<<<<< HEAD
   refreshKey?: number;
   hideHeader?: boolean;
   openDialog?: 'issue' | 'return' | null;
@@ -82,11 +81,6 @@ export function IssueReturnSection({
   openDialog = null,
   onOpenDialogHandled,
 }: IssueReturnSectionProps) {
-=======
-}
-
-export function IssueReturnSection({ stationId, onRefresh }: IssueReturnSectionProps) {
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
   const [issues, setIssues] = useState<Issue[]>([]);
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
@@ -102,17 +96,10 @@ export function IssueReturnSection({ stationId, onRefresh }: IssueReturnSectionP
     items: [] as { itemId: string; quantityTaken: number; unitType: string }[],
   });
 
-<<<<<<< HEAD
   const loadData = () => {
     setLoading(true);
     Promise.all([
       fetch(`/api/isp/technician-issues?stationId=${stationId}`, { cache: 'no-store' }).then((r) => r.json()),
-=======
-  useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
-    Promise.all([
-      fetch(`/api/isp/technician-issues?stationId=${stationId}&date=${today}`, { cache: 'no-store' }).then((r) => r.json()),
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
       fetch(`/api/isp/inventory?stationId=${stationId}`, { cache: 'no-store' }).then((r) => r.json()),
       fetch(`/api/isp/technicians?stationId=${stationId}`, { cache: 'no-store' }).then((r) => r.json()),
     ]).then(([issuesRes, itemsRes, techRes]) => {
@@ -120,11 +107,7 @@ export function IssueReturnSection({ stationId, onRefresh }: IssueReturnSectionP
       setItems((itemsRes.items || []).filter((i: InventoryItem & { isCable?: boolean; category?: string }) => !i.isCable && i.category !== 'Drop Cable'));
       setTechnicians(techRes.technicians || []);
     }).catch(() => {}).finally(() => setLoading(false));
-<<<<<<< HEAD
   };
-=======
-  }, [stationId]);
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
 
   const pendingItems = issues.flatMap((issue) =>
     issue.items
@@ -132,7 +115,6 @@ export function IssueReturnSection({ stationId, onRefresh }: IssueReturnSectionP
       .map((item) => ({ issue, item }))
   );
 
-<<<<<<< HEAD
   useEffect(() => {
     loadData();
   }, [stationId, refreshKey]);
@@ -144,8 +126,6 @@ export function IssueReturnSection({ stationId, onRefresh }: IssueReturnSectionP
     onOpenDialogHandled?.();
   }, [openDialog, onOpenDialogHandled]);
 
-=======
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
   const addIssueItem = () => {
     if (issueForm.items.length >= 10) return;
     setIssueForm((p) => ({
@@ -203,13 +183,8 @@ export function IssueReturnSection({ stationId, onRefresh }: IssueReturnSectionP
         toast.success('Items issued');
         setIssueOpen(false);
         setIssueForm({ technicianId: '', jobReference: '', items: [] });
-<<<<<<< HEAD
         loadData();
         onRefresh();
-=======
-        onRefresh();
-        window.location.reload(); // Refresh issues list
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
       })
       .catch((e) => toast.error(e.message));
   };
@@ -243,13 +218,8 @@ export function IssueReturnSection({ stationId, onRefresh }: IssueReturnSectionP
         setSelectedIssueItem(null);
         setReturnQty('');
         setReturnCondition('');
-<<<<<<< HEAD
         loadData();
         onRefresh();
-=======
-        onRefresh();
-        window.location.reload();
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
       })
       .catch((e) => toast.error(e.message));
   };
@@ -257,10 +227,7 @@ export function IssueReturnSection({ stationId, onRefresh }: IssueReturnSectionP
   return (
     <>
       <Card>
-<<<<<<< HEAD
         {!hideHeader && (
-=======
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2">
           <CardTitle className="text-base sm:text-lg flex items-center gap-2">
             <ArrowUpCircle className="h-5 w-5 shrink-0" />
@@ -271,10 +238,7 @@ export function IssueReturnSection({ stationId, onRefresh }: IssueReturnSectionP
             Issue Items
           </Button>
         </CardHeader>
-<<<<<<< HEAD
         )}
-=======
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
         <CardContent>
           {loading ? (
             <div className="py-6 text-center text-muted-foreground text-sm">Loading...</div>
@@ -487,7 +451,6 @@ export function IssueReturnSection({ stationId, onRefresh }: IssueReturnSectionP
                 />
               </div>
               <div>
-<<<<<<< HEAD
                 <Label>Return condition</Label>
                 <Select value={returnCondition} onValueChange={setReturnCondition}>
                   <SelectTrigger>
@@ -500,14 +463,6 @@ export function IssueReturnSection({ stationId, onRefresh }: IssueReturnSectionP
                     <SelectItem value="Partial">Partial return</SelectItem>
                   </SelectContent>
                 </Select>
-=======
-                <Label>Condition (optional)</Label>
-                <Input
-                  value={returnCondition}
-                  onChange={(e) => setReturnCondition(e.target.value)}
-                  placeholder="Good, Damaged, etc."
-                />
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
               </div>
             </div>
           )}

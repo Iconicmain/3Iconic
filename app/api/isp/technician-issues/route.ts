@@ -26,7 +26,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'stationId is required' }, { status: 400 });
     }
 
-<<<<<<< HEAD
     const client = await clientPromise;
     const db = client.db(ISP_DB);
     const issuesCol = db.collection(ISP_COLLECTIONS.technicianIssues);
@@ -63,22 +62,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ issues: issuesWithItems }, { headers: NO_CACHE_HEADERS });
     }
 
-=======
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
     const stationId = await (await import('@/lib/isp/station-resolve')).resolveStationId(stationIdParam);
 
     if (!(await canAccessStation(stationIdParam))) {
       return NextResponse.json({ error: 'Access denied to this station' }, { status: 403 });
     }
 
-<<<<<<< HEAD
-=======
-    const client = await clientPromise;
-    const db = client.db(ISP_DB);
-    const issuesCol = db.collection(ISP_COLLECTIONS.technicianIssues);
-    const issueItemsCol = db.collection(ISP_COLLECTIONS.technicianIssueItems);
-    const itemsCol = db.collection(ISP_COLLECTIONS.inventoryItems);
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
     const txCol = db.collection(ISP_COLLECTIONS.inventoryTransactions);
 
     const query: Record<string, unknown> = { stationId };

@@ -61,7 +61,6 @@ interface Technician {
 interface CableSectionProps {
   stationId: string;
   onRefresh: () => void;
-<<<<<<< HEAD
   refreshKey?: number;
   hideHeader?: boolean;
   openDialog?: 'add-roll' | 'issue-cable' | null;
@@ -76,11 +75,6 @@ export function CableSection({
   openDialog = null,
   onOpenDialogHandled,
 }: CableSectionProps) {
-=======
-}
-
-export function CableSection({ stationId, onRefresh }: CableSectionProps) {
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
   const [rolls, setRolls] = useState<CableRoll[]>([]);
   const [logs, setLogs] = useState<CableLog[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
@@ -104,12 +98,8 @@ export function CableSection({ stationId, onRefresh }: CableSectionProps) {
   const [returnMeters, setReturnMeters] = useState('');
   const [wasteMeters, setWasteMeters] = useState('');
 
-<<<<<<< HEAD
   const loadData = () => {
     setLoading(true);
-=======
-  useEffect(() => {
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
     Promise.all([
       fetch(`/api/isp/cable?stationId=${stationId}`, { cache: 'no-store' }).then((r) => r.json()),
       fetch(`/api/isp/cable/usage?stationId=${stationId}`, { cache: 'no-store' }).then((r) => r.json()),
@@ -119,7 +109,6 @@ export function CableSection({ stationId, onRefresh }: CableSectionProps) {
       setLogs(logsRes.logs || []);
       setTechnicians(techRes.technicians || []);
     }).catch(() => {}).finally(() => setLoading(false));
-<<<<<<< HEAD
   };
 
   useEffect(() => {
@@ -132,9 +121,6 @@ export function CableSection({ stationId, onRefresh }: CableSectionProps) {
     if (openDialog === 'issue-cable') setIssueOpen(true);
     onOpenDialogHandled?.();
   }, [openDialog, onOpenDialogHandled]);
-=======
-  }, [stationId]);
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
 
   const openLogs = logs.filter((l) => l.metersReturned < l.metersIssued);
   const activeRolls = rolls.filter((r) => r.status === 'ACTIVE' && r.currentRemainingMeters > 0);
@@ -167,13 +153,8 @@ export function CableSection({ stationId, onRefresh }: CableSectionProps) {
         toast.success('Cable roll added');
         setAddRollOpen(false);
         setNewRoll({ rollCode: '', cableType: 'Drop Cable', originalMeters: '' });
-<<<<<<< HEAD
         loadData();
         onRefresh();
-=======
-        onRefresh();
-        window.location.reload();
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
       })
       .catch((e) => toast.error(e.message));
   };
@@ -205,13 +186,8 @@ export function CableSection({ stationId, onRefresh }: CableSectionProps) {
         toast.success('Cable issued');
         setIssueOpen(false);
         setIssueForm({ rollId: '', technicianId: '', jobReference: '', metersIssued: '' });
-<<<<<<< HEAD
         loadData();
         onRefresh();
-=======
-        onRefresh();
-        window.location.reload();
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
       })
       .catch((e) => toast.error(e.message));
   };
@@ -247,13 +223,8 @@ export function CableSection({ stationId, onRefresh }: CableSectionProps) {
         setSelectedLog(null);
         setReturnMeters('');
         setWasteMeters('');
-<<<<<<< HEAD
         loadData();
         onRefresh();
-=======
-        onRefresh();
-        window.location.reload();
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
       })
       .catch((e) => toast.error(e.message));
   };
@@ -261,10 +232,7 @@ export function CableSection({ stationId, onRefresh }: CableSectionProps) {
   return (
     <>
       <Card>
-<<<<<<< HEAD
         {!hideHeader && (
-=======
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2">
           <CardTitle className="text-base sm:text-lg flex items-center gap-2">
             <Cable className="h-5 w-5 shrink-0" />
@@ -281,10 +249,7 @@ export function CableSection({ stationId, onRefresh }: CableSectionProps) {
             </Button>
           </div>
         </CardHeader>
-<<<<<<< HEAD
         )}
-=======
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
         <CardContent>
           {loading ? (
             <div className="py-6 text-center text-muted-foreground text-sm">Loading...</div>

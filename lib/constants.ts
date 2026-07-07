@@ -15,11 +15,7 @@ export const AVAILABLE_PAGES = [
   { id: 'equipment-requests', name: 'Request Equipment', path: '/admin/equipment-requests' },
   { id: 'manage-requests', name: 'Manage Requests', path: '/admin/manage-requests' },
   { id: 'station-tasks', name: 'Station Tasks', path: '/admin/station-tasks' },
-<<<<<<< HEAD
   { id: 'inventory', name: 'Inventory Command Center', path: '/admin/inventory' },
-=======
-  { id: 'inventory', name: 'Station Inventory', path: '/admin/inventory' },
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
   { id: 'inventory-aggregate', name: 'Inventory Overview', path: '/admin/inventory/aggregate' },
 ] as const;
 

@@ -111,29 +111,12 @@ const navigation = [
     pageId: 'station-tasks'
   },
   {
-<<<<<<< HEAD
     name: 'Inventory',
     href: '/admin/inventory',
     icon: Package,
     description: 'Inventory command center',
     pageId: 'inventory'
   },
-=======
-    name: 'Station Inventory',
-    href: '/admin/inventory',
-    icon: Package,
-    description: 'Inventory & technician issues',
-    pageId: 'inventory'
-  },
-  {
-    name: 'Inventory Overview',
-    href: '/admin/inventory/aggregate',
-    icon: Warehouse,
-    description: 'All stations aggregate',
-    pageId: 'inventory-aggregate',
-    superAdminOnly: true
-  },
->>>>>>> 8e1879135597300faf42ee752b3c23a349ee4e0c
 ];
 
 export function Sidebar() {
