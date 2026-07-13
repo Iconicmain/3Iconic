@@ -4,41 +4,57 @@ import { cn } from '@/lib/utils';
 
 export type KpiVariant = 'stock' | 'warning' | 'issue' | 'return' | 'cable' | 'tech';
 
-const KPI_STYLES: Record<KpiVariant, { card: string; icon: string }> = {
+const KPI_STYLES: Record<KpiVariant, { card: string; icon: string; mobileCard: string; mobileIcon: string }> = {
   stock: {
     card: 'border-emerald-200/80 bg-emerald-50/50 dark:border-emerald-900/50 dark:bg-emerald-950/20',
     icon: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400',
+    mobileCard: 'max-md:border-emerald-200 max-md:bg-emerald-50 max-md:dark:border-emerald-900 max-md:dark:bg-emerald-950',
+    mobileIcon: 'max-md:bg-emerald-100 max-md:text-emerald-700 max-md:dark:bg-emerald-900 max-md:dark:text-emerald-300',
   },
   warning: {
     card: 'border-amber-200/80 bg-amber-50/60 dark:border-amber-900/50 dark:bg-amber-950/25',
     icon: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
+    mobileCard: 'max-md:border-amber-200 max-md:bg-amber-50 max-md:dark:border-amber-900 max-md:dark:bg-amber-950',
+    mobileIcon: 'max-md:bg-amber-100 max-md:text-amber-700 max-md:dark:bg-amber-900 max-md:dark:text-amber-300',
   },
   issue: {
     card: 'border-blue-200/80 bg-blue-50/50 dark:border-blue-900/50 dark:bg-blue-950/20',
     icon: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
+    mobileCard: 'max-md:border-blue-200 max-md:bg-blue-50 max-md:dark:border-blue-900 max-md:dark:bg-blue-950',
+    mobileIcon: 'max-md:bg-blue-100 max-md:text-blue-700 max-md:dark:bg-blue-900 max-md:dark:text-blue-300',
   },
   return: {
     card: 'border-orange-200/80 bg-orange-50/50 dark:border-orange-900/50 dark:bg-orange-950/20',
     icon: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400',
+    mobileCard: 'max-md:border-orange-200 max-md:bg-orange-50 max-md:dark:border-orange-900 max-md:dark:bg-orange-950',
+    mobileIcon: 'max-md:bg-orange-100 max-md:text-orange-700 max-md:dark:bg-orange-900 max-md:dark:text-orange-300',
   },
   cable: {
     card: 'border-cyan-200/80 bg-cyan-50/50 dark:border-cyan-900/50 dark:bg-cyan-950/20',
     icon: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400',
+    mobileCard: 'max-md:border-cyan-200 max-md:bg-cyan-50 max-md:dark:border-cyan-900 max-md:dark:bg-cyan-950',
+    mobileIcon: 'max-md:bg-cyan-100 max-md:text-cyan-700 max-md:dark:bg-cyan-900 max-md:dark:text-cyan-300',
   },
   tech: {
     card: 'border-violet-200/80 bg-violet-50/50 dark:border-violet-900/50 dark:bg-violet-950/20',
     icon: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400',
+    mobileCard: 'max-md:border-violet-200 max-md:bg-violet-50 max-md:dark:border-violet-900 max-md:dark:bg-violet-950',
+    mobileIcon: 'max-md:bg-violet-100 max-md:text-violet-700 max-md:dark:bg-violet-900 max-md:dark:text-violet-300',
   },
 };
 
 export function kpiCardClasses(variant: KpiVariant, highlight = false): string {
-  const base = KPI_STYLES[variant].card;
-  if (!highlight) return base;
-  return cn(base, 'ring-1 ring-inset ring-current/10');
+  const styles = KPI_STYLES[variant];
+  return cn(
+    styles.card,
+    styles.mobileCard,
+    highlight && 'ring-1 ring-inset ring-current/10 max-md:ring-0'
+  );
 }
 
 export function kpiIconClasses(variant: KpiVariant): string {
-  return cn('p-1.5 rounded-lg shrink-0', KPI_STYLES[variant].icon);
+  const styles = KPI_STYLES[variant];
+  return cn('p-1.5 rounded-lg shrink-0', styles.icon, styles.mobileIcon);
 }
 
 export type StockStatus = 'healthy' | 'low' | 'out';
@@ -139,7 +155,11 @@ export function softBadgeClass(className: string): string {
 }
 
 export function rowHighlightForItem(quantity: number, minimum: number): string {
-  if (quantity <= 0) return 'border-l-2 border-l-red-400 bg-red-50/30 dark:bg-red-950/10';
-  if (quantity <= minimum) return 'border-l-2 border-l-amber-400 bg-amber-50/20 dark:bg-amber-950/10';
+  if (quantity <= 0) {
+    return 'border-l-2 border-l-red-400 bg-red-50/30 dark:bg-red-950/10 max-md:bg-red-50 max-md:dark:bg-red-950';
+  }
+  if (quantity <= minimum) {
+    return 'border-l-2 border-l-amber-400 bg-amber-50/20 dark:bg-amber-950/10 max-md:bg-amber-50 max-md:dark:bg-amber-950';
+  }
   return '';
 }

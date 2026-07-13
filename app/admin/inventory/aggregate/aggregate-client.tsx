@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -103,11 +102,9 @@ export function AggregatePageClient() {
 
   if (loading && !data) {
     return (
-      <div className="flex">
-        <Sidebar />
-        <div className="md:ml-72 flex-1">
-          <Header />
-          <main className="mt-32 md:mt-0 px-4 py-8">
+      <>
+        <Header />
+        <main className="mt-32 md:mt-0 px-4 py-8">
             <div className="animate-pulse space-y-6">
               <div className="h-8 w-48 bg-muted rounded" />
               <div className="grid grid-cols-4 gap-4">
@@ -117,8 +114,7 @@ export function AggregatePageClient() {
               </div>
             </div>
           </main>
-        </div>
-      </div>
+      </>
     );
   }
 
@@ -128,11 +124,9 @@ export function AggregatePageClient() {
   const cable = data?.cableOverview;
 
   return (
-    <div className="flex">
-      <Sidebar />
-      <div className="md:ml-72 flex-1 min-h-screen bg-slate-50/50 dark:bg-slate-950/30">
-        <Header />
-        <main className="mt-32 md:mt-0 px-3 sm:px-4 md:px-6 lg:px-8 pt-4 sm:pt-6 pb-6 md:pb-8">
+    <>
+      <Header />
+      <main className="mt-32 md:mt-0 px-3 sm:px-4 md:px-6 lg:px-8 pt-4 sm:pt-6 pb-6 md:pb-8 min-h-screen bg-slate-50/50 dark:bg-slate-950/30">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-2xl font-bold text-foreground tracking-tight">
@@ -313,8 +307,7 @@ export function AggregatePageClient() {
             </CardContent>
           </Card>
         </main>
-      </div>
-    </div>
+    </>
   );
 }
 

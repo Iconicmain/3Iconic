@@ -1,6 +1,4 @@
 import { checkPagePermission } from '@/lib/permissions';
-import { Sidebar } from '@/components/layout/sidebar';
-import { Header } from '@/components/layout/header';
 import StationTasksClient from './station-tasks-client';
 
 export default async function StationTasksPage() {

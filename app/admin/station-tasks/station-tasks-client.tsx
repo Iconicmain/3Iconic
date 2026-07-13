@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -240,11 +239,9 @@ export default function StationTasksClient() {
   const selectedStation = stations.find(s => s.stationId === formStationId);
 
   return (
-    <div className="flex min-h-screen">
-      <Sidebar />
-      <div className="md:ml-72 flex-1 min-w-0">
-        <Header />
-        <main className="mt-16 md:mt-0 px-3 sm:px-4 md:px-6 lg:px-8 pt-4 sm:pt-6 md:pt-8 pb-4 sm:pb-6 md:pb-8">
+    <>
+      <Header />
+      <main className="mt-16 md:mt-0 px-3 sm:px-4 md:px-6 lg:px-8 pt-4 sm:pt-6 md:pt-8 pb-4 sm:pb-6 md:pb-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
             <div className="min-w-0 flex-1">
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Station Tasks</h1>
@@ -661,8 +658,7 @@ export default function StationTasksClient() {
             </DialogContent>
           </Dialog>
         </main>
-      </div>
-    </div>
+    </>
   );
 }
 

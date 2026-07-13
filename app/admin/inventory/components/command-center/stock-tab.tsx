@@ -307,18 +307,18 @@ export function StockTab({
               No inventory items found.
             </p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto inventory-stock-scroll">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Item</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Unit</TableHead>
+                    <TableHead className="inventory-col-category">Category</TableHead>
+                    <TableHead className="inventory-col-unit">Unit</TableHead>
                     <TableHead>Available</TableHead>
-                    <TableHead className="hidden lg:table-cell">Min Level</TableHead>
-                    <TableHead className="hidden md:table-cell">Coverage</TableHead>
+                    <TableHead className="hidden lg:table-cell inventory-col-min">Min Level</TableHead>
+                    <TableHead className="hidden md:table-cell inventory-col-coverage">Coverage</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="hidden xl:table-cell">Last Movement</TableHead>
+                    <TableHead className="hidden xl:table-cell inventory-col-movement">Last Movement</TableHead>
                     <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>
@@ -338,10 +338,16 @@ export function StockTab({
                         onClick={() => handleRowClick(item)}
                       >
                         <TableCell>
-                          <p className="font-medium">{item.itemName}</p>
+                          <p className="font-medium text-sm leading-snug">{item.itemName}</p>
                           {item.itemCode && (
                             <p className="text-xs text-muted-foreground font-mono">{item.itemCode}</p>
                           )}
+                          <div className="inventory-mobile-meta md:hidden">
+                            {item.category ? (
+                              <span className={categoryBadgeClasses(item.category)}>{item.category}</span>
+                            ) : null}
+                            <span className={unitBadgeClasses(unit)}>{unit}</span>
+                          </div>
                           {item.mergedCount > 1 && (
                             <p className="text-[10px] text-blue-700 dark:text-blue-400 mt-0.5">
                               {item.mergedCount} stock entries merged · {item.quantityAvailable}{' '}
@@ -354,7 +360,7 @@ export function StockTab({
                             </p>
                           )}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="inventory-col-category">
                           {item.category ? (
                             <span className={softBadgeClass(categoryBadgeClasses(item.category))}>
                               {item.category}
@@ -363,18 +369,18 @@ export function StockTab({
                             <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="inventory-col-unit">
                           <span className={softBadgeClass(unitBadgeClasses(unit))}>{unit}</span>
                         </TableCell>
-                        <TableCell className="font-semibold tabular-nums">
+                        <TableCell className="font-semibold tabular-nums text-sm">
                           {meter
                             ? `${item.quantityAvailable.toLocaleString()}m`
                             : `${item.quantityAvailable} pcs`}
                         </TableCell>
-                        <TableCell className="hidden lg:table-cell text-muted-foreground tabular-nums">
+                        <TableCell className="hidden lg:table-cell inventory-col-min text-muted-foreground tabular-nums">
                           {meter ? `${item.minimumLevel}m` : `${item.minimumLevel} pcs`}
                         </TableCell>
-                        <TableCell className="hidden md:table-cell text-muted-foreground text-sm">
+                        <TableCell className="hidden md:table-cell inventory-col-coverage text-muted-foreground text-sm">
                           {coverage}
                         </TableCell>
                         <TableCell>
@@ -382,7 +388,7 @@ export function StockTab({
                             {status.label}
                           </span>
                         </TableCell>
-                        <TableCell className="hidden xl:table-cell text-muted-foreground text-sm">
+                        <TableCell className="hidden xl:table-cell inventory-col-movement text-muted-foreground text-sm">
                           {fmtDateTime(item.lastMovement as string)}
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>

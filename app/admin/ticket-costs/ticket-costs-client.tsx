@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { Calculator, Trash2, RefreshCw, DollarSign, AlertCircle, CheckCircle2, Settings, History, ChevronDown, ChevronUp, FileSpreadsheet } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CategoryManager } from '@/components/tickets/category-manager';
-import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { toast } from 'sonner';
 import {
@@ -369,11 +368,9 @@ export default function TicketCostsClient() {
   };
 
   return (
-    <div className="flex">
-      <Sidebar />
-      <div className="md:ml-72 flex-1">
-        <Header />
-        <main className="mt-32 md:mt-0 pr-4 md:pr-8 pt-4 md:pt-8 pb-4 md:pb-8 pl-4 md:pl-6">
+    <>
+      <Header />
+      <main className="mt-32 md:mt-0 pr-4 md:pr-8 pt-4 md:pt-8 pb-4 md:pb-8 pl-4 md:pl-6">
           <div className="space-y-6">
             {/* Header */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -874,7 +871,6 @@ export default function TicketCostsClient() {
             )}
           </div>
         </main>
-      </div>
 
       {/* Clear Confirmation Dialog */}
       <AlertDialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
@@ -923,7 +919,7 @@ export default function TicketCostsClient() {
           fetchCosts(); // Refresh costs when category is added/updated
         }}
       />
-    </div>
+    </>
   );
 }
 

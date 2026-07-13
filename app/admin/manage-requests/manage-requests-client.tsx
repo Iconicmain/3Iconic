@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -168,11 +167,9 @@ export default function ManageRequestsPageClient() {
   };
 
   return (
-    <div className="flex min-h-screen">
-      <Sidebar />
-      <div className="w-full md:ml-72 flex-1 min-w-0">
-        <Header />
-        <main className="mt-32 md:mt-0 px-3 sm:px-4 md:px-6 lg:px-8 pt-4 sm:pt-6 md:pt-8 pb-4 sm:pb-6 md:pb-8 max-w-full overflow-x-hidden">
+    <>
+      <Header />
+      <main className="mt-32 md:mt-0 px-3 sm:px-4 md:px-6 lg:px-8 pt-4 sm:pt-6 md:pt-8 pb-4 sm:pb-6 md:pb-8 max-w-full overflow-x-hidden">
           <div className="max-w-7xl mx-auto">
             {/* Modern Header */}
             <div className="mb-5 sm:mb-6 md:mb-8">
@@ -444,8 +441,7 @@ export default function ManageRequestsPageClient() {
             </Dialog>
           </div>
         </main>
-      </div>
-    </div>
+    </>
   );
 }
 

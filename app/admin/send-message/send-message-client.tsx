@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { toast } from 'sonner';
 import { Send, MessageSquare, Phone } from 'lucide-react';
@@ -92,11 +91,9 @@ export default function SendMessageClient() {
   const displayPhoneNumber = phoneNumber ? `+254${phoneNumber}` : '';
 
   return (
-    <div className="flex">
-      <Sidebar />
-      <div className="md:ml-72 flex-1">
-        <Header />
-        <main className="mt-32 md:mt-0 pr-4 md:pr-8 pt-4 md:pt-8 pb-4 md:pb-8 pl-4 md:pl-6">
+    <>
+      <Header />
+      <main className="mt-32 md:mt-0 pr-4 md:pr-8 pt-4 md:pt-8 pb-4 md:pb-8 pl-4 md:pl-6">
           <div className="space-y-6">
             {/* Header */}
             <div>
@@ -191,8 +188,7 @@ export default function SendMessageClient() {
             </Card>
           </div>
         </main>
-      </div>
-    </div>
+    </>
   );
 }
 

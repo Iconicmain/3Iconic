@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -130,11 +129,9 @@ export default function SettingsPageClient() {
   ];
 
   return (
-    <div className="flex">
-      <Sidebar />
-      <div className="md:ml-72 flex-1">
-        <Header />
-        <div className="mt-32 md:mt-0 pt-20 md:pt-0">
+    <>
+      <Header />
+      <div className="mt-32 md:mt-0 pt-20 md:pt-0">
           <div className="min-h-screen bg-background">
             <div className="max-w-4xl mx-auto p-6">
               {/* Header */}
@@ -539,8 +536,7 @@ export default function SettingsPageClient() {
             </div>
           </div>
         </div>
-      </div>
-    </div>
+    </>
   );
 }
 

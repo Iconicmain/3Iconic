@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Sidebar } from '@/components/layout/sidebar';
+import './inventory-mobile.css';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -88,11 +88,11 @@ function StatCard({
 }) {
   return (
     <Card className={kpiCardClasses(variant, highlight)}>
-      <CardContent className="p-3 flex items-center gap-2.5">
+      <CardContent className="p-2.5 sm:p-3 flex items-center gap-2 sm:gap-2.5">
         <div className={kpiIconClasses(variant)}>{icon}</div>
         <div className="min-w-0">
-          <p className="text-base font-bold leading-tight truncate">{loading ? '…' : value}</p>
-          <p className="text-[11px] text-muted-foreground truncate">{title}</p>
+          <p className="text-sm sm:text-base font-bold leading-tight truncate">{loading ? '…' : value}</p>
+          <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">{title}</p>
         </div>
       </CardContent>
     </Card>
@@ -127,6 +127,11 @@ export function InventoryStationPage({
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   useEffect(() => {
+    document.documentElement.classList.add('inventory-mobile-page');
+    return () => document.documentElement.classList.remove('inventory-mobile-page');
+  }, []);
+
+  useEffect(() => {
     if (!stationId) return;
     setLoading(true);
     const activityUrl = isAllStations
@@ -151,11 +156,9 @@ export function InventoryStationPage({
 
   if (stations.length === 0) {
     return (
-      <div className="flex">
-        <Sidebar />
-        <div className="md:ml-72 flex-1">
-          <Header />
-          <main className="mt-32 sm:mt-36 md:mt-0 px-4 md:px-6 lg:px-8 pt-6 pb-8">
+      <div className="inventory-page">
+        <Header />
+        <main className="mt-32 sm:mt-36 md:mt-0 px-4 md:px-6 lg:px-8 pt-6 pb-8 max-md:overflow-x-hidden">
             <Card className="max-w-md">
               <CardContent className="pt-6">
                 <p className="font-semibold mb-2">
@@ -181,30 +184,27 @@ export function InventoryStationPage({
               </CardContent>
             </Card>
           </main>
-        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex">
-      <Sidebar />
-      <div className="md:ml-72 flex-1 min-h-screen bg-slate-50/50 dark:bg-slate-950/30">
-        <Header />
-        <main className="mt-32 sm:mt-36 md:mt-0 px-3 sm:px-4 md:px-6 lg:px-8 pt-5 pb-8">
+    <div className="inventory-page">
+      <Header />
+      <main className="mt-32 sm:mt-36 md:mt-0 px-3 sm:px-4 md:px-6 lg:px-8 pt-4 sm:pt-5 pb-8 min-h-screen max-md:bg-slate-50 max-md:dark:bg-slate-950 bg-slate-50/50 dark:bg-slate-950/30 max-md:overflow-x-hidden">
           {/* Command bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Inventory</h1>
-              <p className="text-sm text-muted-foreground mt-0.5">
+          <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-2xl font-bold tracking-tight">Inventory</h1>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 truncate">
                 {isAllStations
                   ? 'All stations — unified stock view'
                   : `${currentStation?.stationName || 'Station'} operations`}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               <Select value={stationId || ''} onValueChange={setStationId}>
-                <SelectTrigger className="w-full sm:w-[210px] bg-background">
+                <SelectTrigger className="w-full sm:w-[210px] bg-background min-h-10">
                   <SelectValue placeholder="Select station" />
                 </SelectTrigger>
                 <SelectContent>
@@ -223,7 +223,7 @@ export function InventoryStationPage({
           </div>
 
           {/* KPI cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-4">
+          <div className="inventory-kpi-grid grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-2.5 mb-4">
             <StatCard title="Active Items" value={summary?.totalActiveItems ?? '-'} icon={<Package className="h-3.5 w-3.5" />} loading={loading} variant="stock" />
             <StatCard title="Low Stock" value={summary?.lowStockItems ?? '-'} icon={<AlertTriangle className="h-3.5 w-3.5" />} loading={loading} variant="warning" highlight={!!summary && summary.lowStockItems > 0} />
             <StatCard title="Issued Today" value={summary?.issuedToday ?? '-'} icon={<ArrowUpCircle className="h-3.5 w-3.5" />} loading={loading} variant="issue" highlight={!!summary && summary.issuedToday > 0} />
@@ -236,32 +236,32 @@ export function InventoryStationPage({
           <div className="grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-4 items-start">
             <div className="min-w-0">
               <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="w-full sm:w-auto flex flex-wrap h-auto gap-1 p-1 mb-3 bg-white dark:bg-slate-900 border">
-                  <TabsTrigger value="stock" className={`flex-1 sm:flex-initial px-3 text-sm ${tabTriggerClasses('stock')}`}>Stock</TabsTrigger>
-                  <TabsTrigger value="movement" className={`flex-1 sm:flex-initial px-3 text-sm ${tabTriggerClasses('movement')}`}>Movement</TabsTrigger>
-                  <TabsTrigger value="returns" className={`flex-1 sm:flex-initial px-3 text-sm ${tabTriggerClasses('returns')}`}>
+                <TabsList className="inventory-tabs-list w-full sm:w-auto flex h-auto gap-1 p-1 mb-3 bg-white dark:bg-slate-900 border max-md:shadow-none">
+                  <TabsTrigger value="stock" className={`flex-1 sm:flex-initial px-3 py-2 text-xs sm:text-sm min-h-9 ${tabTriggerClasses('stock')}`}>Stock</TabsTrigger>
+                  <TabsTrigger value="movement" className={`flex-1 sm:flex-initial px-3 py-2 text-xs sm:text-sm min-h-9 ${tabTriggerClasses('movement')}`}>Movement</TabsTrigger>
+                  <TabsTrigger value="returns" className={`flex-1 sm:flex-initial px-3 py-2 text-xs sm:text-sm min-h-9 ${tabTriggerClasses('returns')}`}>
                     Returns
                     {!!summary?.pendingReturns && (
                       <Badge variant="destructive" className="ml-1.5 h-4 px-1 text-[10px]">{summary.pendingReturns}</Badge>
                     )}
                   </TabsTrigger>
-                  <TabsTrigger value="transfers" className={`flex-1 sm:flex-initial px-3 text-sm ${tabTriggerClasses('transfers')}`}>Transfers</TabsTrigger>
-                  <TabsTrigger value="reports" className={`flex-1 sm:flex-initial px-3 text-sm ${tabTriggerClasses('reports')}`}>Reports</TabsTrigger>
+                  <TabsTrigger value="transfers" className={`flex-1 sm:flex-initial px-3 py-2 text-xs sm:text-sm min-h-9 ${tabTriggerClasses('transfers')}`}>Transfers</TabsTrigger>
+                  <TabsTrigger value="reports" className={`flex-1 sm:flex-initial px-3 py-2 text-xs sm:text-sm min-h-9 ${tabTriggerClasses('reports')}`}>Reports</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="stock" className="space-y-3 mt-0">
-                  <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="inventory-filters flex flex-col sm:flex-row gap-2">
                     <div className="relative flex-1 sm:max-w-xs">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                       <Input
                         placeholder="Search items..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-9 bg-background h-9"
+                        className="pl-9 bg-background h-10 sm:h-9"
                       />
                     </div>
                     <Select value={filterCategory} onValueChange={setFilterCategory}>
-                      <SelectTrigger className="w-full sm:w-[130px] bg-background h-9"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="w-full sm:w-[130px] bg-background h-10 sm:h-9"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All categories</SelectItem>
                         <SelectItem value="Equipment">Equipment</SelectItem>
@@ -272,7 +272,7 @@ export function InventoryStationPage({
                       </SelectContent>
                     </Select>
                     <Select value={filterUnit} onValueChange={setFilterUnit}>
-                      <SelectTrigger className="w-full sm:w-[90px] bg-background h-9"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="w-full sm:w-[90px] bg-background h-10 sm:h-9"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All units</SelectItem>
                         <SelectItem value="pcs">pcs</SelectItem>
@@ -283,7 +283,7 @@ export function InventoryStationPage({
                       variant={filterLowStock ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setFilterLowStock(!filterLowStock)}
-                      className={`h-9 ${filterLowStock ? 'bg-amber-600 hover:bg-amber-700 text-white border-amber-600' : 'border-amber-200 text-amber-800 hover:bg-amber-50 dark:border-amber-900 dark:text-amber-300 dark:hover:bg-amber-950/30'}`}
+                      className={`h-10 sm:h-9 w-full sm:w-auto ${filterLowStock ? 'bg-amber-600 hover:bg-amber-700 text-white border-amber-600' : 'border-amber-200 text-amber-800 hover:bg-amber-50 dark:border-amber-900 dark:text-amber-300 dark:hover:bg-amber-950/30'}`}
                     >
                       Low stock
                     </Button>
@@ -388,7 +388,6 @@ export function InventoryStationPage({
             </aside>
           </div>
         </main>
-      </div>
     </div>
   );
 }
