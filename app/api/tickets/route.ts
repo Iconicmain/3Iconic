@@ -10,6 +10,7 @@ const NO_CACHE_HEADERS = {
 } as const;
 import { hasPagePermission } from '@/lib/permissions';
 import { sendTicketCreationSMS, sendClientTicketSMS, sendTechnicianAssignmentSMS } from '@/lib/sms';
+import { resolveTechnicianContact, resolveTechnicianContactsFromList, listTicketTechnicians } from '@/lib/tickets/ticket-technicians';
 
 export async function POST(request: NextRequest) {
   try {
@@ -90,20 +91,11 @@ export async function POST(request: NextRequest) {
     });
 
     // Send SMS notification to client (don't wait for it to complete)
-    // First, fetch technician phone numbers if technicians are assigned
-    let techniciansWithPhones: Array<{ name: string; phone: string }> = [];
-    if (Array.isArray(technicians) && technicians.length > 0) {
-      const techniciansCollection = db.collection('technicians');
-      for (const technicianName of technicians) {
-        const technicianDoc = await techniciansCollection.findOne({ name: technicianName });
-        if (technicianDoc && technicianDoc.phone) {
-          techniciansWithPhones.push({
-            name: technicianName,
-            phone: technicianDoc.phone
-          });
-        }
-      }
-    }
+    const hasAssignedTechnicians = Array.isArray(technicians) && technicians.length > 0;
+    const technicianDirectory = hasAssignedTechnicians ? await listTicketTechnicians() : [];
+    const techniciansWithPhones = hasAssignedTechnicians
+      ? resolveTechnicianContactsFromList(technicians, technicianDirectory)
+      : [];
     
     sendClientTicketSMS(
       ticketId,
@@ -118,12 +110,10 @@ export async function POST(request: NextRequest) {
     });
 
     // Send SMS to assigned technicians if any
-    if (Array.isArray(technicians) && technicians.length > 0) {
-      const techniciansCollection = db.collection('technicians');
-      
+    if (hasAssignedTechnicians) {
       for (const technicianName of technicians) {
-        const technicianDoc = await techniciansCollection.findOne({ name: technicianName });
-        const technicianPhone = technicianDoc?.phone || technicianDoc?.phoneNumber;
+        const technician = await resolveTechnicianContact(technicianName, technicianDirectory);
+        const technicianPhone = technician?.phone;
 
         if (technicianPhone) {
           console.log(`[Ticket Creation] ✅ Sending SMS to technician ${technicianName} at ${technicianPhone}`);

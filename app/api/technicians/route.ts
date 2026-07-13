@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import { linkTechnicianByEmail } from '@/lib/tickets/sync-technician-user';
+import { listTicketTechnicians } from '@/lib/tickets/ticket-technicians';
+
+export const dynamic = 'force-dynamic';
+
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+  Pragma: 'no-cache',
+  Expires: '0',
+} as const;
 
 export async function GET() {
   try {
-    const client = await clientPromise;
-    const db = client.db('tixmgmt');
-    const technicians = await db.collection('technicians').find({}).sort({ name: 1 }).toArray();
-    return NextResponse.json({ technicians }, { status: 200 });
+    const technicians = await listTicketTechnicians();
+    return NextResponse.json({ technicians }, { status: 200, headers: NO_CACHE_HEADERS });
   } catch (error) {
     console.error('Error fetching technicians:', error);
     return NextResponse.json({ error: 'Failed to fetch technicians' }, { status: 500 });

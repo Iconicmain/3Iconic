@@ -7,6 +7,7 @@ import {
   applyAccountType,
   accountTypeFromUser,
   accountTypeRequiresPagePermissions,
+  userRequiresInventoryStationAssignment,
   type AccountType,
 } from '@/lib/user-account-types';
 import { normalizeAssignedStationIds } from '@/lib/isp/station-access';
@@ -269,6 +270,26 @@ export async function PUT(
           }
         }
       }
+    }
+
+    const mergedForStationCheck = {
+      role: (updateData.role ?? user.role) as string | undefined,
+      accountType: (updateData.accountType ?? accountTypeFromUser(user)) as AccountType,
+      pagePermissions: (updateData.pagePermissions ?? user.pagePermissions ?? []) as PagePermission[],
+    };
+    const mergedStationIds =
+      updateData.assignedStationIds !== undefined
+        ? updateData.assignedStationIds || []
+        : normalizeAssignedStationIds(user);
+
+    if (
+      userRequiresInventoryStationAssignment(mergedForStationCheck) &&
+      mergedStationIds.length === 0
+    ) {
+      return NextResponse.json(
+        { error: 'Users with inventory access must have at least one assigned station.' },
+        { status: 400 }
+      );
     }
 
     console.log(`[PUT /api/users/${id}] Update data:`, updateData);

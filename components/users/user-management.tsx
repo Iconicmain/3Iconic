@@ -36,6 +36,8 @@ import {
   accountTypeLabel,
   accountTypeRequiresPagePermissions,
   accountTypeSupportsStationAssignment,
+  userHasInventoryPageAccess,
+  userRequiresInventoryStationAssignment,
   userNeedsAdminPagePermissions,
   totalPagePermissionCount,
   type AccountType,
@@ -275,8 +277,12 @@ export function UserManagement() {
       return;
     }
 
-    if (formData.accountType === 'customer_care' && formData.assignedStationIds.length === 0) {
-      toast.error('Customer Care users need at least one assigned inventory station.');
+    const needsStations =
+      formData.accountType !== 'superadmin' &&
+      (formData.accountType === 'customer_care' || userHasInventoryPageAccess(formData.pagePermissions));
+
+    if (needsStations && formData.assignedStationIds.length === 0) {
+      toast.error('Users with inventory access need at least one assigned station.');
       return;
     }
 
@@ -553,12 +559,18 @@ export function UserManagement() {
                         {user.phone && (
                           <span className="block text-[11px] mt-0.5">{user.phone}</span>
                         )}
-                        {(user.accountType || accountTypeFromUser(user)) === 'customer_care' &&
-                          (user.assignedStationIds?.length || 0) > 0 && (
+                        {(user.accountType || accountTypeFromUser(user)) === 'customer_care' ||
+                        userRequiresInventoryStationAssignment(user) ? (
+                          (user.assignedStationIds?.length || 0) > 0 ? (
                           <span className="block text-[11px] mt-0.5 text-cyan-700 dark:text-cyan-400">
                             Stations: {user.assignedStationIds!.length} assigned
                           </span>
-                        )}
+                          ) : (
+                          <span className="block text-[11px] mt-0.5 text-amber-700 dark:text-amber-400">
+                            No inventory stations assigned
+                          </span>
+                          )
+                        ) : null}
                       </CardDescription>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold shadow-sm ${
@@ -953,12 +965,14 @@ export function UserManagement() {
                 )}
               </div>
 
-              {isSuperAdmin && accountTypeSupportsStationAssignment(formData.accountType) && (
+              {isSuperAdmin &&
+                (accountTypeSupportsStationAssignment(formData.accountType) ||
+                  userHasInventoryPageAccess(formData.pagePermissions)) && (
                 <div className="space-y-2 rounded-lg border border-cyan-200/80 bg-cyan-50/40 dark:bg-cyan-950/20 p-3">
                   <Label className="text-sm font-medium">Inventory stations</Label>
                   <p className="text-xs text-muted-foreground">
-                    Customer Care can only manage inventory for the stations selected here. Also grant{' '}
-                    <strong>Inventory Command Center</strong> permissions below.
+                    Select stations this user can manage in inventory. Required for Customer Care and
+                    anyone with <strong>Inventory Command Center</strong> access.
                   </p>
                   {stationOptions.length === 0 ? (
                     <p className="text-xs text-muted-foreground">No stations found.</p>

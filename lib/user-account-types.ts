@@ -63,6 +63,25 @@ export function accountTypeSupportsStationAssignment(accountType: AccountType): 
   return accountType === 'customer_care';
 }
 
+export function userHasInventoryPageAccess(
+  pagePermissions: { pageId: string; permissions?: string[] }[]
+): boolean {
+  return pagePermissions.some(
+    (p) => p.pageId === 'inventory' && p.permissions?.includes('view')
+  );
+}
+
+/** Non–super-admins with inventory access need assigned stations. */
+export function userRequiresInventoryStationAssignment(user: {
+  role?: string;
+  accountType?: string;
+  pagePermissions?: { pageId: string; permissions?: string[] }[];
+}): boolean {
+  if (user.role === 'superadmin') return false;
+  const type = user.accountType ? (user.accountType as AccountType) : accountTypeFromUser(user);
+  return userHasInventoryPageAccess(user.pagePermissions || []) || type === 'customer_care';
+}
+
 /** Users with any admin page grants still need at least one permission (legacy behavior). */
 export function userNeedsAdminPagePermissions(
   accountType: AccountType,

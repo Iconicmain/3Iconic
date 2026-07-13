@@ -7,6 +7,7 @@ import {
   applyAccountType,
   accountTypeFromUser,
   accountTypeRequiresPagePermissions,
+  userRequiresInventoryStationAssignment,
   type AccountType,
 } from '@/lib/user-account-types';
 import { normalizeAssignedStationIds } from '@/lib/isp/station-access';
@@ -251,20 +252,36 @@ export async function POST(request: NextRequest) {
       ? assignedStationIds.filter((id: unknown) => typeof id === 'string' && id.trim()).map((id: string) => id.trim())
       : [];
 
+    const draftPermissions = userIsSuperAdmin
+      ? applied.role === 'superadmin'
+        ? AVAILABLE_PAGES.map((page) => ({
+            pageId: page.id,
+            permissions: ['view', 'add', 'edit', 'delete'],
+          }))
+        : pagePermissions || []
+      : [];
+
+    if (
+      userRequiresInventoryStationAssignment({
+        role: applied.role,
+        accountType: applied.accountType,
+        pagePermissions: draftPermissions,
+      }) &&
+      stationIds.length === 0
+    ) {
+      return NextResponse.json(
+        { error: 'Users with inventory access must have at least one assigned station.' },
+        { status: 400 }
+      );
+    }
+
     const userData: User = {
       id: userId,
       email: email.trim().toLowerCase(),
       name: name.trim(),
       phone: phone?.trim() || null,
       image: image || null,
-      pagePermissions: userIsSuperAdmin
-        ? applied.role === 'superadmin'
-          ? AVAILABLE_PAGES.map((page) => ({
-              pageId: page.id,
-              permissions: ['view', 'add', 'edit', 'delete'],
-            }))
-          : pagePermissions || []
-        : [],
+      pagePermissions: draftPermissions,
       role: userIsSuperAdmin ? applied.role : 'user',
       accountType: applied.accountType,
       ispRole: applied.ispRole,

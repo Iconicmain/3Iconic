@@ -453,7 +453,7 @@ export function TicketForm({ open, onOpenChange, onSuccess }: TicketFormProps) {
                       </div>
                     ) : technicians.length === 0 ? (
                       <div className="py-6 text-center text-sm text-muted-foreground">
-                        No technicians available. Add technicians from inventory or user management first.
+                        No technicians available. Add approved Technician users on the Users page.
                       </div>
                     ) : (
                       <div className="space-y-2">

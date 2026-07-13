@@ -9,10 +9,30 @@ interface AdminOption {
   name: string;
 }
 
+interface ExpenseRow {
+  key: string;
+  description: string;
+  category: string;
+  date: string;
+}
+
 const fetchOpts: RequestInit = {
   credentials: 'omit',
   cache: 'no-store',
 };
+
+function todayIso(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+function createExpenseRow(): ExpenseRow {
+  return {
+    key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    description: '',
+    category: '',
+    date: todayIso(),
+  };
+}
 
 export function ExpenseMobileSubmitLite({
   token,
@@ -31,14 +51,22 @@ export function ExpenseMobileSubmitLite({
   const [otp, setOtp] = useState('');
   const [submitToken, setSubmitToken] = useState('');
   const [userName, setUserName] = useState('');
-  const [createdId, setCreatedId] = useState('');
-  const [form, setForm] = useState({
-    description: '',
-    category: '',
-    date: new Date().toISOString().split('T')[0],
-  });
+  const [createdIds, setCreatedIds] = useState<string[]>([]);
+  const [expenseRows, setExpenseRows] = useState<ExpenseRow[]>([createExpenseRow()]);
 
   const stepIndex = step === 'identity' ? 1 : step === 'otp' ? 2 : step === 'form' ? 3 : 3;
+
+  const updateRow = (key: string, patch: Partial<Omit<ExpenseRow, 'key'>>) => {
+    setExpenseRows((rows) => rows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+  };
+
+  const addExpenseRow = () => {
+    setExpenseRows((rows) => [...rows, createExpenseRow()]);
+  };
+
+  const removeExpenseRow = (key: string) => {
+    setExpenseRows((rows) => (rows.length <= 1 ? rows : rows.filter((row) => row.key !== key)));
+  };
 
   const sendOtp = async () => {
     if (!selectedUserId) {
@@ -93,15 +121,23 @@ export function ExpenseMobileSubmitLite({
     }
   };
 
-  const submitExpense = async () => {
-    if (!form.description.trim()) {
-      setMsg({ type: 'err', text: 'Description is required' });
-      return;
+  const submitExpenses = async () => {
+    for (let i = 0; i < expenseRows.length; i++) {
+      const row = expenseRows[i];
+      if (!row.description.trim()) {
+        setMsg({ type: 'err', text: `Expense ${i + 1}: description is required` });
+        return;
+      }
+      if (!row.category) {
+        setMsg({ type: 'err', text: `Expense ${i + 1}: select a category` });
+        return;
+      }
+      if (!row.date) {
+        setMsg({ type: 'err', text: `Expense ${i + 1}: date is required` });
+        return;
+      }
     }
-    if (!form.category) {
-      setMsg({ type: 'err', text: 'Select a category' });
-      return;
-    }
+
     setBusy(true);
     setMsg(null);
     try {
@@ -109,11 +145,25 @@ export function ExpenseMobileSubmitLite({
         ...fetchOpts,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ submitToken, ...form }),
+        body: JSON.stringify({
+          submitToken,
+          expenses: expenseRows.map(({ description, category, date }) => ({
+            description,
+            category,
+            date,
+          })),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setCreatedId(data.expense?.id || '');
+
+      const ids = Array.isArray(data.expenses)
+        ? data.expenses.map((expense: { id: string }) => expense.id).filter(Boolean)
+        : data.expense?.id
+          ? [data.expense.id]
+          : [];
+
+      setCreatedIds(ids);
       setStep('done');
     } catch (e) {
       setMsg({ type: 'err', text: e instanceof Error ? e.message : 'Failed to submit' });
@@ -132,6 +182,11 @@ export function ExpenseMobileSubmitLite({
       </div>
     );
   }
+
+  const submitLabel =
+    expenseRows.length === 1
+      ? 'Submit Expense'
+      : `Submit ${expenseRows.length} Expenses`;
 
   return (
     <div className="em-page em-theme-submit">
@@ -216,48 +271,85 @@ export function ExpenseMobileSubmitLite({
             <div className="em-badge">
               Verified as <strong>{userName}</strong>
             </div>
-            <div className="em-card">
-              <label className="em-label" htmlFor="desc">
-                Description *
-              </label>
-              <input
-                id="desc"
-                className="em-field"
-                placeholder="What was this expense for?"
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              />
-              <label className="em-label" htmlFor="cat">
-                Category *
-              </label>
-              <select
-                id="cat"
-                className="em-field"
-                value={form.category}
-                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-              >
-                <option value="">Select category</option>
-                {initialCategories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <label className="em-label" htmlFor="date">
-                Date *
-              </label>
-              <input
-                id="date"
-                type="date"
-                className="em-field"
-                value={form.date}
-                onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-              />
-              <p className="em-muted">Status will be <strong>Pending</strong> until approved.</p>
-              <button type="button" className="em-btn" onClick={submitExpense} disabled={busy}>
-                {busy ? 'Submitting…' : 'Submit Expense'}
-              </button>
-            </div>
+            <p className="em-muted" style={{ marginBottom: '1rem' }}>
+              Add one or more expenses below, then submit them all at once.
+            </p>
+
+            {expenseRows.map((row, index) => (
+              <div key={row.key} className="em-card em-expense-row">
+                <div className="em-row-head">
+                  <h2 className="em-title" style={{ fontSize: '1rem' }}>
+                    Expense {index + 1}
+                  </h2>
+                  {expenseRows.length > 1 && (
+                    <button
+                      type="button"
+                      className="em-remove"
+                      onClick={() => removeExpenseRow(row.key)}
+                      disabled={busy}
+                      aria-label={`Remove expense ${index + 1}`}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+
+                <label className="em-label" htmlFor={`desc-${row.key}`}>
+                  Description *
+                </label>
+                <input
+                  id={`desc-${row.key}`}
+                  className="em-field"
+                  placeholder="What was this expense for?"
+                  value={row.description}
+                  onChange={(e) => updateRow(row.key, { description: e.target.value })}
+                />
+
+                <label className="em-label" htmlFor={`cat-${row.key}`}>
+                  Category *
+                </label>
+                <select
+                  id={`cat-${row.key}`}
+                  className="em-field"
+                  value={row.category}
+                  onChange={(e) => updateRow(row.key, { category: e.target.value })}
+                >
+                  <option value="">Select category</option>
+                  {initialCategories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+
+                <label className="em-label" htmlFor={`date-${row.key}`}>
+                  Date *
+                </label>
+                <input
+                  id={`date-${row.key}`}
+                  type="date"
+                  className="em-field"
+                  value={row.date}
+                  onChange={(e) => updateRow(row.key, { date: e.target.value })}
+                />
+              </div>
+            ))}
+
+            <button
+              type="button"
+              className="em-btn secondary em-add-row"
+              onClick={addExpenseRow}
+              disabled={busy || expenseRows.length >= 20}
+            >
+              + Add another expense
+            </button>
+
+            <p className="em-muted">
+              All expenses will be <strong>Pending</strong> until approved.
+            </p>
+            <button type="button" className="em-btn" onClick={submitExpenses} disabled={busy}>
+              {busy ? 'Submitting…' : submitLabel}
+            </button>
           </>
         )}
 
@@ -265,8 +357,19 @@ export function ExpenseMobileSubmitLite({
           <div className="em-card" style={{ textAlign: 'center' }}>
             <h2 className="em-title">Submitted!</h2>
             <p className="em-muted">
-              Expense <strong>{createdId}</strong> is pending super admin approval.
+              {createdIds.length === 1
+                ? 'Expense is pending super admin approval.'
+                : `${createdIds.length} expenses are pending super admin approval.`}
             </p>
+            {createdIds.length > 0 && (
+              <ul className="em-created-list">
+                {createdIds.map((id) => (
+                  <li key={id}>
+                    <strong>{id}</strong>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
       </main>

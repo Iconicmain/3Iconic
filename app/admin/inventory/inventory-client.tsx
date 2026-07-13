@@ -163,9 +163,18 @@ export function InventoryStationPage({
                 </p>
                 <p className="text-sm text-muted-foreground mb-4">
                   {scopedStationAccess
-                    ? 'Your account has inventory access but no stations are assigned yet. Ask a super admin to assign stations on the Users page.'
+                    ? 'Your account has inventory access but no stations are assigned yet. Ask a super admin to assign stations.'
                     : 'Create stations from the Stations page to use inventory.'}
                 </p>
+                {scopedStationAccess && (
+                  <p className="text-sm text-muted-foreground">
+                    Super admin: assign stations at{' '}
+                    <a href="/admin/inventory/station-assignments" className="text-emerald-700 underline font-medium">
+                      Inventory station assignments
+                    </a>
+                    .
+                  </p>
+                )}
                 {!scopedStationAccess && (
                   <Button asChild><a href="/admin/stations">Go to Stations</a></Button>
                 )}

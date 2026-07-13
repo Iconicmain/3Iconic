@@ -117,6 +117,14 @@ const navigation = [
     description: 'Inventory command center',
     pageId: 'inventory'
   },
+  {
+    name: 'Station Assignments',
+    href: '/admin/inventory/station-assignments',
+    icon: Warehouse,
+    description: 'Assign inventory stations',
+    pageId: 'inventory-station-assignments',
+    superAdminOnly: true
+  },
 ];
 
 export function Sidebar() {

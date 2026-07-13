@@ -227,3 +227,51 @@
   background: #f5f3ff;
   color: #5b21b6;
 }
+
+.em-expense-row {
+  margin-bottom: 1rem;
+}
+
+.em-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.em-remove {
+  border: 0;
+  background: transparent;
+  color: #dc2626;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.25rem 0;
+}
+
+.em-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.em-add-row {
+  margin-bottom: 1rem;
+}
+
+.em-created-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.em-created-list li {
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  background: #ecfdf5;
+  color: #065f46;
+  font-size: 0.875rem;
+}

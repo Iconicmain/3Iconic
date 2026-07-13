@@ -11,6 +11,7 @@ const NO_CACHE_HEADERS = {
 import { ObjectId } from 'mongodb';
 import { hasPagePermission } from '@/lib/permissions';
 import { sendTicketResolvedSMS, sendTechnicianAssignmentSMS, sendCategoryChangeSMS } from '@/lib/sms';
+import { resolveTechnicianContact } from '@/lib/tickets/ticket-technicians';
 import { ticketEquipmentUsagePayloadSchema } from '@/lib/tickets/equipment-usage-validation';
 import {
   applyTicketEquipmentUsage,
@@ -97,7 +98,6 @@ export async function PATCH(
     const client = await clientPromise;
     const db = client.db('tixmgmt');
     const ticketsCollection = db.collection('tickets');
-    const techniciansCollection = db.collection('technicians');
 
     // Get current ticket to check if technician is being assigned and category is being changed
     const currentTicket = await ticketsCollection.findOne({ _id: new ObjectId(id) });
@@ -303,8 +303,8 @@ export async function PATCH(
 
       // Send SMS to each newly assigned technician
       for (const technicianName of addedTechnicians) {
-        const technicianDoc = await techniciansCollection.findOne({ name: technicianName });
-        const technicianPhone = technicianDoc?.phone || technicianDoc?.phoneNumber;
+        const technician = await resolveTechnicianContact(technicianName);
+        const technicianPhone = technician?.phone;
 
         if (technicianPhone) {
           console.log(`[Technician Assignment] ✅ Sending SMS to technician ${technicianName} at ${technicianPhone}`);
