@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,8 @@ import {
 import { Cable, ArrowDownCircle, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { softBadgeClass } from './inventory-colors';
+import { groupByDay } from './inventory-day-groups';
+import { DayGroupedSections } from './day-grouped-list';
 
 interface CableLog {
   id: string;
@@ -89,6 +91,11 @@ export function CableReturnsPanel({ stationId, refreshKey = 0, onRefresh }: Cabl
   useEffect(() => {
     loadLogs();
   }, [stationId, refreshKey]);
+
+  const logsByDay = useMemo(
+    () => groupByDay(logs, (log) => log.createdAt),
+    [logs]
+  );
 
   const openReturn = (log: CableLog) => {
     const outstanding = log.outstandingMeters ?? log.metersIssued - log.metersReturned - log.metersUsed - (log.wasteMeters || 0);
@@ -172,56 +179,63 @@ export function CableReturnsPanel({ stationId, refreshKey = 0, onRefresh }: Cabl
             <Badge variant="secondary">{logs.length}</Badge>
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {logs.map((log) => {
-            const outstanding =
-              log.outstandingMeters ??
-              log.metersIssued - log.metersReturned - log.metersUsed - (log.wasteMeters || 0);
-            const shared = sharedCableLabel(log);
-            return (
-              <div key={log.id} className="rounded-lg border p-3 space-y-2">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm">
-                      Roll <span className="font-mono">{log.rollCode || log.rollId}</span>
-                      {log.cableType && <span className="text-muted-foreground font-normal"> · {log.cableType}</span>}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {log.technicianName || log.technicianId} · Issued {fmtDateTime(log.createdAt)}
-                    </p>
-                    {log.sourceStationName && (
-                      <p className="text-xs text-muted-foreground">From: {log.sourceStationName}</p>
-                    )}
-                    {shared && (
-                      <p className="text-[11px] text-indigo-700 flex items-center gap-1 mt-0.5">
-                        <Share2 className="h-3 w-3 shrink-0" /> {shared}
-                      </p>
-                    )}
-                    {log.expectedReturnDate && (
-                      <p className="text-[11px] text-muted-foreground">
-                        Expected return: {fmtDateTime(log.expectedReturnDate)}
-                      </p>
-                    )}
-                  </div>
-                  <Button size="sm" variant="outline" onClick={() => openReturn(log)}>
-                    <ArrowDownCircle className="h-4 w-4 mr-1" />
-                    Return
-                  </Button>
-                </div>
-                {shared && (
-                  <span className={softBadgeClass('bg-indigo-100 text-indigo-800 border-indigo-200 text-[10px]')}>
-                    Shared station issue
-                  </span>
-                )}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                  <div><span className="text-muted-foreground">Issued</span><p className="font-medium">{log.metersIssued}m</p></div>
-                  <div><span className="text-muted-foreground">Used</span><p className="font-medium">{log.metersUsed || 0}m</p></div>
-                  <div><span className="text-muted-foreground">Returned</span><p className="font-medium">{log.metersReturned || 0}m</p></div>
-                  <div><span className="text-muted-foreground">Outstanding</span><p className="font-medium text-amber-600">{outstanding}m</p></div>
-                </div>
+        <CardContent>
+          <DayGroupedSections
+            groups={logsByDay}
+            renderItems={(dayLogs) => (
+              <div className="space-y-3">
+                {dayLogs.map((log) => {
+                  const outstanding =
+                    log.outstandingMeters ??
+                    log.metersIssued - log.metersReturned - log.metersUsed - (log.wasteMeters || 0);
+                  const shared = sharedCableLabel(log);
+                  return (
+                    <div key={log.id} className="rounded-lg border p-3 space-y-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm">
+                            Roll <span className="font-mono">{log.rollCode || log.rollId}</span>
+                            {log.cableType && <span className="text-muted-foreground font-normal"> · {log.cableType}</span>}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {log.technicianName || log.technicianId} · Issued {fmtDateTime(log.createdAt)}
+                          </p>
+                          {log.sourceStationName && (
+                            <p className="text-xs text-muted-foreground">From: {log.sourceStationName}</p>
+                          )}
+                          {shared && (
+                            <p className="text-[11px] text-indigo-700 flex items-center gap-1 mt-0.5">
+                              <Share2 className="h-3 w-3 shrink-0" /> {shared}
+                            </p>
+                          )}
+                          {log.expectedReturnDate && (
+                            <p className="text-[11px] text-muted-foreground">
+                              Expected return: {fmtDateTime(log.expectedReturnDate)}
+                            </p>
+                          )}
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => openReturn(log)}>
+                          <ArrowDownCircle className="h-4 w-4 mr-1" />
+                          Return
+                        </Button>
+                      </div>
+                      {shared && (
+                        <span className={softBadgeClass('bg-indigo-100 text-indigo-800 border-indigo-200 text-[10px]')}>
+                          Shared station issue
+                        </span>
+                      )}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        <div><span className="text-muted-foreground">Issued</span><p className="font-medium">{log.metersIssued}m</p></div>
+                        <div><span className="text-muted-foreground">Used</span><p className="font-medium">{log.metersUsed || 0}m</p></div>
+                        <div><span className="text-muted-foreground">Returned</span><p className="font-medium">{log.metersReturned || 0}m</p></div>
+                        <div><span className="text-muted-foreground">Outstanding</span><p className="font-medium text-amber-600">{outstanding}m</p></div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            )}
+          />
         </CardContent>
       </Card>
 

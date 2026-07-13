@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +34,8 @@ import { toast } from 'sonner';
 import { IssueEquipmentDialog } from './command-center/issue-equipment-dialog';
 import { issueTypeLabel } from '@/lib/isp/issue-types';
 import { softBadgeClass } from './command-center/inventory-colors';
+import { groupByDay } from './command-center/inventory-day-groups';
+import { DayGroupedSections } from './command-center/day-grouped-list';
 
 interface SerializedUnit {
   id: string;
@@ -203,24 +205,57 @@ export function IssueReturnSection({
       .finally(() => setLoading(false));
   };
 
-  const ledgerRows = issues.flatMap((issue) =>
-    issue.items.map((item) => ({ issue, item }))
-  ).slice(0, 15);
-
-  const pendingItems = issues.flatMap((issue) =>
-    issue.items
-      .filter((i) => i.quantityReturned < i.quantityTaken)
-      .map((item) => ({ issue, item }))
+  const ledgerRows = useMemo(
+    () =>
+      issues
+        .flatMap((issue) => issue.items.map((item) => ({ issue, item })))
+        .sort(
+          (a, b) =>
+            new Date(b.item.timeOut || b.issue.issueDate).getTime() -
+            new Date(a.item.timeOut || a.issue.issueDate).getTime()
+        ),
+    [issues]
   );
 
-  const returnedItems = issues
-    .flatMap((issue) =>
-      issue.items
-        .filter((i) => i.quantityReturned > 0)
-        .map((item) => ({ issue, item }))
-    )
-    .sort((a, b) => new Date(b.item.returnTime || 0).getTime() - new Date(a.item.returnTime || 0).getTime())
-    .slice(0, 10);
+  const issueLedgerByDay = useMemo(
+    () => groupByDay(ledgerRows, (row) => row.item.timeOut || row.issue.issueDate),
+    [ledgerRows]
+  );
+
+  const pendingItems = useMemo(
+    () =>
+      issues.flatMap((issue) =>
+        issue.items
+          .filter((i) => i.quantityReturned < i.quantityTaken)
+          .map((item) => ({ issue, item }))
+      ),
+    [issues]
+  );
+
+  const pendingByDay = useMemo(
+    () => groupByDay(pendingItems, (row) => row.item.timeOut || row.issue.issueDate),
+    [pendingItems]
+  );
+
+  const returnedItems = useMemo(
+    () =>
+      issues
+        .flatMap((issue) =>
+          issue.items
+            .filter((i) => i.quantityReturned > 0)
+            .map((item) => ({ issue, item }))
+        )
+        .sort(
+          (a, b) =>
+            new Date(b.item.returnTime || 0).getTime() - new Date(a.item.returnTime || 0).getTime()
+        ),
+    [issues]
+  );
+
+  const returnedByDay = useMemo(
+    () => groupByDay(returnedItems, (row) => row.item.returnTime || row.issue.issueDate),
+    [returnedItems]
+  );
 
   useEffect(() => {
     loadData();
@@ -349,56 +384,63 @@ export function IssueReturnSection({
                   Issue to a technician — use <strong>Shared stations</strong> when equipment serves co-located sites. Stock always deducts from the source station.
                 </p>
                 {ledgerRows.length > 0 && (
-                  <div className="rounded-lg border overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Item</TableHead>
-                          <TableHead>Qty</TableHead>
-                          <TableHead>From</TableHead>
-                          <TableHead>For / Shared</TableHead>
-                          <TableHead>Technician</TableHead>
-                          <TableHead>Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {ledgerRows.map(({ issue, item }) => {
-                          const shared = sharedForLabel(issue);
-                          return (
-                            <TableRow key={`${issue.id}-${item.id}`}>
-                              <TableCell>
-                                <span className={softBadgeClass(
-                                  issue.issueType === 'SHARED_STATIONS'
-                                    ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
-                                    : 'bg-blue-100 text-blue-800 border-blue-200'
-                                )}>
-                                  {issueTypeLabel(issue.issueType)}
-                                </span>
-                              </TableCell>
-                              <TableCell className="font-medium">{item.itemName || item.itemId}</TableCell>
-                              <TableCell>{item.quantityTaken} {item.unitType}</TableCell>
-                              <TableCell className="text-sm">{issue.sourceStationName || issue.sourceStationId || issue.stationId}</TableCell>
-                              <TableCell className="text-sm max-w-[160px] truncate" title={shared || undefined}>
-                                {shared ? (
-                                  <span className="inline-flex items-center gap-1">
-                                    <Share2 className="h-3 w-3 text-indigo-600 shrink-0" />
-                                    {shared}
-                                  </span>
-                                ) : (
-                                  issue.projectCustomer || issue.jobReference || '—'
-                                )}
-                              </TableCell>
-                              <TableCell className="text-sm">{issue.technicianName || issue.technicianId}</TableCell>
-                              <TableCell>
-                                <Badge variant={issue.status === 'CLOSED' ? 'secondary' : 'default'}>{issue.status}</Badge>
-                              </TableCell>
+                  <DayGroupedSections
+                    groups={issueLedgerByDay}
+                    renderItems={(rows) => (
+                      <div className="rounded-lg border overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Type</TableHead>
+                              <TableHead>Item</TableHead>
+                              <TableHead>Qty</TableHead>
+                              <TableHead>From</TableHead>
+                              <TableHead>For / Shared</TableHead>
+                              <TableHead>Technician</TableHead>
+                              <TableHead>Time</TableHead>
+                              <TableHead>Status</TableHead>
                             </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
+                          </TableHeader>
+                          <TableBody>
+                            {rows.map(({ issue, item }) => {
+                              const shared = sharedForLabel(issue);
+                              return (
+                                <TableRow key={`${issue.id}-${item.id}`}>
+                                  <TableCell>
+                                    <span className={softBadgeClass(
+                                      issue.issueType === 'SHARED_STATIONS'
+                                        ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                                        : 'bg-blue-100 text-blue-800 border-blue-200'
+                                    )}>
+                                      {issueTypeLabel(issue.issueType)}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell className="font-medium">{item.itemName || item.itemId}</TableCell>
+                                  <TableCell>{item.quantityTaken} {item.unitType}</TableCell>
+                                  <TableCell className="text-sm">{issue.sourceStationName || issue.sourceStationId || issue.stationId}</TableCell>
+                                  <TableCell className="text-sm max-w-[160px] truncate" title={shared || undefined}>
+                                    {shared ? (
+                                      <span className="inline-flex items-center gap-1">
+                                        <Share2 className="h-3 w-3 text-indigo-600 shrink-0" />
+                                        {shared}
+                                      </span>
+                                    ) : (
+                                      issue.projectCustomer || issue.jobReference || '—'
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-sm">{issue.technicianName || issue.technicianId}</TableCell>
+                                  <TableCell className="text-sm whitespace-nowrap">{fmtDateTime(item.timeOut || issue.issueDate)}</TableCell>
+                                  <TableCell>
+                                    <Badge variant={issue.status === 'CLOSED' ? 'secondary' : 'default'}>{issue.status}</Badge>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  />
                 )}
                 </>
               )}
@@ -416,102 +458,116 @@ export function IssueReturnSection({
               </div>
               {pendingItems.length > 0 ? (
                 <>
-                  <div className="md:hidden space-y-3">
-                    {pendingItems.map(({ issue, item }) => {
-                      const days = daysOut(item.timeOut || issue.issueDate);
-                      const overdue = isOverdue(issue, item);
-                      const shared = sharedForLabel(issue);
-                      return (
-                        <div key={item.id} className="rounded-lg border p-3 space-y-2">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <p className="font-medium">{item.itemName || item.itemId}</p>
-                              <p className="text-xs text-muted-foreground">{issue.technicianName || issue.technicianId}</p>
-                              {shared && (
-                                <p className="text-[11px] text-indigo-700 flex items-center gap-1 mt-0.5">
-                                  <Share2 className="h-3 w-3" /> {shared}
-                                </p>
-                              )}
-                            </div>
-                            <Badge variant={overdue ? 'destructive' : item.quantityReturned > 0 ? 'secondary' : 'default'}>
-                              {overdue ? 'Overdue' : item.quantityReturned > 0 ? 'Partial' : 'Pending'}
-                            </Badge>
-                          </div>
-                          <div className="text-xs text-muted-foreground space-y-0.5">
-                            <p>From: {issue.sourceStationName || issue.stationId}</p>
-                            <p>Picked up: {fmtDateTime(item.timeOut || issue.issueDate)}</p>
-                            {issue.expectedReturnDate && (
-                              <p>Expected: {fmtDateTime(issue.expectedReturnDate)}</p>
-                            )}
-                            <p>Out: {item.quantityTaken - item.quantityReturned} {item.unitType} · {days} day{days === 1 ? '' : 's'}</p>
-                            {unitsStillOut(item).length > 0 && (
-                              <p className="font-mono text-[11px] break-all">
-                                Units: {formatUnitList(unitsStillOut(item))}
-                              </p>
-                            )}
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full"
-                            onClick={() => openReturnDialog(issue, item)}
-                          >
-                            Return
-                          </Button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="hidden md:block overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Technician</TableHead>
-                          <TableHead>Item</TableHead>
-                          <TableHead>Out</TableHead>
-                          <TableHead>From</TableHead>
-                          <TableHead>Shared</TableHead>
-                          <TableHead>Picked Up</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Action</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {pendingItems.map(({ issue, item }) => {
-                          const overdue = isOverdue(issue, item);
-                          const shared = sharedForLabel(issue);
-                          return (
-                            <TableRow key={item.id}>
-                              <TableCell className="font-medium">{issue.technicianName || issue.technicianId}</TableCell>
-                              <TableCell>
-                                <p>{item.itemName || item.itemId}</p>
-                                {unitsStillOut(item).length > 0 && (
-                                  <p className="text-xs font-mono text-muted-foreground mt-0.5 max-w-[200px] truncate" title={formatUnitList(unitsStillOut(item))}>
-                                    {formatUnitList(unitsStillOut(item))}
-                                  </p>
-                                )}
-                              </TableCell>
-                              <TableCell>{item.quantityTaken - item.quantityReturned} {item.unitType}</TableCell>
-                              <TableCell className="text-sm">{issue.sourceStationName || issue.stationId}</TableCell>
-                              <TableCell className="text-xs text-indigo-700 max-w-[140px] truncate" title={shared || undefined}>
-                                {shared || '—'}
-                              </TableCell>
-                              <TableCell className="text-sm whitespace-nowrap">{fmtDateTime(item.timeOut || issue.issueDate)}</TableCell>
-                              <TableCell>
-                                <Badge variant={overdue ? 'destructive' : item.quantityReturned > 0 ? 'secondary' : 'default'}>
-                                  {overdue ? 'Overdue' : item.quantityReturned > 0 ? 'Partial' : 'Pending'}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <Button variant="ghost" size="sm" onClick={() => openReturnDialog(issue, item)}>
+                  <div className="md:hidden">
+                    <DayGroupedSections
+                      groups={pendingByDay}
+                      renderItems={(items) => (
+                        <div className="space-y-3">
+                          {items.map(({ issue, item }) => {
+                            const days = daysOut(item.timeOut || issue.issueDate);
+                            const overdue = isOverdue(issue, item);
+                            const shared = sharedForLabel(issue);
+                            return (
+                              <div key={item.id} className="rounded-lg border p-3 space-y-2">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <p className="font-medium">{item.itemName || item.itemId}</p>
+                                    <p className="text-xs text-muted-foreground">{issue.technicianName || issue.technicianId}</p>
+                                    {shared && (
+                                      <p className="text-[11px] text-indigo-700 flex items-center gap-1 mt-0.5">
+                                        <Share2 className="h-3 w-3" /> {shared}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <Badge variant={overdue ? 'destructive' : item.quantityReturned > 0 ? 'secondary' : 'default'}>
+                                    {overdue ? 'Overdue' : item.quantityReturned > 0 ? 'Partial' : 'Pending'}
+                                  </Badge>
+                                </div>
+                                <div className="text-xs text-muted-foreground space-y-0.5">
+                                  <p>From: {issue.sourceStationName || issue.stationId}</p>
+                                  <p>Picked up: {fmtDateTime(item.timeOut || issue.issueDate)}</p>
+                                  {issue.expectedReturnDate && (
+                                    <p>Expected: {fmtDateTime(issue.expectedReturnDate)}</p>
+                                  )}
+                                  <p>Out: {item.quantityTaken - item.quantityReturned} {item.unitType} · {days} day{days === 1 ? '' : 's'}</p>
+                                  {unitsStillOut(item).length > 0 && (
+                                    <p className="font-mono text-[11px] break-all">
+                                      Units: {formatUnitList(unitsStillOut(item))}
+                                    </p>
+                                  )}
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full"
+                                  onClick={() => openReturnDialog(issue, item)}
+                                >
                                   Return
                                 </Button>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    />
+                  </div>
+                  <div className="hidden md:block">
+                    <DayGroupedSections
+                      groups={pendingByDay}
+                      renderItems={(items) => (
+                        <div className="overflow-x-auto rounded-lg border">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Technician</TableHead>
+                                <TableHead>Item</TableHead>
+                                <TableHead>Out</TableHead>
+                                <TableHead>From</TableHead>
+                                <TableHead>Shared</TableHead>
+                                <TableHead>Picked Up</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead className="text-right">Action</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {items.map(({ issue, item }) => {
+                                const overdue = isOverdue(issue, item);
+                                const shared = sharedForLabel(issue);
+                                return (
+                                  <TableRow key={item.id}>
+                                    <TableCell className="font-medium">{issue.technicianName || issue.technicianId}</TableCell>
+                                    <TableCell>
+                                      <p>{item.itemName || item.itemId}</p>
+                                      {unitsStillOut(item).length > 0 && (
+                                        <p className="text-xs font-mono text-muted-foreground mt-0.5 max-w-[200px] truncate" title={formatUnitList(unitsStillOut(item))}>
+                                          {formatUnitList(unitsStillOut(item))}
+                                        </p>
+                                      )}
+                                    </TableCell>
+                                    <TableCell>{item.quantityTaken - item.quantityReturned} {item.unitType}</TableCell>
+                                    <TableCell className="text-sm">{issue.sourceStationName || issue.stationId}</TableCell>
+                                    <TableCell className="text-xs text-indigo-700 max-w-[140px] truncate" title={shared || undefined}>
+                                      {shared || '—'}
+                                    </TableCell>
+                                    <TableCell className="text-sm whitespace-nowrap">{fmtDateTime(item.timeOut || issue.issueDate)}</TableCell>
+                                    <TableCell>
+                                      <Badge variant={overdue ? 'destructive' : item.quantityReturned > 0 ? 'secondary' : 'default'}>
+                                        {overdue ? 'Overdue' : item.quantityReturned > 0 ? 'Partial' : 'Pending'}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      <Button variant="ghost" size="sm" onClick={() => openReturnDialog(issue, item)}>
+                                        Return
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    />
                   </div>
                 </>
               ) : (
@@ -526,54 +582,68 @@ export function IssueReturnSection({
                     <ArrowDownCircle className="h-4 w-4" />
                     Recent Returns
                   </p>
-                  <div className="hidden md:block overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Technician</TableHead>
-                          <TableHead>Item</TableHead>
-                          <TableHead>Returned</TableHead>
-                          <TableHead>Picked Up</TableHead>
-                          <TableHead>Dropped Off</TableHead>
-                          <TableHead>Condition</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {returnedItems.map(({ issue, item }) => (
-                          <TableRow key={`ret-${item.id}`}>
-                            <TableCell>{issue.technicianName || issue.technicianId}</TableCell>
-                            <TableCell>{item.itemName || item.itemId}</TableCell>
-                            <TableCell>{item.quantityReturned} {item.unitType}</TableCell>
-                            <TableCell className="text-sm whitespace-nowrap">{fmtDateTime(item.timeOut || issue.issueDate)}</TableCell>
-                            <TableCell className="text-sm whitespace-nowrap">{fmtDateTime(item.returnTime)}</TableCell>
-                            <TableCell>
-                              {item.returnCondition ? (
-                                <Badge variant={item.returnCondition === 'Damaged' || item.returnCondition === 'Lost' ? 'destructive' : 'secondary'}>
-                                  {item.returnCondition}
-                                </Badge>
-                              ) : '-'}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  <div className="md:hidden space-y-2">
-                    {returnedItems.map(({ issue, item }) => (
-                      <div key={`ret-m-${item.id}`} className="rounded-lg border p-3 text-sm space-y-1">
-                        <div className="flex justify-between gap-2">
-                          <p className="font-medium">{item.itemName || item.itemId}</p>
-                          {item.returnCondition && (
-                            <Badge variant={item.returnCondition === 'Damaged' || item.returnCondition === 'Lost' ? 'destructive' : 'secondary'}>
-                              {item.returnCondition}
-                            </Badge>
-                          )}
+                  <div className="hidden md:block">
+                    <DayGroupedSections
+                      groups={returnedByDay}
+                      renderItems={(items) => (
+                        <div className="overflow-x-auto rounded-lg border">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Technician</TableHead>
+                                <TableHead>Item</TableHead>
+                                <TableHead>Returned</TableHead>
+                                <TableHead>Picked Up</TableHead>
+                                <TableHead>Dropped Off</TableHead>
+                                <TableHead>Condition</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {items.map(({ issue, item }) => (
+                                <TableRow key={`ret-${item.id}`}>
+                                  <TableCell>{issue.technicianName || issue.technicianId}</TableCell>
+                                  <TableCell>{item.itemName || item.itemId}</TableCell>
+                                  <TableCell>{item.quantityReturned} {item.unitType}</TableCell>
+                                  <TableCell className="text-sm whitespace-nowrap">{fmtDateTime(item.timeOut || issue.issueDate)}</TableCell>
+                                  <TableCell className="text-sm whitespace-nowrap">{fmtDateTime(item.returnTime)}</TableCell>
+                                  <TableCell>
+                                    {item.returnCondition ? (
+                                      <Badge variant={item.returnCondition === 'Damaged' || item.returnCondition === 'Lost' ? 'destructive' : 'secondary'}>
+                                        {item.returnCondition}
+                                      </Badge>
+                                    ) : '-'}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
                         </div>
-                        <p className="text-xs text-muted-foreground">{issue.technicianName || issue.technicianId} · {item.quantityReturned} {item.unitType}</p>
-                        <p className="text-xs text-muted-foreground">Out: {fmtDateTime(item.timeOut || issue.issueDate)}</p>
-                        <p className="text-xs text-muted-foreground">In: {fmtDateTime(item.returnTime)}</p>
-                      </div>
-                    ))}
+                      )}
+                    />
+                  </div>
+                  <div className="md:hidden">
+                    <DayGroupedSections
+                      groups={returnedByDay}
+                      renderItems={(items) => (
+                        <div className="space-y-2">
+                          {items.map(({ issue, item }) => (
+                            <div key={`ret-m-${item.id}`} className="rounded-lg border p-3 text-sm space-y-1">
+                              <div className="flex justify-between gap-2">
+                                <p className="font-medium">{item.itemName || item.itemId}</p>
+                                {item.returnCondition && (
+                                  <Badge variant={item.returnCondition === 'Damaged' || item.returnCondition === 'Lost' ? 'destructive' : 'secondary'}>
+                                    {item.returnCondition}
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground">{issue.technicianName || issue.technicianId} · {item.quantityReturned} {item.unitType}</p>
+                              <p className="text-xs text-muted-foreground">Out: {fmtDateTime(item.timeOut || issue.issueDate)}</p>
+                              <p className="text-xs text-muted-foreground">In: {fmtDateTime(item.returnTime)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    />
                   </div>
                 </div>
               )}
