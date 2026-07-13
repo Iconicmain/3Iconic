@@ -17,7 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Plus, MoreHorizontal, Loader2, History, PackagePlus, BookMarked, Eye, Trash2 } from 'lucide-react';
+import { Plus, MoreHorizontal, Loader2, History, PackagePlus, BookMarked, Eye, Trash2, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { AddStockModal } from './add-stock-modal';
@@ -25,6 +25,7 @@ import { CableRollDrawer } from './cable-roll-drawer';
 import { StockItemDrawer } from './stock-item-drawer';
 import { ItemCatalogSheet, type ItemTemplate } from './item-catalog-sheet';
 import { DeleteStockDialog } from './delete-stock-dialog';
+import { EditStockDialog } from './edit-stock-dialog';
 import {
   stockStatusStyle,
   unitBadgeClasses,
@@ -201,6 +202,7 @@ export function StockTab({
   const [templates, setTemplates] = useState<ItemTemplate[]>([]);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<MergedStockItem | null>(null);
+  const [editTarget, setEditTarget] = useState<MergedStockItem | null>(null);
 
   const fetchTemplates = () => {
     fetch('/api/isp/item-templates', { cache: 'no-store' })
@@ -403,6 +405,12 @@ export function StockTab({
                                 <Eye className="h-4 w-4 mr-2" />
                                 View details
                               </DropdownMenuItem>
+                              {!isAllStations && (
+                                <DropdownMenuItem onClick={() => setEditTarget(item)}>
+                                  <Pencil className="h-4 w-4 mr-2" />
+                                  Edit inventory
+                                </DropdownMenuItem>
+                              )}
                               {meter && !isAllStations && (
                                 <DropdownMenuItem onClick={() => setCableItem(item)}>
                                   View rolls
@@ -473,6 +481,21 @@ export function StockTab({
           setAddToItem(it);
           setAddOpen(true);
           setDetailItem(null);
+        }}
+        onEdit={(it) => {
+          setEditTarget(it);
+          setDetailItem(null);
+        }}
+      />
+      <EditStockDialog
+        open={!!editTarget}
+        onOpenChange={(o) => !o && setEditTarget(null)}
+        itemId={editTarget?.mergedIds?.[0] || editTarget?.id || null}
+        mergedIds={editTarget?.mergedIds}
+        mergedCount={editTarget?.mergedCount}
+        onSuccess={() => {
+          fetchItems();
+          onRefresh();
         }}
       />
       <DeleteStockDialog

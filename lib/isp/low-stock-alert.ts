@@ -1,6 +1,6 @@
 import { sendSMS } from '@/lib/sms';
 import clientPromise from '@/lib/mongodb';
-import { accountTypeFromUser } from '@/lib/user-account-types';
+import { isSuperAdminAccount } from '@/lib/user-account-types';
 import { resolveStationName } from '@/lib/isp/equipment-notification-recipients';
 import { ISP_COLLECTIONS, ISP_DB } from '@/lib/isp/models';
 
@@ -32,7 +32,7 @@ async function getSuperAdminPhones(): Promise<string[]> {
 
   const phones = new Set<string>();
   for (const user of users) {
-    if (accountTypeFromUser(user) !== 'superadmin') continue;
+    if (!isSuperAdminAccount(user)) continue;
     const phone = typeof user.phone === 'string' ? user.phone.trim() : '';
     if (phone) phones.add(phone);
   }

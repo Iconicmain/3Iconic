@@ -380,14 +380,18 @@ export async function POST(request: NextRequest) {
       })
       .join('; ');
 
-    notifyEquipmentIssue({
-      technicianId: parsed.data.technicianId,
-      stationId: deductStationId,
-      itemsSummary,
-      issuedByUserId: ctx.userId,
-      jobReference: jobRef,
-      notes: parsed.data.notes || null,
-    }).catch((err) => console.error('[ISP Issue SMS]', err));
+    try {
+      await notifyEquipmentIssue({
+        technicianId: parsed.data.technicianId,
+        stationId: deductStationId,
+        itemsSummary,
+        issuedByUserId: ctx.userId,
+        jobReference: jobRef,
+        notes: parsed.data.notes || null,
+      });
+    } catch (err) {
+      console.error('[ISP Issue SMS]', err);
+    }
 
     return NextResponse.json({ issue: { ...fullIssue, items: itemsWithDetails } }, { status: 201 });
   } catch (error) {

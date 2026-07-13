@@ -110,14 +110,18 @@ export async function POST(request: NextRequest) {
     const updated = await logsCol.findOne({ id: parsed.data.usageLogId });
 
     if (metersReturned > 0) {
-      notifyCableReturn({
-        technicianId: String(log.technicianId),
-        stationId: log.stationId,
-        rollCode: log.rollCode || roll?.rollCode || 'Cable roll',
-        cableType: log.cableType || roll?.cableType,
-        metersReturned,
-        processedByUserId: ctx.userId,
-      }).catch((err) => console.error('[ISP Cable Return SMS]', err));
+      try {
+        await notifyCableReturn({
+          technicianId: String(log.technicianId),
+          stationId: log.stationId,
+          rollCode: log.rollCode || roll?.rollCode || 'Cable roll',
+          cableType: log.cableType || roll?.cableType,
+          metersReturned,
+          processedByUserId: ctx.userId,
+        });
+      } catch (err) {
+        console.error('[ISP Cable Return SMS]', err);
+      }
     }
 
     return NextResponse.json({ success: true, log: updated });

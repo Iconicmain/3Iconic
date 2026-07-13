@@ -1,6 +1,6 @@
 import { sendSMS } from '@/lib/sms';
 import {
-  getAdminSuperAdminRecipients,
+  getSuperAdminRecipients,
   resolveTechnicianContact,
   resolveStaffName,
   resolveStationName,
@@ -42,7 +42,7 @@ export async function notifyEquipmentIssue(params: {
   notes?: string | null;
 }): Promise<void> {
   const [admins, technician, stationName, issuedByName] = await Promise.all([
-    getAdminSuperAdminRecipients(),
+    getSuperAdminRecipients(),
     resolveTechnicianContact(params.technicianId),
     resolveStationName(params.stationId),
     params.issuedByUserId ? resolveStaffName(params.issuedByUserId) : Promise.resolve(''),
@@ -53,10 +53,10 @@ export async function notifyEquipmentIssue(params: {
   const notesLine = params.notes ? `\nNotes: ${params.notes}` : '';
   const issuedByLine = issuedByName ? `\nIssued by: ${issuedByName}` : '';
 
-  const adminMessage = `Equipment Issued\n\nTechnician: ${techName}\nStation: ${stationName}\nItems: ${params.itemsSummary}${jobLine}${issuedByLine}${notesLine}\n\nIconic Fibre Inventory`;
+  const adminMessage = `Super Admin Alert: Equipment Issued\n\nTechnician: ${techName}\nStation: ${stationName}\nItems: ${params.itemsSummary}${jobLine}${issuedByLine}${notesLine}\n\nIconic Fibre Inventory`;
 
   const adminPhones = uniquePhones(admins.map((a) => a.phone));
-  await sendToRecipients(adminPhones, adminMessage, `issue (admins) → ${techName}`);
+  await sendToRecipients(adminPhones, adminMessage, `issue (super admins) → ${techName}`);
 
   if (technician?.phone) {
     const techMessage = `Hello ${techName},\n\nEquipment has been issued to you.\n\nStation: ${stationName}\nItems: ${params.itemsSummary}${jobLine}${notesLine}\n\nPlease confirm receipt with your supervisor.\n\nIconic Fibre Inventory`;
@@ -78,7 +78,7 @@ export async function notifyEquipmentReturn(params: {
   notes?: string | null;
 }): Promise<void> {
   const [admins, technician, stationName, processedByName] = await Promise.all([
-    getAdminSuperAdminRecipients(),
+    getSuperAdminRecipients(),
     resolveTechnicianContact(params.technicianId),
     resolveStationName(params.stationId),
     params.processedByUserId ? resolveStaffName(params.processedByUserId) : Promise.resolve(''),
@@ -90,10 +90,10 @@ export async function notifyEquipmentReturn(params: {
   const processedLine = processedByName ? `\nProcessed by: ${processedByName}` : '';
   const notesLine = params.notes ? `\nNotes: ${params.notes}` : '';
 
-  const adminMessage = `Equipment Returned\n\nTechnician: ${techName}\nStation: ${stationName}\nItems: ${params.itemsSummary}\nReturned: ${params.quantityReturned} ${unit}\nCondition: ${condition}${processedLine}${notesLine}\n\nIconic Fibre Inventory`;
+  const adminMessage = `Super Admin Alert: Equipment Returned\n\nTechnician: ${techName}\nStation: ${stationName}\nItems: ${params.itemsSummary}\nReturned: ${params.quantityReturned} ${unit}\nCondition: ${condition}${processedLine}${notesLine}\n\nIconic Fibre Inventory`;
 
   const adminPhones = uniquePhones(admins.map((a) => a.phone));
-  await sendToRecipients(adminPhones, adminMessage, `return (admins) → ${techName}`);
+  await sendToRecipients(adminPhones, adminMessage, `return (super admins) → ${techName}`);
 
   if (technician?.phone) {
     const techMessage = `Hello ${techName},\n\nYour equipment return has been recorded.\n\nStation: ${stationName}\nItems: ${params.itemsSummary}\nReturned: ${params.quantityReturned} ${unit}\nCondition: ${condition}${notesLine}\n\nIconic Fibre Inventory`;

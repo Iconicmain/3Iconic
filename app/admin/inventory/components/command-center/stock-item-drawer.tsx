@@ -23,6 +23,8 @@ import {
   MapPin,
   Clock,
   Trash2,
+  Layers,
+  Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { MergedStockItem } from './stock-tab';
@@ -69,6 +71,7 @@ interface StockItemDrawerProps {
   isAllStations: boolean;
   isSuperAdmin?: boolean;
   onAddStock?: (item: MergedStockItem) => void;
+  onEdit?: (item: MergedStockItem) => void;
   onDelete?: (item: MergedStockItem) => void;
 }
 
@@ -259,6 +262,7 @@ export function StockItemDrawer({
   isAllStations,
   isSuperAdmin = false,
   onAddStock,
+  onEdit,
   onDelete,
 }: StockItemDrawerProps) {
   const [units, setUnits] = useState<RouterUnit[]>([]);
@@ -502,6 +506,12 @@ export function StockItemDrawer({
             <Button className="w-full" onClick={() => onAddStock(item)}>
               <PackagePlus className="h-4 w-4 mr-2" />
               Add stock
+            </Button>
+          )}
+          {!isAllStations && onEdit && (
+            <Button variant="outline" className="w-full" onClick={() => onEdit(item)}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit inventory
             </Button>
           )}
           {isSuperAdmin && onDelete && (

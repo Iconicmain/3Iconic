@@ -1,7 +1,5 @@
 import clientPromise from '@/lib/mongodb';
-import { accountTypeFromUser, type AccountType } from '@/lib/user-account-types';
-
-const ADMIN_ACCOUNT_TYPES = new Set<AccountType>(['superadmin', 'admin']);
+import { accountTypeFromUser, isSuperAdminAccount, type AccountType } from '@/lib/user-account-types';
 
 export interface StaffNotificationRecipient {
   email: string;
@@ -14,8 +12,8 @@ function normalizePhone(phone: string): string {
   return phone.replace(/\s+/g, '');
 }
 
-/** Approved super admins and admins with phone numbers. */
-export async function getAdminSuperAdminRecipients(): Promise<StaffNotificationRecipient[]> {
+/** Approved super admins with phone numbers (issue/return SMS). */
+export async function getSuperAdminRecipients(): Promise<StaffNotificationRecipient[]> {
   const client = await clientPromise;
   const db = client.db('tixmgmt');
   const users = await db
@@ -41,9 +39,9 @@ export async function getAdminSuperAdminRecipients(): Promise<StaffNotificationR
     const phone = typeof user.phone === 'string' ? user.phone.trim() : '';
     if (!phone) continue;
 
-    const accountType = accountTypeFromUser(user);
-    if (!ADMIN_ACCOUNT_TYPES.has(accountType)) continue;
+    if (!isSuperAdminAccount(user)) continue;
 
+    const accountType = accountTypeFromUser(user);
     const key = normalizePhone(phone);
     if (!byPhone.has(key)) {
       byPhone.set(key, {
@@ -55,7 +53,20 @@ export async function getAdminSuperAdminRecipients(): Promise<StaffNotificationR
     }
   }
 
+  if (byPhone.size === 0) {
+    console.warn(
+      '[Equipment SMS] No super admin phone numbers found. Ensure super admins are approved and have phone numbers in the users collection.'
+    );
+  } else {
+    console.log(`[Equipment SMS] Found ${byPhone.size} super admin phone number(s)`);
+  }
+
   return [...byPhone.values()];
+}
+
+/** @deprecated Use getSuperAdminRecipients — kept for compatibility. */
+export async function getAdminSuperAdminRecipients(): Promise<StaffNotificationRecipient[]> {
+  return getSuperAdminRecipients();
 }
 
 /** Resolve one technician's contact (approved user with phone, or technicians collection fallback). */

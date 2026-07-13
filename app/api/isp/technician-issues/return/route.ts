@@ -197,16 +197,20 @@ export async function POST(request: NextRequest) {
 
     const itemDoc = item as { itemName?: string } | null;
     const itemsSummary = itemDoc?.itemName || issueItem.itemId;
-    notifyEquipmentReturn({
-      technicianId: String(issue.technicianId),
-      stationId: returnStationId,
-      itemsSummary,
-      quantityReturned: qtyReturned,
-      unitType: issueItem.unitType,
-      returnCondition: condition,
-      processedByUserId: ctx.userId,
-      notes: parsed.data.notes || null,
-    }).catch((err) => console.error('[ISP Return SMS]', err));
+    try {
+      await notifyEquipmentReturn({
+        technicianId: String(issue.technicianId),
+        stationId: returnStationId,
+        itemsSummary,
+        quantityReturned: qtyReturned,
+        unitType: issueItem.unitType,
+        returnCondition: condition,
+        processedByUserId: ctx.userId,
+        notes: parsed.data.notes || null,
+      });
+    } catch (err) {
+      console.error('[ISP Return SMS]', err);
+    }
 
     return NextResponse.json({ success: true, issueItem: updated, status: finalStatus, returnStationId });
   } catch (error) {

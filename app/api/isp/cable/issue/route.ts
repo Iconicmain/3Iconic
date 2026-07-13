@@ -117,15 +117,19 @@ export async function POST(request: NextRequest) {
       afterData: log,
     });
 
-    notifyCableIssue({
-      technicianId: parsed.data.technicianId,
-      stationId: roll.stationId,
-      rollCode: roll.rollCode,
-      cableType: roll.cableType,
-      metersIssued: parsed.data.metersIssued,
-      issuedByUserId: ctx.userId,
-      jobReference: jobRef,
-    }).catch((err) => console.error('[ISP Cable Issue SMS]', err));
+    try {
+      await notifyCableIssue({
+        technicianId: parsed.data.technicianId,
+        stationId: roll.stationId,
+        rollCode: roll.rollCode,
+        cableType: roll.cableType,
+        metersIssued: parsed.data.metersIssued,
+        issuedByUserId: ctx.userId,
+        jobReference: jobRef,
+      });
+    } catch (err) {
+      console.error('[ISP Cable Issue SMS]', err);
+    }
 
     return NextResponse.json({ success: true, log, closingMeters });
   } catch (error) {

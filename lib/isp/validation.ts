@@ -33,6 +33,15 @@ export const adjustStockSchema = z.object({
   notes: z.string().optional(),
 });
 
+export const updateInventoryItemSchema = z.object({
+  itemName: z.string().min(1, 'Item name is required').optional(),
+  itemCode: z.string().min(1, 'Item code is required').optional(),
+  category: z.string().min(1, 'Category is required').optional(),
+  minimumLevel: z.number().min(0, 'Minimum level cannot be negative').optional(),
+  reorderLevel: z.number().min(0, 'Reorder level cannot be negative').optional(),
+  notes: z.string().optional().nullable(),
+});
+
 export const issueItemSchema = z.object({
   issueType: z.enum(['TECHNICIAN_ONLY', 'SINGLE_STATION', 'SHARED_STATIONS', 'PROJECT']).optional(),
   sourceStationId: z.string().optional(),
