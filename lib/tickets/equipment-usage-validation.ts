@@ -8,6 +8,7 @@ export const equipmentUsageRowSchema = z
     sourceIssueId: z.string().min(1),
     usageType: z.enum([
       'installed',
+      'exchange_replacement',
       'returned_unused',
       'damaged',
       'lost',
@@ -23,6 +24,8 @@ export const equipmentUsageRowSchema = z
     routerUnitIds: z.array(z.string()).optional(),
     serialNumber: z.string().nullable().optional(),
     macAddress: z.string().nullable().optional(),
+    replacedRouterSerial: z.string().nullable().optional(),
+    replacedRouterMac: z.string().nullable().optional(),
     usageLogId: z.string().optional(),
     rollId: z.string().optional(),
     rollCode: z.string().optional(),
@@ -50,6 +53,24 @@ export const equipmentUsageRowSchema = z
           message: 'Quantity must match selected units',
           path: ['quantityUsed'],
         });
+      }
+      if (row.usageType === 'exchange_replacement') {
+        if (!row.routerUnitIds?.length) {
+          ctx.addIssue({
+            code: 'custom',
+            message: 'Select the new router unit installed',
+            path: ['routerUnitIds'],
+          });
+        }
+        const oldSerial = row.replacedRouterSerial?.trim();
+        const oldMac = row.replacedRouterMac?.trim();
+        if (!oldSerial && !oldMac) {
+          ctx.addIssue({
+            code: 'custom',
+            message: 'Enter serial or MAC of the old router removed from client',
+            path: ['replacedRouterSerial'],
+          });
+        }
       }
     } else {
       if (!row.usageLogId) {

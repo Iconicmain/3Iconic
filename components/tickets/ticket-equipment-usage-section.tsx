@@ -46,6 +46,8 @@ export interface EquipmentUsageFormRow {
   metersReturned: number;
   wasteMeters: number;
   notes: string;
+  replacedRouterSerial: string;
+  replacedRouterMac: string;
 }
 
 interface TicketEquipmentUsageSectionProps {
@@ -82,6 +84,8 @@ function emptyRow(): EquipmentUsageFormRow {
     metersReturned: 0,
     wasteMeters: 0,
     notes: '',
+    replacedRouterSerial: '',
+    replacedRouterMac: '',
   };
 }
 
@@ -109,10 +113,10 @@ function rowFromOption(opt: IssuedEquipmentOption): EquipmentUsageFormRow {
     metersReturned: 0,
     wasteMeters: 0,
     notes: '',
+    replacedRouterSerial: '',
+    replacedRouterMac: '',
   };
 }
-
-export function buildEquipmentPayload(
   rows: EquipmentUsageFormRow[],
   options: IssuedEquipmentOption[]
 ): TicketEquipmentUsageRecord[] {
@@ -153,6 +157,8 @@ export function buildEquipmentPayload(
         routerUnitIds,
         serialNumber: unit?.serialNumber || null,
         macAddress: unit?.macAddress || null,
+        replacedRouterSerial: row.replacedRouterSerial?.trim() || null,
+        replacedRouterMac: row.replacedRouterMac?.trim() || null,
       };
     });
 }
@@ -171,7 +177,14 @@ export function validateEquipmentRows(
     if (row.kind === 'item') {
       if (row.usageType === 'still_with_technician') continue;
       if (row.isSerialized) {
-        if (!row.selectedUnitId) return `Select serial/MAC for ${row.itemName}`;
+        if (!row.selectedUnitId && row.usageType !== 'still_with_technician') {
+          return `Select serial/MAC for ${row.itemName}`;
+        }
+        if (row.usageType === 'exchange_replacement') {
+          if (!row.replacedRouterSerial.trim() && !row.replacedRouterMac.trim()) {
+            return `Enter serial or MAC of the old router removed from client for ${row.itemName}`;
+          }
+        }
       } else {
         if (row.quantityUsed <= 0) return `Enter quantity used for ${row.itemName}`;
         if (row.quantityUsed > row.outstanding) {
@@ -398,7 +411,11 @@ export function TicketEquipmentUsageSection({
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {EQUIPMENT_USAGE_TYPES.map((t) => (
+                                  {EQUIPMENT_USAGE_TYPES.filter(
+                                    (t) =>
+                                      t.value !== 'exchange_replacement' ||
+                                      (row.kind === 'item' && row.isSerialized)
+                                  ).map((t) => (
                                     <SelectItem key={t.value} value={t.value}>
                                       {t.label}
                                     </SelectItem>
@@ -410,26 +427,57 @@ export function TicketEquipmentUsageSection({
                             {row.kind === 'item' && row.usageType !== 'still_with_technician' && (
                               <>
                                 {row.isSerialized ? (
-                                  <div className="space-y-1.5 sm:col-span-2">
-                                    <Label className="text-xs">Serial / MAC (issued only)</Label>
-                                    <Select
-                                      value={row.selectedUnitId || undefined}
-                                      onValueChange={(v) =>
-                                        updateRow(row.clientId, { selectedUnitId: v, quantityUsed: 1 })
-                                      }
-                                    >
-                                      <SelectTrigger className="h-9 text-sm font-mono">
-                                        <SelectValue placeholder="Select unit…" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {issuedUnits.map((u) => (
-                                          <SelectItem key={u.id} value={u.id}>
-                                            {u.macAddress || u.serialNumber || u.label}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
+                                  <>
+                                    <div className="space-y-1.5 sm:col-span-2">
+                                      <Label className="text-xs">New router — serial / MAC (issued)</Label>
+                                      <Select
+                                        value={row.selectedUnitId || undefined}
+                                        onValueChange={(v) =>
+                                          updateRow(row.clientId, { selectedUnitId: v, quantityUsed: 1 })
+                                        }
+                                      >
+                                        <SelectTrigger className="h-9 text-sm font-mono">
+                                          <SelectValue placeholder="Select unit…" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {issuedUnits.map((u) => (
+                                            <SelectItem key={u.id} value={u.id}>
+                                              {u.macAddress || u.serialNumber || u.label}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    {row.usageType === 'exchange_replacement' && (
+                                      <>
+                                        <div className="space-y-1.5">
+                                          <Label className="text-xs">Old router serial (from client)</Label>
+                                          <Input
+                                            value={row.replacedRouterSerial}
+                                            onChange={(e) =>
+                                              updateRow(row.clientId, { replacedRouterSerial: e.target.value })
+                                            }
+                                            className="h-9 text-sm font-mono"
+                                            placeholder="Serial removed from site"
+                                          />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                          <Label className="text-xs">Old router MAC (from client)</Label>
+                                          <Input
+                                            value={row.replacedRouterMac}
+                                            onChange={(e) =>
+                                              updateRow(row.clientId, { replacedRouterMac: e.target.value })
+                                            }
+                                            className="h-9 text-sm font-mono"
+                                            placeholder="MAC removed from site"
+                                          />
+                                        </div>
+                                        <p className="text-[10px] text-amber-700 sm:col-span-2">
+                                          The old router must be returned to the station. Inventory will track whether it comes back.
+                                        </p>
+                                      </>
+                                    )}
+                                  </>
                                 ) : (
                                   <div className="space-y-1.5">
                                     <Label className="text-xs">

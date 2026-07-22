@@ -177,6 +177,36 @@ export interface CableUsageLog {
   createdAt: Date;
 }
 
+export type RouterReplacementStatus = 'pending' | 'returned' | 'lost' | 'damaged';
+
+/** Tracks old client routers expected back after a replacement install */
+export interface RouterReplacementReturn {
+  _id?: string;
+  id: string;
+  stationId: string;
+  technicianId: string;
+  technicianName?: string | null;
+  ticketId?: string | null;
+  jobReference?: string | null;
+  issueItemId: string;
+  sourceIssueId: string;
+  itemId: string;
+  itemName?: string | null;
+  newRouterUnitId: string;
+  newRouterSerial?: string | null;
+  newRouterMac?: string | null;
+  oldRouterSerial?: string | null;
+  oldRouterMac?: string | null;
+  oldRouterUnitId?: string | null;
+  status: RouterReplacementStatus;
+  returnCondition?: string | null;
+  returnTime?: Date | null;
+  returnStationId?: string | null;
+  notes?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface AuditLog {
   _id?: string;
   id: string;
@@ -220,6 +250,7 @@ export const ISP_COLLECTIONS = {
   cableUsageLogs: 'isp_cable_usage_logs',
   auditLogs: 'isp_audit_logs',
   itemTemplates: 'isp_item_templates',
+  routerReplacementReturns: 'isp_router_replacement_returns',
 } as const;
 
 export const UNIT_TYPES = ['pcs', 'meters', 'rolls', 'boxes', 'units'] as const;

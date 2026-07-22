@@ -31,6 +31,7 @@ import { ActivitySidebar } from './components/command-center/activity-sidebar';
 import { IssueReturnSection } from './components/issue-return-section';
 import { IssueCablePanel } from './components/command-center/issue-cable-panel';
 import { CableReturnsPanel } from './components/command-center/cable-returns-panel';
+import { RouterReplacementReturnsPanel } from './components/command-center/router-replacement-returns-panel';
 import { TransfersTab } from './components/command-center/transfers-tab';
 import { ReportsTab } from './components/command-center/reports-tab';
 import { TechniciansTab } from './components/command-center/technicians-tab';
@@ -345,6 +346,11 @@ export function InventoryStationPage({
                         mode="return"
                         onRefresh={refresh}
                         refreshKey={refreshKey}
+                      />
+                      <RouterReplacementReturnsPanel
+                        stationId={stationId}
+                        refreshKey={refreshKey}
+                        onRefresh={refresh}
                       />
                       <CableReturnsPanel
                         stationId={stationId}

@@ -1,5 +1,6 @@
 export const EQUIPMENT_USAGE_TYPES = [
   { value: 'installed', label: 'Installed / used on ticket' },
+  { value: 'exchange_replacement', label: 'Router replacement (swap at client)' },
   { value: 'returned_unused', label: 'Returned unused' },
   { value: 'damaged', label: 'Damaged' },
   { value: 'lost', label: 'Lost' },
@@ -52,6 +53,9 @@ export interface TicketEquipmentUsageRecord {
   routerUnitIds?: string[];
   serialNumber?: string | null;
   macAddress?: string | null;
+  /** Old router removed from client during exchange_replacement */
+  replacedRouterSerial?: string | null;
+  replacedRouterMac?: string | null;
   usageLogId?: string;
   rollId?: string;
   rollCode?: string;

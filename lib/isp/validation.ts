@@ -118,3 +118,13 @@ export const itemTemplateSchema = z.object({
   splitterPreset: z.string().optional().nullable(),
   defaultMinimumLevel: z.number().min(0).optional(),
 });
+
+export const routerReplacementReturnSchema = z.object({
+  replacementId: z.string().min(1),
+  returnCondition: z.enum(['Good', 'Damaged', 'Lost', 'Repair']),
+  returnStationId: z.string().optional(),
+  oldRouterSerial: z.string().optional(),
+  oldRouterMac: z.string().optional(),
+  notes: z.string().optional(),
+  markLost: z.boolean().optional(),
+});

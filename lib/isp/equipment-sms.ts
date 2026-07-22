@@ -141,3 +141,26 @@ export async function notifyCableReturn(params: {
     processedByUserId: params.processedByUserId,
   });
 }
+
+export async function notifyRouterReplacementPending(params: {
+  technicianId: string;
+  technicianName?: string;
+  stationId: string;
+  newRouterLabel: string;
+  oldRouterLabel: string;
+  ticketId?: string | null;
+}): Promise<void> {
+  const [admins, technician, stationName] = await Promise.all([
+    getSuperAdminRecipients(),
+    resolveTechnicianContact(params.technicianId),
+    resolveStationName(params.stationId),
+  ]);
+
+  const techName = params.technicianName || technician?.name || 'Technician';
+  const ticketLine = params.ticketId ? `\nTicket: ${params.ticketId}` : '';
+
+  const adminMessage = `Super Admin Alert: Router Replacement\n\nTechnician: ${techName}\nStation: ${stationName}\nNew installed: ${params.newRouterLabel}\nOld from client (awaiting return): ${params.oldRouterLabel}${ticketLine}\n\nFollow up in Inventory → Returns → Router Replacements.\n\nIconic Fibre Inventory`;
+
+  const adminPhones = uniquePhones(admins.map((a) => a.phone));
+  await sendToRecipients(adminPhones, adminMessage, `router replacement pending → ${techName}`);
+}
