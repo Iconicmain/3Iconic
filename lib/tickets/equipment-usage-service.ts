@@ -4,8 +4,6 @@ import { createAuditLog } from '@/lib/isp/audit';
 import { stationVisibilityFilter } from '@/lib/isp/issue-types';
 import { syncInventoryItemMeters } from '@/lib/isp/inventory-roll-stats';
 import { ISP_COLLECTIONS, ISP_DB } from '@/lib/isp/models';
-import { createRouterReplacementReturn } from '@/lib/isp/router-replacement-service';
-import { notifyRouterReplacementPending } from '@/lib/isp/equipment-sms';
 import type { Db } from 'mongodb';
 import type {
   EquipmentUsageType,
@@ -405,7 +403,7 @@ async function applyItemUsage(
   const returnStationId = (issue as { sourceStationId?: string; stationId: string }).sourceStationId
     || (issue as { stationId: string }).stationId;
 
-  if (row.usageType === 'installed' || row.usageType === 'exchange_replacement') {
+  if (row.usageType === 'installed') {
     if (row.routerUnitIds?.length) {
       await routersCol.updateMany(
         { id: { $in: row.routerUnitIds } },
@@ -448,71 +446,19 @@ async function applyItemUsage(
       });
     }
 
-    if (row.usageType === 'exchange_replacement' && row.routerUnitIds?.length) {
-      const newUnit = await routersCol.findOne({ id: row.routerUnitIds[0] });
-      const newLabel =
-        (newUnit as { serialNumber?: string; macAddress?: string } | null)?.serialNumber ||
-        (newUnit as { macAddress?: string } | null)?.macAddress ||
-        row.serialNumber ||
-        row.macAddress ||
-        'new router';
-      const oldLabel = row.replacedRouterSerial || row.replacedRouterMac || 'old router';
-
-      await createRouterReplacementReturn(db, {
-        stationId,
-        technicianId: row.technicianId,
-        technicianName: row.technicianName,
-        ticketId: ticket.ticketId,
-        jobReference: (issue as { jobReference?: string }).jobReference || ticket.ticketId,
-        issueItemId: row.issueItemId!,
-        sourceIssueId: row.sourceIssueId,
-        itemId: issueItem.itemId,
-        itemName: (invItem as { itemName?: string } | null)?.itemName || row.itemName,
-        newRouterUnitId: row.routerUnitIds[0],
-        newRouterSerial: (newUnit as { serialNumber?: string } | null)?.serialNumber || row.serialNumber,
-        newRouterMac: (newUnit as { macAddress?: string } | null)?.macAddress || row.macAddress,
-        oldRouterSerial: row.replacedRouterSerial,
-        oldRouterMac: row.replacedRouterMac,
-        notes: row.notes || null,
-      });
-
-      try {
-        await notifyRouterReplacementPending({
-          technicianId: row.technicianId,
-          technicianName: row.technicianName,
-          stationId,
-          newRouterLabel: newLabel,
-          oldRouterLabel: oldLabel,
-          ticketId: ticket.ticketId,
-        });
-      } catch (err) {
-        console.error('[Router Replacement SMS]', err);
-      }
-    }
-
     await createAuditLog({
       userId,
       stationId,
-      action:
-        row.usageType === 'exchange_replacement'
-          ? 'TICKET_ROUTER_REPLACEMENT'
-          : 'TICKET_EQUIPMENT_INSTALLED',
+      action: 'TICKET_EQUIPMENT_INSTALLED',
       entityType: 'ticket',
       entityId: ticket.ticketId,
-      afterData: {
-        row,
-        ticketId: ticket.ticketId,
-        oldRouterSerial: row.replacedRouterSerial,
-        oldRouterMac: row.replacedRouterMac,
-      },
+      afterData: { row, ticketId: ticket.ticketId },
     });
 
     messages.push(
-      row.usageType === 'exchange_replacement'
-        ? `${row.itemName} installed as replacement on ticket ${ticket.ticketId} — old router ${row.replacedRouterSerial || row.replacedRouterMac || 'pending return'}`
-        : row.routerUnitIds?.length
-          ? `${row.itemName} installed on ticket ${ticket.ticketId}`
-          : `${qty} ${row.itemName} used on ticket ${ticket.ticketId}`
+      row.routerUnitIds?.length
+        ? `${row.itemName} installed on ticket ${ticket.ticketId}`
+        : `${qty} ${row.itemName} used on ticket ${ticket.ticketId}`
     );
   } else {
     const condition = usageTypeToReturnCondition(row.usageType);

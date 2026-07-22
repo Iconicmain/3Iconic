@@ -169,6 +169,12 @@ export function IssueReturnSection({
   const [returnCondition, setReturnCondition] = useState('');
   const [returnUnitIds, setReturnUnitIds] = useState<string[]>([]);
   const [returnStationId, setReturnStationId] = useState('');
+  const [disposition, setDisposition] = useState<'returned' | 'installed' | 'replaced'>('returned');
+  const [jobReference, setJobReference] = useState('');
+  const [oldRouterSerial, setOldRouterSerial] = useState('');
+  const [oldRouterMac, setOldRouterMac] = useState('');
+  const [oldRouterStatus, setOldRouterStatus] = useState<'returned_now' | 'pending' | 'lost'>('pending');
+  const [oldRouterReturnCondition, setOldRouterReturnCondition] = useState('Good');
 
   const unitLabel = (u: RouterUnitOption | SerializedUnit) =>
     u.serialNumber || u.macAddress || u.id;
@@ -226,7 +232,11 @@ export function IssueReturnSection({
     () =>
       issues.flatMap((issue) =>
         issue.items
-          .filter((i) => i.quantityReturned < i.quantityTaken)
+          .filter((item) => {
+            const stillOut = unitsStillOut(item).length;
+            if (stillOut > 0) return true;
+            return item.quantityReturned < item.quantityTaken && !item.serializedUnits?.length;
+          })
           .map((item) => ({ issue, item }))
       ),
     [issues]
@@ -269,78 +279,95 @@ export function IssueReturnSection({
   }, [openDialog, onOpenDialogHandled]);
 
   const openReturnDialog = (issue: Issue, item: IssueItem) => {
+    const stillOut = unitsStillOut(item);
     setSelectedIssueItem({ issue, item });
     setReturnQty(String(item.quantityTaken - item.quantityReturned));
-    setReturnUnitIds([]);
+    setReturnUnitIds(stillOut.length === 1 ? [stillOut[0].id] : []);
     setReturnCondition('');
+    setDisposition('returned');
+    setJobReference(issue.jobReference || issue.projectCustomer || '');
+    setOldRouterSerial('');
+    setOldRouterMac('');
+    setOldRouterStatus('pending');
+    setOldRouterReturnCondition('Good');
     setReturnStationId(issue.sourceStationId || issue.stationId);
     setReturnOpen(true);
   };
 
   const handleReturn = () => {
     if (!selectedIssueItem) return;
-    const hasSerialized = (selectedIssueItem.item.serializedUnits?.length || 0) > 0;
+    const hasSerialized = unitsStillOut(selectedIssueItem.item).length > 0;
+    const unitCount = returnUnitIds.length;
 
-    if (hasSerialized) {
-      if (returnUnitIds.length === 0) {
-        toast.error('Select which units are being returned');
-        return;
-      }
-      fetch('/api/isp/technician-issues/return', {
-        method: 'POST',
-        cache: 'no-store',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          issueItemId: selectedIssueItem.item.id,
-          quantityReturned: returnUnitIds.length,
-          routerUnitIds: returnUnitIds,
-          returnCondition: returnCondition || undefined,
-          returnStationId: returnStationId || undefined,
-        }),
-      })
-        .then((r) => r.json())
-        .then((d) => {
-          if (d.error) throw new Error(d.error);
-          toast.success(`Returned ${returnUnitIds.length} unit(s)`);
-          setReturnOpen(false);
-          setSelectedIssueItem(null);
-          setReturnUnitIds([]);
-          setReturnCondition('');
-          loadData();
-          onRefresh();
-        })
-        .catch((e) => toast.error(e.message));
+    if (hasSerialized && unitCount === 0) {
+      toast.error('Select which unit(s) to process');
       return;
     }
 
-    const qty = parseFloat(returnQty);
-    if (isNaN(qty) || qty < 0) {
+    if (disposition === 'returned' && !returnCondition) {
+      toast.error('Select return condition');
+      return;
+    }
+
+    if (disposition === 'replaced') {
+      if (!oldRouterSerial.trim() && !oldRouterMac.trim()) {
+        toast.error('Enter serial or MAC of the old router from the client');
+        return;
+      }
+      if (oldRouterStatus === 'returned_now' && !oldRouterReturnCondition) {
+        toast.error('Select condition of the old router');
+        return;
+      }
+    }
+
+    const qty = hasSerialized ? unitCount : parseFloat(returnQty);
+    if (!hasSerialized && (isNaN(qty) || qty < 0)) {
       toast.error('Enter valid quantity');
       return;
     }
-    if (qty > selectedIssueItem.item.quantityTaken - selectedIssueItem.item.quantityReturned) {
+    if (!hasSerialized && disposition === 'returned' && qty > selectedIssueItem.item.quantityTaken - selectedIssueItem.item.quantityReturned) {
       toast.error('Cannot return more than taken');
       return;
     }
+
     fetch('/api/isp/technician-issues/return', {
       method: 'POST',
       cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         issueItemId: selectedIssueItem.item.id,
-        quantityReturned: qty,
-        returnCondition: returnCondition || undefined,
+        disposition,
+        quantityReturned: hasSerialized ? unitCount : qty,
+        routerUnitIds: returnUnitIds.length ? returnUnitIds : undefined,
+        returnCondition: disposition === 'returned' ? returnCondition : undefined,
         returnStationId: returnStationId || undefined,
+        jobReference: jobReference.trim() || undefined,
+        oldRouterSerial: disposition === 'replaced' ? oldRouterSerial.trim() : undefined,
+        oldRouterMac: disposition === 'replaced' ? oldRouterMac.trim() : undefined,
+        oldRouterStatus: disposition === 'replaced' ? oldRouterStatus : undefined,
+        oldRouterReturnCondition:
+          disposition === 'replaced' && oldRouterStatus === 'returned_now'
+            ? oldRouterReturnCondition
+            : undefined,
       }),
     })
       .then((r) => r.json())
       .then((d) => {
         if (d.error) throw new Error(d.error);
-        toast.success('Return recorded');
+        const msg =
+          disposition === 'installed'
+            ? 'Marked as installed at client'
+            : disposition === 'replaced'
+              ? oldRouterStatus === 'pending'
+                ? 'Replacement recorded — old router awaiting return'
+                : 'Replacement recorded'
+              : `Returned ${hasSerialized ? unitCount : qty} unit(s)`;
+        toast.success(msg);
         setReturnOpen(false);
         setSelectedIssueItem(null);
-        setReturnQty('');
+        setReturnUnitIds([]);
         setReturnCondition('');
+        setDisposition('returned');
         loadData();
         onRefresh();
       })
@@ -502,7 +529,7 @@ export function IssueReturnSection({
                                   className="w-full"
                                   onClick={() => openReturnDialog(issue, item)}
                                 >
-                                  Return
+                                  Process
                                 </Button>
                               </div>
                             );
@@ -557,7 +584,7 @@ export function IssueReturnSection({
                                     </TableCell>
                                     <TableCell className="text-right">
                                       <Button variant="ghost" size="sm" onClick={() => openReturnDialog(issue, item)}>
-                                        Return
+                                        Process
                                       </Button>
                                     </TableCell>
                                   </TableRow>
@@ -672,15 +699,15 @@ export function IssueReturnSection({
       <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Process Return</DialogTitle>
+            <DialogTitle>Process Equipment</DialogTitle>
           </DialogHeader>
           {selectedIssueItem && (
             <div className="space-y-4">
               <div className="text-sm space-y-1">
                 <p>
-                  {selectedIssueItem.item.itemName || selectedIssueItem.item.itemId} — Max return:{' '}
-                  {selectedIssueItem.item.quantityTaken - selectedIssueItem.item.quantityReturned}{' '}
-                  {selectedIssueItem.item.unitType}
+                  {selectedIssueItem.item.itemName || selectedIssueItem.item.itemId} —{' '}
+                  {unitsStillOut(selectedIssueItem.item).length || selectedIssueItem.item.quantityTaken - selectedIssueItem.item.quantityReturned}{' '}
+                  still out · {selectedIssueItem.item.unitType}
                 </p>
                 {sharedForLabel(selectedIssueItem.issue) && (
                   <p className="text-xs text-indigo-700 flex items-center gap-1">
@@ -691,12 +718,39 @@ export function IssueReturnSection({
                 <p className="text-xs text-muted-foreground">
                   From {selectedIssueItem.issue.sourceStationName || selectedIssueItem.issue.stationId} · Picked up{' '}
                   {fmtDateTime(selectedIssueItem.item.timeOut || selectedIssueItem.issue.issueDate)} by{' '}
-                  {selectedIssueItem.issue.technicianName || selectedIssueItem.issue.technicianId}. Drop-off time is recorded automatically when you save.
+                  {selectedIssueItem.issue.technicianName || selectedIssueItem.issue.technicianId}.
                 </p>
               </div>
+
+              <div>
+                <Label>Outcome</Label>
+                <Select
+                  value={disposition}
+                  onValueChange={(v) => setDisposition(v as 'returned' | 'installed' | 'replaced')}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="returned">Returned to station</SelectItem>
+                    <SelectItem value="installed">Installed at client</SelectItem>
+                    <SelectItem value="replaced">Router replacement (swap)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {disposition === 'returned' && 'Unit comes back to stock.'}
+                  {disposition === 'installed' && 'Unit left at client site — not returned.'}
+                  {disposition === 'replaced' && 'New unit installed; track if old router from client is returned.'}
+                </p>
+              </div>
+
               {unitsStillOut(selectedIssueItem.item).length > 0 ? (
                 <div className="space-y-2">
-                  <Label>Select units being returned (serial / MAC)</Label>
+                  <Label>
+                    {disposition === 'returned'
+                      ? 'Select units being returned'
+                      : disposition === 'installed'
+                        ? 'Select unit installed at client'
+                        : 'Select new unit installed (from issue)'}
+                  </Label>
                   <div className="space-y-2 max-h-40 overflow-y-auto rounded-lg border p-2">
                     {unitsStillOut(selectedIssueItem.item).map((u) => (
                       <label key={u.id} className="flex items-center gap-2 text-sm cursor-pointer">
@@ -704,7 +758,13 @@ export function IssueReturnSection({
                           checked={returnUnitIds.includes(u.id)}
                           onCheckedChange={(c) =>
                             setReturnUnitIds((prev) =>
-                              c ? [...prev, u.id] : prev.filter((id) => id !== u.id)
+                              disposition === 'replaced' || disposition === 'installed'
+                                ? c
+                                  ? [u.id]
+                                  : []
+                                : c
+                                  ? [...prev, u.id]
+                                  : prev.filter((id) => id !== u.id)
                             )
                           }
                         />
@@ -715,51 +775,126 @@ export function IssueReturnSection({
                   <p className="text-xs text-muted-foreground">{returnUnitIds.length} unit(s) selected</p>
                 </div>
               ) : (
-              <div>
-                <Label>Quantity Returned</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max={selectedIssueItem.item.quantityTaken - selectedIssueItem.item.quantityReturned}
-                  value={returnQty}
-                  onChange={(e) => setReturnQty(e.target.value)}
-                />
-              </div>
+                disposition === 'returned' && (
+                  <div>
+                    <Label>Quantity Returned</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max={selectedIssueItem.item.quantityTaken - selectedIssueItem.item.quantityReturned}
+                      value={returnQty}
+                      onChange={(e) => setReturnQty(e.target.value)}
+                    />
+                  </div>
+                )
               )}
-              <div>
-                <Label>Return to station</Label>
-                <Select value={returnStationId} onValueChange={setReturnStationId}>
-                  <SelectTrigger><SelectValue placeholder="Select station" /></SelectTrigger>
-                  <SelectContent>
-                    {allowedReturnStations(selectedIssueItem.issue).map((s) => (
-                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Defaults to source station · change if item returns elsewhere
-                </p>
-              </div>
-              <div>
-                <Label>Return condition</Label>
-                <Select value={returnCondition} onValueChange={setReturnCondition}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select condition" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Good">Returned good condition</SelectItem>
-                    <SelectItem value="Damaged">Returned damaged</SelectItem>
-                    <SelectItem value="Lost">Lost</SelectItem>
-                    <SelectItem value="Repair">Send to repair</SelectItem>
-                    <SelectItem value="Partial">Partial return</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+
+              {(disposition === 'installed' || disposition === 'replaced') && (
+                <div>
+                  <Label>Job / client reference (optional)</Label>
+                  <Input
+                    value={jobReference}
+                    onChange={(e) => setJobReference(e.target.value)}
+                    placeholder="Ticket or customer name"
+                  />
+                </div>
+              )}
+
+              {disposition === 'replaced' && (
+                <>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 space-y-3">
+                    <p className="text-xs font-medium text-amber-900">Old router removed from client</p>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Old serial</Label>
+                      <Input
+                        value={oldRouterSerial}
+                        onChange={(e) => setOldRouterSerial(e.target.value)}
+                        className="font-mono h-9"
+                        placeholder="Serial from site"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Old MAC</Label>
+                      <Input
+                        value={oldRouterMac}
+                        onChange={(e) => setOldRouterMac(e.target.value)}
+                        className="font-mono h-9"
+                        placeholder="MAC from site"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Old router status</Label>
+                      <Select
+                        value={oldRouterStatus}
+                        onValueChange={(v) => setOldRouterStatus(v as 'returned_now' | 'pending' | 'lost')}
+                      >
+                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="returned_now">Returned now with technician</SelectItem>
+                          <SelectItem value="pending">Still with technician — awaiting return</SelectItem>
+                          <SelectItem value="lost">Not returned / lost</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {oldRouterStatus === 'returned_now' && (
+                      <div className="space-y-2">
+                        <Label className="text-xs">Old router condition</Label>
+                        <Select value={oldRouterReturnCondition} onValueChange={setOldRouterReturnCondition}>
+                          <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Good">Good — add to stock</SelectItem>
+                            <SelectItem value="Damaged">Damaged</SelectItem>
+                            <SelectItem value="Repair">Send to repair</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {(disposition === 'returned' || (disposition === 'replaced' && oldRouterStatus === 'returned_now')) && (
+                <div>
+                  <Label>Return to station</Label>
+                  <Select value={returnStationId} onValueChange={setReturnStationId}>
+                    <SelectTrigger><SelectValue placeholder="Select station" /></SelectTrigger>
+                    <SelectContent>
+                      {allowedReturnStations(selectedIssueItem.issue).map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {disposition === 'returned' && (
+                <div>
+                  <Label>Return condition</Label>
+                  <Select value={returnCondition} onValueChange={setReturnCondition}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select condition" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Good">Returned good condition</SelectItem>
+                      <SelectItem value="Damaged">Returned damaged</SelectItem>
+                      <SelectItem value="Lost">Lost</SelectItem>
+                      <SelectItem value="Repair">Send to repair</SelectItem>
+                      <SelectItem value="Partial">Partial return</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setReturnOpen(false)}>Cancel</Button>
-            <Button onClick={handleReturn}>Record Return</Button>
+            <Button onClick={handleReturn}>
+              {disposition === 'installed'
+                ? 'Mark installed'
+                : disposition === 'replaced'
+                  ? 'Record replacement'
+                  : 'Record return'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

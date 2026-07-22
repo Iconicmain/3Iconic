@@ -8,7 +8,56 @@ import { createAuditLog } from '@/lib/isp/audit';
 import { returnItemSchema } from '@/lib/isp/validation';
 import { ISP_COLLECTIONS, ISP_DB } from '@/lib/isp/models';
 import { allowedReturnStationIds } from '@/lib/isp/issue-types';
-import { notifyEquipmentReturn } from '@/lib/isp/equipment-sms';
+import { notifyEquipmentReturn, notifyRouterReplacementPending } from '@/lib/isp/equipment-sms';
+import {
+  createRouterReplacementReturn,
+  processRouterReplacementReturn,
+} from '@/lib/isp/router-replacement-service';
+
+async function countUnitsStillIssued(
+  routersCol: { find: (q: object) => { toArray: () => Promise<unknown[]> } },
+  routerUnitIds: string[]
+): Promise<number> {
+  if (!routerUnitIds.length) return 0;
+  const units = (await routersCol.find({ id: { $in: routerUnitIds } }).toArray()) as { status: string }[];
+  return units.filter((u) => u.status === 'issued').length;
+}
+
+async function refreshIssueStatusFromUnits(
+  db: {
+    collection: (name: string) => {
+      find: (q: object) => { toArray: () => Promise<unknown[]> };
+      updateOne: (q: object, u: object) => Promise<unknown>;
+    };
+  },
+  issueId: string
+) {
+  const issueItemsCol = db.collection(ISP_COLLECTIONS.technicianIssueItems);
+  const issuesCol = db.collection(ISP_COLLECTIONS.technicianIssues);
+  const routersCol = db.collection(ISP_COLLECTIONS.routerUnits);
+
+  const allItems = (await issueItemsCol.find({ technicianIssueId: issueId }).toArray()) as {
+    quantityReturned: number;
+    quantityTaken: number;
+    routerUnitIds?: string[];
+  }[];
+
+  let allClosed = true;
+  for (const item of allItems) {
+    if (item.routerUnitIds?.length) {
+      const stillIssued = await countUnitsStillIssued(routersCol, item.routerUnitIds);
+      if (stillIssued > 0) allClosed = false;
+    } else if (item.quantityReturned < item.quantityTaken) {
+      allClosed = false;
+    }
+  }
+
+  await issuesCol.updateOne(
+    { id: issueId },
+    { $set: { status: allClosed ? 'CLOSED' : 'PARTIAL_RETURN', updatedAt: new Date() } }
+  );
+  return allClosed ? 'CLOSED' : 'PARTIAL_RETURN';
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -46,31 +95,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    const returnCount = parsed.data.routerUnitIds?.length || parsed.data.quantityReturned;
-    const outstanding = issueItem.quantityTaken - issueItem.quantityReturned;
-
-    if (returnCount > outstanding) {
-      return NextResponse.json({ error: 'Cannot return more than was taken' }, { status: 400 });
-    }
-
-    if (parsed.data.routerUnitIds?.length) {
-      const issuedIds: string[] = issueItem.routerUnitIds || [];
-      for (const uid of parsed.data.routerUnitIds) {
-        if (!issuedIds.includes(uid)) {
-          return NextResponse.json({ error: 'Unit was not part of this issue' }, { status: 400 });
-        }
-      }
-      const units = await routersCol.find({ id: { $in: parsed.data.routerUnitIds } }).toArray();
-      for (const u of units as { status: string }[]) {
-        if (u.status !== 'issued') {
-          return NextResponse.json({ error: 'Unit is not currently issued out' }, { status: 400 });
-        }
-      }
-    }
-
-    const allowedStations = allowedReturnStationIds(issue as Parameters<typeof allowedReturnStationIds>[0]);
+    const disposition = parsed.data.disposition || 'returned';
     const defaultReturnStation = issue.sourceStationId || issue.stationId;
     const returnStationId = parsed.data.returnStationId || defaultReturnStation;
+    const allowedStations = allowedReturnStationIds(issue as Parameters<typeof allowedReturnStationIds>[0]);
 
     if (!allowedStations.includes(returnStationId)) {
       return NextResponse.json({ error: 'Invalid return station for this issue' }, { status: 400 });
@@ -79,11 +107,206 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied to return station' }, { status: 403 });
     }
 
-    const qtyReturned = parsed.data.routerUnitIds?.length || parsed.data.quantityReturned;
-    const newReturned = issueItem.quantityReturned + qtyReturned;
-    const newUsed = issueItem.quantityTaken - newReturned;
+    const unitIds = parsed.data.routerUnitIds || [];
+    const qty = unitIds.length || parsed.data.quantityReturned || 0;
+
+    if (unitIds.length) {
+      const issuedIds: string[] = issueItem.routerUnitIds || [];
+      for (const uid of unitIds) {
+        if (!issuedIds.includes(uid)) {
+          return NextResponse.json({ error: 'Unit was not part of this issue' }, { status: 400 });
+        }
+      }
+      const units = await routersCol.find({ id: { $in: unitIds } }).toArray();
+      for (const u of units as { status: string }[]) {
+        if (u.status !== 'issued') {
+          return NextResponse.json({ error: 'Unit is not currently issued out' }, { status: 400 });
+        }
+      }
+    }
+
+    const stillIssuedBefore = issueItem.routerUnitIds?.length
+      ? await countUnitsStillIssued(routersCol, issueItem.routerUnitIds)
+      : issueItem.quantityTaken - issueItem.quantityReturned;
+
+    if (qty > stillIssuedBefore) {
+      return NextResponse.json({ error: 'Cannot process more units than still outstanding' }, { status: 400 });
+    }
+
+    const jobRef = parsed.data.jobReference || issue.jobReference || null;
+    const item = await itemsCol.findOne({ id: issueItem.itemId });
+    const itemName = (item as { itemName?: string } | null)?.itemName || issueItem.itemId;
+
+    // ── Installed at client ──
+    if (disposition === 'installed') {
+      if (unitIds.length) {
+        await routersCol.updateMany(
+          { id: { $in: unitIds } },
+          {
+            $set: {
+              status: 'installed',
+              technicianId: null,
+              jobReference: jobRef,
+              issueItemId: null,
+              ticketId: jobRef,
+              updatedAt: new Date(),
+            },
+          }
+        );
+      }
+
+      await issueItemsCol.updateOne(
+        { id: parsed.data.issueItemId },
+        {
+          $set: {
+            returnCondition: 'Installed',
+            returnTime: new Date(),
+            updatedAt: new Date(),
+            notes: parsed.data.notes || issueItem.notes,
+          },
+        }
+      );
+
+      await createAuditLog({
+        userId: ctx.userId,
+        stationId: returnStationId,
+        action: 'INSTALLED',
+        entityType: 'technicianIssueItem',
+        entityId: parsed.data.issueItemId,
+        afterData: { routerUnitIds: unitIds, jobReference: jobRef, disposition },
+      });
+
+      const finalStatus = await refreshIssueStatusFromUnits(db, issue.id);
+      const updated = await issueItemsCol.findOne({ id: parsed.data.issueItemId });
+
+      return NextResponse.json({
+        success: true,
+        issueItem: updated,
+        status: finalStatus,
+        disposition: 'installed',
+      });
+    }
+
+    // ── Router replacement (new installed, old tracked) ──
+    if (disposition === 'replaced') {
+      const newUnit = unitIds.length ? await routersCol.findOne({ id: unitIds[0] }) : null;
+      const newLabel =
+        (newUnit as { serialNumber?: string; macAddress?: string } | null)?.serialNumber ||
+        (newUnit as { macAddress?: string } | null)?.macAddress ||
+        'new router';
+      const oldLabel = parsed.data.oldRouterSerial?.trim() || parsed.data.oldRouterMac?.trim() || 'old router';
+
+      if (unitIds.length) {
+        await routersCol.updateMany(
+          { id: { $in: unitIds } },
+          {
+            $set: {
+              status: 'installed',
+              technicianId: null,
+              jobReference: jobRef,
+              issueItemId: null,
+              ticketId: jobRef,
+              updatedAt: new Date(),
+            },
+          }
+        );
+      }
+
+      await issueItemsCol.updateOne(
+        { id: parsed.data.issueItemId },
+        {
+          $set: {
+            returnCondition: 'Replaced',
+            returnTime: new Date(),
+            updatedAt: new Date(),
+            notes: parsed.data.notes || issueItem.notes,
+          },
+        }
+      );
+
+      const replacement = await createRouterReplacementReturn(db, {
+        stationId: returnStationId,
+        technicianId: String(issue.technicianId),
+        technicianName: (issue as { technicianName?: string }).technicianName,
+        ticketId: jobRef,
+        jobReference: jobRef,
+        issueItemId: parsed.data.issueItemId,
+        sourceIssueId: issue.id,
+        itemId: issueItem.itemId,
+        itemName,
+        newRouterUnitId: unitIds[0],
+        newRouterSerial: (newUnit as { serialNumber?: string } | null)?.serialNumber,
+        newRouterMac: (newUnit as { macAddress?: string } | null)?.macAddress,
+        oldRouterSerial: parsed.data.oldRouterSerial,
+        oldRouterMac: parsed.data.oldRouterMac,
+        notes: parsed.data.notes || null,
+      });
+
+      if (parsed.data.oldRouterStatus === 'returned_now') {
+        await processRouterReplacementReturn(db, {
+          replacementId: replacement.id,
+          returnCondition: parsed.data.oldRouterReturnCondition || 'Good',
+          returnStationId,
+          oldRouterSerial: parsed.data.oldRouterSerial,
+          oldRouterMac: parsed.data.oldRouterMac,
+          notes: parsed.data.notes,
+          userId: ctx.userId,
+        });
+      } else if (parsed.data.oldRouterStatus === 'lost') {
+        await processRouterReplacementReturn(db, {
+          replacementId: replacement.id,
+          returnCondition: 'Lost',
+          returnStationId,
+          markLost: true,
+          userId: ctx.userId,
+        });
+      } else {
+        try {
+          await notifyRouterReplacementPending({
+            technicianId: String(issue.technicianId),
+            stationId: returnStationId,
+            newRouterLabel: newLabel,
+            oldRouterLabel: oldLabel,
+            ticketId: jobRef,
+          });
+        } catch (err) {
+          console.error('[Replacement SMS]', err);
+        }
+      }
+
+      await createAuditLog({
+        userId: ctx.userId,
+        stationId: returnStationId,
+        action: 'ROUTER_REPLACED',
+        entityType: 'technicianIssueItem',
+        entityId: parsed.data.issueItemId,
+        afterData: {
+          routerUnitIds: unitIds,
+          oldRouterSerial: parsed.data.oldRouterSerial,
+          oldRouterMac: parsed.data.oldRouterMac,
+          oldRouterStatus: parsed.data.oldRouterStatus,
+          replacementId: replacement.id,
+        },
+      });
+
+      const finalStatus = await refreshIssueStatusFromUnits(db, issue.id);
+      const updated = await issueItemsCol.findOne({ id: parsed.data.issueItemId });
+
+      return NextResponse.json({
+        success: true,
+        issueItem: updated,
+        status: finalStatus,
+        disposition: 'replaced',
+        replacementId: replacement.id,
+      });
+    }
+
+    // ── Standard return to stock ──
     const condition = parsed.data.returnCondition || 'Good';
     const isDamagedOrLost = condition === 'Damaged' || condition === 'Lost' || condition === 'Repair';
+    const qtyReturned = qty;
+    const newReturned = issueItem.quantityReturned + qtyReturned;
+    const newUsed = issueItem.quantityTaken - newReturned;
 
     await issueItemsCol.updateOne(
       { id: parsed.data.issueItemId },
@@ -98,9 +321,9 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    if (parsed.data.routerUnitIds?.length) {
+    if (unitIds.length) {
       await routersCol.updateMany(
-        { id: { $in: parsed.data.routerUnitIds } },
+        { id: { $in: unitIds } },
         {
           $set: {
             status: isDamagedOrLost ? 'damaged' : 'available',
@@ -113,7 +336,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const item = await itemsCol.findOne({ id: issueItem.itemId });
     if (item && !isDamagedOrLost && qtyReturned > 0) {
       const balanceBefore = item.quantityAvailable;
       const balanceAfter = balanceBefore + qtyReturned;
@@ -133,7 +355,7 @@ export async function POST(request: NextRequest) {
         technicianId: issue.technicianId,
         jobReference: issue.jobReference || null,
         approvedBy: ctx.userId,
-        notes: parsed.data.notes || (returnStationId !== defaultReturnStation ? `Returned to alternate station` : undefined),
+        notes: parsed.data.notes || (returnStationId !== defaultReturnStation ? 'Returned to alternate station' : undefined),
         createdBy: ctx.userId,
         createdAt: new Date(),
       });
@@ -155,17 +377,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const status = newReturned >= issueItem.quantityTaken ? 'CLOSED' : 'PARTIAL_RETURN';
-    const allItems = await issueItemsCol.find({ technicianIssueId: issue.id }).toArray();
-    const allClosed = allItems.every(
-      (i: { quantityReturned: number; quantityTaken: number }) => i.quantityReturned >= i.quantityTaken
-    );
-    const finalStatus = allClosed ? 'CLOSED' : status;
-
-    await issuesCol.updateOne(
-      { id: issue.id },
-      { $set: { status: finalStatus, updatedAt: new Date() } }
-    );
+    const finalStatus = issueItem.routerUnitIds?.length
+      ? await refreshIssueStatusFromUnits(db, issue.id)
+      : await (async () => {
+          const allClosed = newReturned >= issueItem.quantityTaken;
+          await issuesCol.updateOne(
+            { id: issue.id },
+            { $set: { status: allClosed ? 'CLOSED' : 'PARTIAL_RETURN', updatedAt: new Date() } }
+          );
+          return allClosed ? 'CLOSED' : 'PARTIAL_RETURN';
+        })();
 
     const isShared = issue.issueType === 'SHARED_STATIONS';
     const auditAction = isShared
@@ -185,23 +406,20 @@ export async function POST(request: NextRequest) {
       afterData: {
         quantityReturned: newReturned,
         quantityUsed: newUsed,
-        routerUnitIds: parsed.data.routerUnitIds,
+        routerUnitIds: unitIds,
         returnStationId,
         returnCondition: condition,
-        issueType: issue.issueType,
-        sharedStationIds: issue.sharedStationIds,
+        disposition: 'returned',
       },
     });
 
     const updated = await issueItemsCol.findOne({ id: parsed.data.issueItemId });
 
-    const itemDoc = item as { itemName?: string } | null;
-    const itemsSummary = itemDoc?.itemName || issueItem.itemId;
     try {
       await notifyEquipmentReturn({
         technicianId: String(issue.technicianId),
         stationId: returnStationId,
-        itemsSummary,
+        itemsSummary: itemName,
         quantityReturned: qtyReturned,
         unitType: issueItem.unitType,
         returnCondition: condition,

@@ -62,14 +62,59 @@ export const issueItemSchema = z.object({
   notes: z.string().optional(),
 });
 
-export const returnItemSchema = z.object({
-  issueItemId: z.string().min(1),
-  quantityReturned: z.number().min(0, 'Quantity cannot be negative'),
-  routerUnitIds: z.array(z.string().min(1)).optional(),
-  returnCondition: z.string().optional(),
-  returnStationId: z.string().optional(),
-  notes: z.string().optional(),
-});
+export const returnItemSchema = z
+  .object({
+    issueItemId: z.string().min(1),
+    disposition: z.enum(['returned', 'installed', 'replaced']).default('returned'),
+    quantityReturned: z.number().min(0).optional(),
+    routerUnitIds: z.array(z.string().min(1)).optional(),
+    returnCondition: z.string().optional(),
+    returnStationId: z.string().optional(),
+    notes: z.string().optional(),
+    jobReference: z.string().optional(),
+    oldRouterSerial: z.string().optional(),
+    oldRouterMac: z.string().optional(),
+    /** When disposition=replaced: old unit returned now, still pending, or lost */
+    oldRouterStatus: z.enum(['returned_now', 'pending', 'lost']).optional(),
+    oldRouterReturnCondition: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const qty = data.routerUnitIds?.length || data.quantityReturned || 0;
+    if (data.disposition === 'returned') {
+      if (qty <= 0 && !data.routerUnitIds?.length) {
+        ctx.addIssue({ code: 'custom', message: 'Enter quantity or select units', path: ['quantityReturned'] });
+      }
+      if (!data.returnCondition) {
+        ctx.addIssue({ code: 'custom', message: 'Select return condition', path: ['returnCondition'] });
+      }
+    }
+    if (data.disposition === 'installed' || data.disposition === 'replaced') {
+      if (!data.routerUnitIds?.length && (data.quantityReturned || 0) <= 0) {
+        ctx.addIssue({ code: 'custom', message: 'Select the unit installed or replaced', path: ['routerUnitIds'] });
+      }
+    }
+    if (data.disposition === 'replaced') {
+      const serial = data.oldRouterSerial?.trim();
+      const mac = data.oldRouterMac?.trim();
+      if (!serial && !mac) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Enter serial or MAC of the old router from the client',
+          path: ['oldRouterSerial'],
+        });
+      }
+      if (!data.oldRouterStatus) {
+        ctx.addIssue({ code: 'custom', message: 'Select old router status', path: ['oldRouterStatus'] });
+      }
+      if (data.oldRouterStatus === 'returned_now' && !data.oldRouterReturnCondition) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Select condition of old router returned',
+          path: ['oldRouterReturnCondition'],
+        });
+      }
+    }
+  });
 
 export const cableRollSchema = z.object({
   rollCode: z.string().min(1, 'Roll code is required'),
